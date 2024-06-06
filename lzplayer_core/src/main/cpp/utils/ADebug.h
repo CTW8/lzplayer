@@ -54,7 +54,7 @@ inline static const char *asString(status_t i, const char *def = "??") {
 
 #ifndef LOG_ALWAYS_FATAL_IF
 #define LOG_ALWAYS_FATAL_IF(cond, ...) \
-    assert(cond);           
+    assert(!cond);           
 #endif
 
 // allow to use CHECK_OP from android-base/logging.h

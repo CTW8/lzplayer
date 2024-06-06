@@ -41,7 +41,7 @@ status_t AReplyToken::setReply(const std::shared_ptr<AMessage> &reply) {
         ALOGE("trying to post a duplicate reply");
         return -EBUSY;
     }
-    assert(!(mReply == NULL));
+    assert(mReply == NULL);
     mReply = reply;
     mReplied = true;
     return OK;

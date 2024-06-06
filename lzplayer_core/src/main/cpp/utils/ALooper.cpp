@@ -37,13 +37,11 @@ struct ALooper::LooperThread{
         mThread = std::thread([this](){
             threadLoop();
         });
-    
-        ALOGD("### run started");
+
         return OK;
     }
 
     bool threadLoop() {
-        ALOGE("start threadloop");
         mThreadId = std::this_thread::get_id();
         do{
             bool ret = mLooper->loop();
@@ -239,19 +237,15 @@ bool ALooper::loop() {
     Event event;
 
     {
-        ALOGD("loop start  mThread?%d  mRunningLocally:%d",mThread == NULL,mRunningLocally);
         std::unique_lock<std::mutex> autoLock(mLock);
         if (mThread == NULL && !mRunningLocally) {
-            ALOGW("exit loop@@@");
+            ALOGW("exit loop");
             return false;
         }
-        ALOGD("loop start #2");
         if (mEventQueue.empty()) {
-            ALOGD("mQueueChangedCondition.wait");
             mQueueChangedCondition.wait(autoLock);
             return true;
         }
-        ALOGD("mEventQueue size:%d",mEventQueue.size());
         int64_t whenUs = (*mEventQueue.begin()).mWhenUs;
         int64_t nowUs = GetNowUs();
 
