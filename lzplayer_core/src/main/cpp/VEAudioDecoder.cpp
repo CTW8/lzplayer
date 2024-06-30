@@ -10,8 +10,85 @@ VEAudioDecoder::~VEAudioDecoder()
     uninit();
 }
 
-int VEAudioDecoder::init(VEMediaInfo *info)
+int VEAudioDecoder::init(std::shared_ptr<VEDemux> demux)
 {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit,shared_from_this());
+    msg->setObject("demux",demux);
+    msg->post();
+    return 0;
+}
+
+int VEAudioDecoder::flush()
+{
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatFlush,shared_from_this());
+    msg->post();
+    return 0;
+}
+
+int VEAudioDecoder::readFrame(std::shared_ptr<VEFrame> &frame)
+{
+    std::unique_lock<std::mutex> lk(mMutex);
+    if(mFrameQueue.size() == 0){
+        mCond.wait(lk);
+    }else if(mFrameQueue.size() == 10){
+        frame = mFrameQueue.front();
+        mFrameQueue.pop_front();
+        mCond.notify_one();
+    }else{
+        frame = mFrameQueue.front();
+        mFrameQueue.pop_front();
+    }
+    return 0;
+}
+
+int VEAudioDecoder::uninit()
+{
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatUninit,shared_from_this());
+    msg->post();
+    return 0;
+}
+
+void VEAudioDecoder::start() {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart,shared_from_this());
+    msg->post();
+}
+
+void VEAudioDecoder::stop() {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStop,shared_from_this());
+    msg->post();
+}
+
+void VEAudioDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
+    switch (msg->what()) {
+        case kWhatInit:{
+            onInit(msg);
+            break;
+        }
+        case kWhatStop:{
+            break;
+        }
+        case kWhatStart:{
+            break;
+        }
+        case kWhatRead:{
+            onDecode();
+            break;
+        }
+        case kWhatFlush:{
+            onFlush();
+            break;
+        }default:{
+            break;
+        }
+    }
+}
+
+bool VEAudioDecoder::onInit(std::shared_ptr<AMessage> msg) {
+    std::shared_ptr<void> tmp;
+    msg->findObject("demux",&tmp);
+
+    std::shared_ptr<VEDemux> demux = std::static_pointer_cast<VEDemux>(tmp);
+    std::shared_ptr<VEMediaInfo> info = demux->getFileInfo();
     if (info == nullptr) {
         return -1;
     }
@@ -35,57 +112,56 @@ int VEAudioDecoder::init(VEMediaInfo *info)
     if (avcodec_open2(mAudioCtx, codec, nullptr) != 0) {
         return -1;
     }
-
-    return 0;
+    return false;
 }
 
-int VEAudioDecoder::flush()
-{
-    if (!mAudioCtx) {
-        return -1; // 解码器上下文为空
-    }
-
-    // 刷新解码器状态
+bool VEAudioDecoder::onFlush() {
     avcodec_flush_buffers(mAudioCtx);
-
-    return 0;
+    return false;
 }
 
-int VEAudioDecoder::sendPacket(VEPacket *pack)
-{
-       if (pack == nullptr) {
-        return -1;
-    }
-
-    // 将音频包送入解码器
-    return avcodec_send_packet(mAudioCtx, pack->frame);
-
-}
-
-int VEAudioDecoder::readFrame(VEFrame *frame)
-{
-    if (frame == nullptr) {
-        return -1;
-    }
-
+bool VEAudioDecoder::onDecode() {
+    std::shared_ptr<VEPacket> packet;
+    mDemux->read(true,packet);
     // 从解码器中读取音频帧
-    int ret = avcodec_receive_frame(mAudioCtx, frame->frame);
-    if (ret == AVERROR(EAGAIN)) {
-        return 0;
-    } else if (ret < 0) {
-        return -1;
+    int ret = avcodec_send_packet(mAudioCtx, packet->getPacket());
+    if (ret < 0) {
+        ALOGE("Error sending packet for decoding", ret);
+        return false;
     }
-
-    return 0;
+    while (ret >= 0) {
+        std::shared_ptr<VEFrame> frame = std::make_shared<VEFrame>();
+        ret = avcodec_receive_frame(mAudioCtx, frame->getFrame());
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            break;
+        } else if (ret < 0) {
+            ALOGE("Error during decoding", ret);
+            break;
+        }
+        std::unique_lock<std::mutex> lk(mMutex);
+        if(mFrameQueue.size() >= 10){
+            mCond.wait(lk);
+        }else if(mFrameQueue.size() == 0){
+            mFrameQueue.push_back(frame);
+            mCond.notify_one();
+        }else{
+            mFrameQueue.push_back(frame);
+        }
+        // 处理解码后的音频帧
+        ALOGI("Audio frame: pts=%s, nb_samples=%d, channels=%d\n",
+               av_ts2str(frame->getFrame()->pts),
+              frame->getFrame()->nb_samples,
+              frame->getFrame()->channels);
+    }
+    return false;
 }
 
-int VEAudioDecoder::uninit()
-{
+bool VEAudioDecoder::onUnInit() {
     // 释放资源，包括解码器上下文等
     if (mAudioCtx) {
         avcodec_free_context(&mAudioCtx);
     }
 
     mMediaInfo = nullptr;
-    return 0;
+    return false;
 }

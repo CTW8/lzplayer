@@ -1,6 +1,8 @@
 #include <jni.h>
 #include <string>
+#include <android/native_window_jni.h>
 #include "VEPlayer.h"
+#include "JniString.h"
 
 #define  CHECK_NULL()  {if(vePlayer == nullptr){ return -1;}}while(0)
 extern "C"
@@ -15,6 +17,11 @@ Java_com_example_lzplayer_1core_NativeLib_nativeInit(JNIEnv *env, jobject thiz, 
                                                      jstring path, jobject surface) {
     // TODO: implement nativeInit()
     VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
+    JniString jPath(env,path);
+    vePlayer->setDataSource(jPath.c_str());
+    ANativeWindow *window = ANativeWindow_fromSurface(env, surface);
+    vePlayer->setDisplayOut(window);
+    vePlayer->prepare();
     CHECK_NULL();
     return 0;
 }
@@ -33,6 +40,7 @@ Java_com_example_lzplayer_1core_NativeLib_nativeStart(JNIEnv *env, jobject thiz,
     // TODO: implement nativeStart()
     VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
     CHECK_NULL();
+    vePlayer->start();
     return 0;
 }
 extern "C"
@@ -41,6 +49,7 @@ Java_com_example_lzplayer_1core_NativeLib_nativePause(JNIEnv *env, jobject thiz,
     // TODO: implement nativePause()
     VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
     CHECK_NULL();
+    vePlayer->pause();
     return 0;
 }
 extern "C"
@@ -49,6 +58,7 @@ Java_com_example_lzplayer_1core_NativeLib_nativeStop(JNIEnv *env, jobject thiz, 
     // TODO: implement nativeStop()
     VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
     CHECK_NULL();
+    vePlayer->stop();
     return 0;
 }
 extern "C"
@@ -58,6 +68,7 @@ Java_com_example_lzplayer_1core_NativeLib_nativeSeekTo(JNIEnv *env, jobject thiz
     // TODO: implement nativeSeekTo()
     VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
     CHECK_NULL();
+    vePlayer->seek(timestamp);
     return 0;
 }
 extern "C"
@@ -66,5 +77,6 @@ Java_com_example_lzplayer_1core_NativeLib_nativeRelease(JNIEnv *env, jobject thi
     // TODO: implement nativeRelease()
     VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
     CHECK_NULL();
+    vePlayer->release();
     return 0;
 }

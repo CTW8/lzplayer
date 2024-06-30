@@ -22,8 +22,6 @@
 #include "Errors.h"
 #include "Log.h"
 
-namespace android {
-
 inline static const char *asString(status_t i, const char *def = "??") {
     switch (i) {
         case NO_ERROR:              return "NO_ERROR";
@@ -51,11 +49,29 @@ inline static const char *asString(status_t i, const char *def = "??") {
 #define LITERAL_TO_STRING_INTERNAL(x)    #x
 #define LITERAL_TO_STRING(x) LITERAL_TO_STRING_INTERNAL(x)
 
+#define CONDITION(cond)     (__builtin_expect((cond)!=0, 0))
+
+/* Returns 2nd arg.  Used to substitute default value if caller's vararg list
+ * is empty.
+ */
+#define __android_second(dummy, second, ...)     second
+
+/* If passed multiple args, returns ',' followed by all but 1st arg, otherwise
+ * returns nothing.
+ */
+#define __android_rest(first, ...)               , ## __VA_ARGS__
+
+#define android_printAssert(cond, tag, fmt...) \
+    __android_log_assert(cond, tag, \
+        __android_second(0, ## fmt, NULL) __android_rest(fmt))
 
 #ifndef LOG_ALWAYS_FATAL_IF
 #define LOG_ALWAYS_FATAL_IF(cond, ...) \
-    assert(!cond);           
+    ( (CONDITION(cond)) \
+    ? ((void)android_printAssert(#cond, LOG_TAG, ## __VA_ARGS__)) \
+    : (void)0 )
 #endif
+
 
 // allow to use CHECK_OP from android-base/logging.h
 // TODO: longterm replace this with android-base/logging.h, but there are some nuances, e.g.
@@ -172,8 +188,6 @@ private:
             bool allow, const char *name, uint64_t modulo, uint64_t limit,
             uint64_t plus = 0, uint64_t timeDivisor = 24 * 60 * 60 /* 1 day */);
 };
-
-}  // namespace android
 
 #endif  // A_DEBUG_H_
 

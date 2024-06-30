@@ -3,39 +3,48 @@
 
 int VEPlayer::setDataSource(std::string path)
 {
-    pthread_mutex_lock(&mMutex);
     if(path.empty()){
         printf("## %s %d  params is invalid!!\n",__FUNCTION__,__LINE__);
         return VE_INVALID_PARAMS;
     }
-    mDemux = new VEDemux();
-    mDemux->open(path);
-    mMediaInfo = mDemux->getFileInfo();
-
-    mAudioDecoder = new VEAudioDecoder();
-    mAudioDecoder->init(mMediaInfo.get());
-
-    mVideoDecoder = new VEVideoDecoder();
-    mVideoDecoder->init(mMediaInfo.get());
-
-    mAPacketQueue = new VEPacketQueue();
-    mVPacketQueue = new VEPacketQueue();
-
-    mAFrameQueue = new VEFrameQueue();
-    mVFrameQueue = new VEFrameQueue();
-    pthread_mutex_unlock(&mMutex);
+    mPath = path;
     return 0;
 }
 
 int VEPlayer::prepare()
 {
     ///创建demux线程
-    
+    mDemuxLooper = std::make_shared<ALooper>();
+    mDemuxLooper->setName("demux_thread");
+    mDemuxLooper->start(false);
+
+    mDemux = std::shared_ptr<VEDemux>();
+
+    mDemuxLooper->registerHandler(mDemux);
+    mDemux->open(mPath);
+
+    mMediaInfo = mDemux->getFileInfo();
 
     ///创建audio dec thread
+    mAudioDecodeLooper = std::make_shared<ALooper>();
+    mAudioDecodeLooper->setName("adec_thread");
+    mAudioDecodeLooper->start(false);
 
+    mAudioDecoder = std::shared_ptr<VEAudioDecoder>();
+    mAudioDecodeLooper->registerHandler(mAudioDecoder);
+
+    mAudioDecoder->init(mDemux);
 
     ///创建video dec thread
+
+    mVideoDecodeLooper = std::make_shared<ALooper>();
+    mVideoDecodeLooper->setName("vdec_thread");
+    mVideoDecodeLooper->start(false);
+
+    mVideoDecoder = std::make_shared<VEVideoDecoder>();
+
+    mVideoDecodeLooper->registerHandler(mVideoDecoder);
+    mVideoDecoder->init(mDemux);
 
 
     ///创建视频渲染线程
@@ -71,6 +80,10 @@ int VEPlayer::resume()
 int VEPlayer::release()
 {
     ////释放播放器
+
+    if(mWindow){
+        ANativeWindow_release(mWindow);
+    }
     return 0;
 }
 
@@ -82,5 +95,23 @@ int VEPlayer::seek(int64_t timestamp)
 
 int VEPlayer::reset()
 {
+    return 0;
+}
+
+void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
+
+}
+
+VEPlayer::VEPlayer() {
+
+}
+
+VEPlayer::~VEPlayer() {
+
+}
+
+int VEPlayer::setDisplayOut(ANativeWindow *win) {
+
+    mWindow = win;
     return 0;
 }

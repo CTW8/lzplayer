@@ -26,7 +26,6 @@
     name(const name &); \
     name &operator=(const name &) /* NOLINT */
 
-namespace android {
 
 struct AHandler;
 struct AMessage;
@@ -100,5 +99,3 @@ private:
 
     DISALLOW_EVIL_CONSTRUCTORS(ALooper);
 };
-
-} // namespace android

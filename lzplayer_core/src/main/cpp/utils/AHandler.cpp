@@ -21,7 +21,6 @@
 #include "AHandler.h"
 #include "AMessage.h"
 
-namespace android {
 
 void AHandler::deliverMessage(const std::shared_ptr<AMessage> &msg) {
     onMessageReceived(msg);
@@ -37,5 +36,3 @@ void AHandler::deliverMessage(const std::shared_ptr<AMessage> &msg) {
     //     }
     // }
 }
-
-}  // namespace android

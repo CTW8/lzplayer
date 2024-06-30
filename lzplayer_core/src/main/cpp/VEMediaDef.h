@@ -28,9 +28,4 @@ typedef struct __VEMediaInfo{
 }VEMediaInfo;
 
 
-typedef enum _MediaState{
-    
-};
-
-
 #endif

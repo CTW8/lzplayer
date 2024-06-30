@@ -32,8 +32,6 @@
 // #include <binder/Parcel.h>
 // #endif
 
-namespace android {
-
 extern ALooperRoster gLooperRoster;
 
 status_t AReplyToken::setReply(const std::shared_ptr<AMessage> &reply) {
@@ -678,5 +676,3 @@ void AMessage::extend(const std::shared_ptr<AMessage> &other) {
 size_t AMessage::findEntryByName(const char *name) const {
     return name == nullptr ? countEntries() : findItemIndex(name, strlen(name));
 }
-
-}  // namespace android

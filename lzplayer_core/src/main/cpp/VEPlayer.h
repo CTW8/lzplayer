@@ -2,6 +2,7 @@
 #define __VEPLAYER__
 
 #include <string>
+#include <android/native_window_jni.h>
 #include "VEDemux.h"
 #include "VEAudioDecoder.h"
 #include "VEVideoDecoder.h"
@@ -10,14 +11,22 @@
 #include "VEPacketQueue.h"
 #include "VEFrameQueue.h"
 #include "VEResult.h"
-class VEPlayer
+#include "jni.h"
+#include "AHandler.h"
+class VEPlayer : public AHandler
 {
 public:
     VEPlayer();
     ~VEPlayer();
 
+protected:
+    void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+
+public:
     /// setDataSource
     int setDataSource(std::string path);
+
+    int setDisplayOut(ANativeWindow* win);
 
     /// prepare
     int prepare();
@@ -67,18 +76,19 @@ public:
 
 private:
     pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
-    VEDemux *mDemux = nullptr;
-    VEAudioDecoder *mAudioDecoder = nullptr;
-    VEVideoDecoder *mVideoDecoder = nullptr;
-    VEPacketQueue *mAPacketQueue=nullptr;
-    VEPacketQueue *mVPacketQueue=nullptr;
+    std::shared_ptr<VEDemux> mDemux = nullptr;
+    std::shared_ptr<ALooper> mDemuxLooper = nullptr;
+    std::shared_ptr<VEAudioDecoder> mAudioDecoder = nullptr;
+    std::shared_ptr<ALooper> mAudioDecodeLooper = nullptr;
+    std::shared_ptr<VEVideoDecoder> mVideoDecoder = nullptr;
+    std::shared_ptr<ALooper> mVideoDecodeLooper = nullptr;
+    std::shared_ptr<VEPacketQueue> mAPacketQueue=nullptr;
 
-    VEFrameQueue *mAFrameQueue=nullptr;
-    VEFrameQueue *mVFrameQueue=nullptr;
+    std::shared_ptr<VEMediaInfo> mMediaInfo=nullptr;
 
-    shared_ptr<VEMediaInfo> mMediaInfo=nullptr;
+    std::string mPath;
 
-    string mPath;
+    ANativeWindow *mWindow = nullptr;
 };
 
 #endif

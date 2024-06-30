@@ -23,7 +23,6 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
-namespace android {
 
 struct ALooperRoster {
     ALooperRoster();
@@ -48,7 +47,5 @@ private:
 
     DISALLOW_EVIL_CONSTRUCTORS(ALooperRoster);
 };
-
-}  // namespace android
 
 #endif  // A_LOOPER_ROSTER_H_

@@ -1,5 +1,6 @@
 package com.example.lzplayer;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -12,6 +13,7 @@ import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Surface;
+import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
@@ -37,8 +39,8 @@ import pub.devrel.easypermissions.EasyPermissions;
 
 import com.example.lzplayer_core.NativeLib;
 
-public class MainActivity extends AppCompatActivity {
-
+public class MainActivity extends AppCompatActivity{
+    private final String TAG = "MainActivity";
     private SurfaceView glSurfaceView;
     private Button btnPlay;
     private Button btnPause;
@@ -47,7 +49,9 @@ public class MainActivity extends AppCompatActivity {
 
     private String filePath;
 
+    private Surface mSurface;
     private VEPlayer mPlayer;
+
     private static final int RC_FILE_PERM = 123;
 
     @Override
@@ -66,8 +70,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initView(){
-
+        mPlayer = new VEPlayer();
         glSurfaceView=findViewById(R.id.glVideoView);
+        glSurfaceView.getHolder().addCallback(new VideoRender());
+
         btnSelect = (Button) findViewById(R.id.btnSelectFile);
         btnPlay = (Button) findViewById(R.id.btnPlay);
         btnPause = (Button) findViewById(R.id.btnPause);
@@ -105,6 +111,8 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_CODE_CHOOSE && resultCode == RESULT_OK) {
             filePath=Matisse.obtainPathResult(data).get(0);
+            mPlayer.init(filePath,mSurface);
+            mPlayer.start();
             Log.d("Matisse", "Uris: " + Matisse.obtainResult(data)+" size:"+ Matisse.obtainResult(data).size());
             Log.d("Matisse", "Paths: " + Matisse.obtainPathResult(data));
             Log.e("Matisse", "Use the selected photos with original: "+String.valueOf(Matisse.obtainOriginalState(data)));
@@ -119,4 +127,23 @@ public class MainActivity extends AppCompatActivity {
         EasyPermissions.onRequestPermissionsResult(requestCode, permissions, grantResults, this);
     }
 
+
+    class VideoRender implements SurfaceHolder.Callback{
+
+        @Override
+        public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
+            Log.d(TAG,"surfaceCreated");
+            mSurface = surfaceHolder.getSurface();
+        }
+
+        @Override
+        public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
+            Log.d(TAG,"surfaceChanged");
+        }
+
+        @Override
+        public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
+            Log.d(TAG,"surfaceDestroyed");
+        }
+    }
 }

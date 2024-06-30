@@ -16,14 +16,10 @@
 
 //#define LOG_NDEBUG 0
 #define LOG_TAG "ALooper"
-
-
-
 #include "ALooper.h"
 
 #include "ALooperRoster.h"
 #include "AMessage.h"
-namespace android {
 
 ALooperRoster gLooperRoster;
 
@@ -34,7 +30,8 @@ struct ALooper::LooperThread{
     }
 
     status_t run(std::string name){
-        mThread = std::thread([this](){
+        mThread = std::thread([this,name](){
+            pthread_setname_np(pthread_self(), name.c_str());
             threadLoop();
         });
 
@@ -304,5 +301,3 @@ status_t ALooper::postReply(const std::shared_ptr<AReplyToken> &replyToken, cons
     }
     return err;
 }
-
-}  // namespace android

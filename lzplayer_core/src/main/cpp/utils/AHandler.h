@@ -20,14 +20,12 @@
 #include <memory>
 #include <map>
 #include <unordered_map>
-
+#include "Errors.h"
 #include "ALooper.h"
 
 #define DISALLOW_EVIL_CONSTRUCTORS(name) \
     name(const name &); \
     name &operator=(const name &) /* NOLINT */
-
-namespace android {
 
 struct AMessage;
 
@@ -78,7 +76,5 @@ private:
 
     DISALLOW_EVIL_CONSTRUCTORS(AHandler);
 };
-
-}  // namespace android
 
 #endif  // A_HANDLER_H_

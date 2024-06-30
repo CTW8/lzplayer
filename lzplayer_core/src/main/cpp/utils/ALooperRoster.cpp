@@ -25,8 +25,6 @@
 #include "AHandler.h"
 #include "AMessage.h"
 
-namespace android {
-
 static bool verboseStats = false;
 
 ALooperRoster::ALooperRoster()
@@ -184,5 +182,3 @@ void ALooperRoster::dump(int fd, const std::vector<std::string>& args) {
     // }
     // (void)write(fd, s.string(), s.size());
 }
-
-}  // namespace android

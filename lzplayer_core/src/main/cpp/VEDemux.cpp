@@ -18,15 +18,181 @@ VEDemux::~VEDemux()
 
 }
 
-int VEDemux::open(std::string file)
+status_t VEDemux::open(std::string file)
 {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatOpen,shared_from_this());
+    msg->setString("filePath",file);
+
+    std::shared_ptr<AMessage> respone;
+    msg->postAndAwaitResponse(&respone);
+    int32_t ret;
+    respone->findInt32("ret",&ret);
+    return ret;
+}
+
+status_t VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet){
+
+    if(isAudio){
+        std::unique_lock<std::mutex> lock(mMutexAudio);
+        if(mAudioPacketQueue.size() == 0){
+            mCondAudio.wait(lock);
+        }
+
+        if(mAudioPacketQueue.size() >= 10){
+            packet = mAudioPacketQueue.front();
+            mAudioPacketQueue.pop_front();
+            mCondAudio.notify_one();
+        }else{
+            packet = mAudioPacketQueue.front();
+            mAudioPacketQueue.pop_front();
+        }
+
+
+    }else{
+        std::unique_lock<std::mutex> lock(mMutexVideo);
+        if(mVideoPacketQueue.size() == 0){
+            mCondVideo.wait(lock);
+        }
+
+        if(mVideoPacketQueue.size() >= 10){
+            packet = mVideoPacketQueue.front();
+            mVideoPacketQueue.pop_front();
+            mCondVideo.notify_one();
+        }else{
+            packet = mVideoPacketQueue.front();
+            mVideoPacketQueue.pop_front();
+        }
+
+    }
+    return OK;
+}
+
+status_t VEDemux::seek(uint64_t pos)
+{
+    if (!mFormatContext) {
+        fprintf(stderr, "Error: File not opened.\n");
+        return -1;
+    }
+
+    int64_t seekTarget = av_rescale_q(pos, AV_TIME_BASE_Q, mFormatContext->streams[0]->time_base);
+    
+    if (av_seek_frame(mFormatContext, -1, seekTarget, AVSEEK_FLAG_BACKWARD) < 0) {
+        fprintf(stderr, "Error: Couldn't seek.\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+status_t VEDemux::close()
+{
+    if (mFormatContext) {
+        avformat_close_input(&mFormatContext);
+        mFormatContext = nullptr;
+    }
+
+    if(mAudioCodecParams){
+        avcodec_parameters_free(&mAudioCodecParams);
+        mAudioCodecParams = nullptr;
+    }
+    if(mVideoCodecParams){
+        avcodec_parameters_free(&mVideoCodecParams);
+        mVideoCodecParams = nullptr;
+    }
+    return 0;
+}
+
+std::shared_ptr<VEMediaInfo> VEDemux::getFileInfo()
+{
+    std::shared_ptr<VEMediaInfo> tmp = std::make_shared<VEMediaInfo>();
+
+    tmp->channels = mChannel;
+    tmp->duration = mDuration;
+    tmp->fps = mFps;
+    tmp->width = mWidth;
+    tmp->height = mHeight;
+    tmp->sampleRate = mSampleRate;
+    tmp->sampleFormat = mSampleFormat;
+    tmp->mAudioCodecParams = mAudioCodecParams;
+    tmp->mVideoCodecParams = mVideoCodecParams;
+    tmp->audio_stream_index = mAudio_index;
+    tmp->video_stream_index = mVideo_index;
+    tmp->mAStartTime = mAStartTime;
+    tmp->mAudioTimeBase = mAudioTimeBase;
+    tmp->mVideoTimeBase = mVideoTimeBase;
+    tmp->mVStartTime = mVStartTime;
+    return tmp;
+}
+
+void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
+    switch (msg->what()) {
+        case kWhatOpen:{
+            std::string path;
+            msg->findString("filePath",path);
+            std::shared_ptr<AReplyToken> replyToken;
+            msg->senderAwaitsResponse(replyToken);
+            status_t ret = onOpen(path);
+
+            std::shared_ptr<AMessage> replyMsg = std::make_shared<AMessage>();
+            replyMsg->setInt32("ret",ret);
+            replyMsg->postReply(replyToken);
+            break;
+        }
+        case kWhatStart:{
+            mIsStart = true;
+            (new AMessage(kWhatRead,shared_from_this()))->post();
+            break;
+        }
+        case kWhatStop:{
+            mIsStart = false;
+            break;
+        }
+        case kWhatPause:{
+            mIsPause = true;
+            break;
+        }
+        case kWhatResume:{
+            mIsPause = false;
+            break;
+        }
+        case kWhatRead:{
+            if(mIsPause || !mIsStart){
+                break;
+            }
+            onRead();
+            break;
+        }
+    }
+}
+
+void VEDemux::start() {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart,shared_from_this());
+    msg->post();
+}
+
+void VEDemux::stop() {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStop,shared_from_this());
+    msg->post();
+}
+
+void VEDemux::pause() {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPause,shared_from_this());
+    msg->post();
+}
+
+void VEDemux::resume() {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatResume,shared_from_this());
+    msg->post();
+}
+
+status_t VEDemux::onOpen(std::string path) {
     ///打开文件
-    if(file.empty()){
+    if(path.empty()){
         printf("## %s  %d open file failed!!!",__FUNCTION__,__LINE__);
         return -1;
     }
 
-    mFilePath = file;
+    mFilePath = path;
 
     if (avformat_open_input(&mFormatContext, mFilePath.c_str(), nullptr, nullptr) != 0) {
         fprintf(stderr, "Error: Couldn't open input file.\n");
@@ -43,7 +209,7 @@ int VEDemux::open(std::string file)
     ///获取文件信息
     for (unsigned int i = 0; i < mFormatContext->nb_streams; i++) {
         AVStream* stream = mFormatContext->streams[i];
-        
+
         if(stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO){
             mAudio_index = i;
             mAudioTimeBase = stream->time_base;
@@ -64,77 +230,52 @@ int VEDemux::open(std::string file)
             mFps = stream->r_frame_rate.num/stream->r_frame_rate.den;
         }
     }
+    return 0;
+}
+
+status_t VEDemux::onStart() {
 
     return 0;
 }
 
-int32_t VEDemux::read(VEPacket *packet){
-    if(av_read_frame(mFormatContext, packet->frame) <0){
+status_t VEDemux::onRead() {
+    std::shared_ptr<VEPacket> packet = std::make_shared<VEPacket>();
+    if(!packet){
+        ALOGD("Could not allocate AVPacket");
+        return NO_ERROR;
+    }
+
+    if(av_read_frame(mFormatContext, packet->getPacket()) <0){
         return -1;
     }
-    if(packet->frame->stream_index == mAudio_index){
-        packet->type = 1;
-    }else if (packet->frame->stream_index = mVideo_index)
+    if(packet->getPacket()->stream_index == mAudio_index){
+        std::unique_lock<std::mutex> lk(mMutexAudio);
+        if(mAudioPacketQueue.size() >= 10){
+            mCondAudio.wait(lk);
+        }
+        if(mAudioPacketQueue.size() == 0){
+            mAudioPacketQueue.push_back(packet);
+            mCondAudio.notify_one();
+        }else{
+            mAudioPacketQueue.push_back(packet);
+        }
+    }else if (packet->getPacket()->stream_index == mVideo_index)
     {
-        packet->type = 0;
+        std::unique_lock<std::mutex> lk(mMutexVideo);
+        if(mVideoPacketQueue.size() >= 10){
+            mCondVideo.wait(lk);
+        }
+        if(mVideoPacketQueue.size() == 0){
+            mVideoPacketQueue.push_back(packet);
+            mCondVideo.notify_one();
+        }else{
+            mVideoPacketQueue.push_back(packet);
+        }
+    }else{
+        ALOGD("may be not use");
     }
-    
+
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead,shared_from_this());
+    msg->post();
     return 0;
-}
-
-int VEDemux::seek(uint64_t pos)
-{
-    if (!mFormatContext) {
-        fprintf(stderr, "Error: File not opened.\n");
-        return -1;
-    }
-
-    int64_t seekTarget = av_rescale_q(pos, AV_TIME_BASE_Q, mFormatContext->streams[0]->time_base);
-    
-    if (av_seek_frame(mFormatContext, -1, seekTarget, AVSEEK_FLAG_BACKWARD) < 0) {
-        fprintf(stderr, "Error: Couldn't seek.\n");
-        return -1;
-    }
-
-    return 0;
-}
-
-int VEDemux::close()
-{
-    if (mFormatContext) {
-        avformat_close_input(&mFormatContext);
-        mFormatContext = nullptr;
-    }
-
-    if(mAudioCodecParams){
-        avcodec_parameters_free(&mAudioCodecParams);
-        mAudioCodecParams = nullptr;
-    }
-    if(mVideoCodecParams){
-        avcodec_parameters_free(&mVideoCodecParams);
-        mVideoCodecParams = nullptr;
-    }
-    return 0;
-}
-
-shared_ptr<VEMediaInfo> VEDemux::getFileInfo()
-{
-    shared_ptr<VEMediaInfo> tmp = make_shared<VEMediaInfo>();
-
-    tmp->channels = mChannel;
-    tmp->duration = mDuration;
-    tmp->fps = mFps;
-    tmp->width = mWidth;
-    tmp->height = mHeight;
-    tmp->sampleRate = mSampleRate;
-    tmp->sampleFormat = mSampleFormat;
-    tmp->mAudioCodecParams = mAudioCodecParams;
-    tmp->mVideoCodecParams = mVideoCodecParams;
-    tmp->audio_stream_index = mAudio_index;
-    tmp->video_stream_index = mVideo_index;
-    tmp->mAStartTime = mAStartTime;
-    tmp->mAudioTimeBase = mAudioTimeBase;
-    tmp->mVideoTimeBase = mVideoTimeBase;
-    tmp->mVStartTime = mVStartTime;
-    return tmp;
 }

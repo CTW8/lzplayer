@@ -15,30 +15,46 @@ extern "C"
 #include"VEMediaDef.h"
 #include"VEPacket.h"
 #include"VEFrame.h"
+#include "VEDemux.h"
+#include "AHandler.h"
+#include "AMessage.h"
 
-class VEAudioDecoder{
+class VEAudioDecoder:public AHandler{
 public:
     VEAudioDecoder();
     ~VEAudioDecoder();
 
+public:
     ///init
-    int init(VEMediaInfo *info);
-
-    ///flush
+    int init(std::shared_ptr<VEDemux> demux);
+    void start();
+    void stop();
     int flush();
-
-    ///send packet
-    int sendPacket(VEPacket *pack);
-
-    ///decodeFrame
-    int readFrame(VEFrame *frame);
-    ///uninit
+    int readFrame(std::shared_ptr<VEFrame> &frame);
     int uninit();
+
+private:
+    bool onInit(std::shared_ptr<AMessage> msg);
+    bool onFlush();
+    bool onDecode();
+    bool onUnInit();
+    void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+    enum {
+        kWhatInit                = 'init',
+        kWhatStart               = 'star',
+        kWhatStop                = 'stop',
+        kWhatFlush               = 'flus',
+        kWhatRead                = 'read',
+        kWhatUninit              = 'unin'
+    };
 private:
     /* data */
     AVCodecContext * mAudioCtx=nullptr;
     VEMediaInfo * mMediaInfo=nullptr;
-
+    std::mutex mMutex;
+    std::condition_variable mCond;
+    std::deque<std::shared_ptr<VEFrame>> mFrameQueue;
+    std::shared_ptr<VEDemux> mDemux = nullptr;
 };
 
 #endif

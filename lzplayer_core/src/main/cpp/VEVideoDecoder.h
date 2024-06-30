@@ -2,9 +2,13 @@
 #define __VE_VIDEO_DECODER__
 
 #include<memory>
+#include <deque>
 #include"VEMediaDef.h"
 #include"VEPacket.h"
 #include"VEFrame.h"
+#include "AHandler.h"
+#include "AMessage.h"
+#include "VEDemux.h"
 extern "C"
 {
     #include "libavformat/avformat.h"
@@ -14,30 +18,45 @@ extern "C"
 }
 
 
-class VEVideoDecoder
+class VEVideoDecoder:public AHandler
 {
 
 public:
-    VEVideoDecoder(/* args */);
+    VEVideoDecoder();
     ~VEVideoDecoder();
 
-    ///init
-    int init(VEMediaInfo *info);
-
-    ///flush
+    int init(std::shared_ptr<VEDemux> demux);
+    void start();
+    void stop();
     int flush();
-
-    ///send packet
-    int sendPacket(VEPacket *pack);
-
-    ///decodeFrame
-    int readFrame(VEFrame *frame);
-    ///uninit
+    int readFrame(std::shared_ptr<VEFrame> &frame);
     int uninit();
+
+private:
+    void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+    bool onInit(std::shared_ptr<AMessage> msg);
+    bool onStart();
+    bool onStop();
+    bool onFlush();
+    bool onDecode();
+    bool onUninit();
+    enum {
+        kWhatInit                = 'init',
+        kWhatStart               = 'star',
+        kWhatStop                = 'stop',
+        kWhatFlush               = 'flus',
+        kWhatRead                = 'read',
+        kWhatUninit              = 'unin'
+    };
 private:
     /* data */
     AVCodecContext * mVideoCtx=nullptr;
     VEMediaInfo * mMediaInfo=nullptr;
+    std::deque<std::shared_ptr<VEFrame>> mFrameQueue;
+    std::shared_ptr<VEDemux> mDemux = nullptr;
+
+    std::mutex mMutex;
+    std::condition_variable mCond;
 };
 
 

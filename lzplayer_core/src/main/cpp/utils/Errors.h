@@ -17,11 +17,9 @@
 #pragma once
 
 #include <errno.h>
-#include <stdint.h>
+#include <cstdint>
 #include <sys/types.h>
 #include <string>
-
-namespace android {
 
 /**
  * The type used to return success/failure from frameworks APIs.
@@ -73,5 +71,3 @@ enum {
 
 // Human readable name of error
 std::string statusToString(status_t status);
-
-}  // namespace android

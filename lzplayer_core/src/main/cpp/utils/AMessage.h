@@ -24,9 +24,6 @@
 #include <memory>
 #include <iostream>
 
-namespace android {
-
-struct ABuffer;
 struct AHandler;
 
 struct AReplyToken{
@@ -265,7 +262,5 @@ private:
 
     DISALLOW_EVIL_CONSTRUCTORS(AMessage);
 };
-
-}  // namespace android
 
 #endif  // A_MESSAGE_H_

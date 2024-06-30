@@ -6,7 +6,7 @@ set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 # 获取源文件列表
 file(GLOB_RECURSE SRC_FILES ${SRC_DIR}/**.cpp)
-file(GLOB_RECURSE SRC_UTILS_FILES ${SRC_DIR}/utils/**.cpp)
+#file(GLOB_RECURSE SRC_UTILS_FILES ${SRC_DIR}/utils/**.cpp)
 
 add_library(
         lzplayer_core
@@ -19,7 +19,7 @@ find_library(
         log-lib
         log)
 
-target_link_directories(lzplayer_core PUBLIC "${LIB_THIRD_PATH}/libffmpeg/${CMAKE_ANDROID_ARCH_ABI}")
+target_link_directories(lzplayer_core PUBLIC "${LIB_THIRD_PATH}/${CMAKE_ANDROID_ARCH_ABI}")
 target_include_directories(lzplayer_core PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/include
         ${CMAKE_CURRENT_LIST_DIR}/include/ffmpeg
@@ -35,4 +35,6 @@ target_link_libraries( # Specifies the target library.
         swresample
         avfilter
         android
+        GLESv3
+        EGL
         ${log-lib})
