@@ -203,7 +203,6 @@ status_t ALooper::stop() {
 
 void ALooper::post(const std::shared_ptr<AMessage> &msg, int64_t delayUs) {
     std::lock_guard<std::mutex> autoLock(mLock);
-    ALOGW("ALooper::post enter");
     int64_t whenUs;
     if (delayUs > 0) {
         int64_t nowUs = GetNowUs();
@@ -221,12 +220,10 @@ void ALooper::post(const std::shared_ptr<AMessage> &msg, int64_t delayUs) {
     Event event;
     event.mWhenUs = whenUs;
     event.mMessage = msg;
-ALOGW("ALooper::post enter#1 size:%d",mEventQueue.size());
     if (it == mEventQueue.begin()) {
-        ALOGD("mQueueChangedCondition  notify_all");
         mQueueChangedCondition.notify_all();
     }
-ALOGW("ALooper::post enter#2");
+
     mEventQueue.insert(it, event);
 }
 

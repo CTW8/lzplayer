@@ -18,7 +18,7 @@ int VEPlayer::prepare()
     mDemuxLooper->setName("demux_thread");
     mDemuxLooper->start(false);
 
-    mDemux = std::shared_ptr<VEDemux>();
+    mDemux = std::make_shared<VEDemux>();
 
     mDemuxLooper->registerHandler(mDemux);
     mDemux->open(mPath);
@@ -30,7 +30,7 @@ int VEPlayer::prepare()
     mAudioDecodeLooper->setName("adec_thread");
     mAudioDecodeLooper->start(false);
 
-    mAudioDecoder = std::shared_ptr<VEAudioDecoder>();
+    mAudioDecoder = std::make_shared<VEAudioDecoder>();
     mAudioDecodeLooper->registerHandler(mAudioDecoder);
 
     mAudioDecoder->init(mDemux);
@@ -49,6 +49,23 @@ int VEPlayer::prepare()
 
     ///创建视频渲染线程
 
+    mVideoRenderLooper = std::make_shared<ALooper>();
+    mVideoRenderLooper->setName("video_render");
+    mVideoRenderLooper->start(false);
+
+    mVideoRender = std::make_shared<VEVideoRender>();
+    mVideoRenderLooper->registerHandler(mVideoRender);
+
+    mVideoRender->init(mVideoDecoder,mWindow);
+
+    //创建音频播放线程
+    mAudioOutputLooper = std::make_shared<ALooper>();
+    mAudioOutputLooper->setName("audio_render");
+    mAudioOutputLooper->start(false);
+
+    mAudioOutput = std::make_shared<AudioOpenSLESOutput>();
+    mAudioOutputLooper->registerHandler(mAudioOutput);
+    mAudioOutput->init(mAudioDecoder,44100,2,1);
 
     return 0;
 }
@@ -56,12 +73,23 @@ int VEPlayer::prepare()
 int VEPlayer::start()
 {
     ///控制各个线程开始运行
+
+    mDemux->start();
+    mVideoDecoder->start();
+    mAudioDecoder->start();
+    mVideoRender->start();
+    mAudioOutput->start();
     return 0;
 }
 
 int VEPlayer::stop()
 {
     //控制各个线程执行状态
+    mDemux->stop();
+    mVideoDecoder->stop();
+    mAudioDecoder->stop();
+    mVideoRender->stop();
+    mAudioOutput->stop();
     return 0;
 }
 
@@ -74,6 +102,7 @@ int VEPlayer::pause()
 int VEPlayer::resume()
 {
     //控制各个线程执行状态
+
     return 0;
 }
 

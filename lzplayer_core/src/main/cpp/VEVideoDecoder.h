@@ -51,7 +51,7 @@ private:
 private:
     /* data */
     AVCodecContext * mVideoCtx=nullptr;
-    VEMediaInfo * mMediaInfo=nullptr;
+    std::shared_ptr<VEMediaInfo> mMediaInfo=nullptr;
     std::deque<std::shared_ptr<VEFrame>> mFrameQueue;
     std::shared_ptr<VEDemux> mDemux = nullptr;
 

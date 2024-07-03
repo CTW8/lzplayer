@@ -13,6 +13,9 @@
 #include "VEResult.h"
 #include "jni.h"
 #include "AHandler.h"
+#include "VEVideoRender.h"
+#include "AudioOpenSLESOutput.h"
+
 class VEPlayer : public AHandler
 {
 public:
@@ -82,6 +85,12 @@ private:
     std::shared_ptr<ALooper> mAudioDecodeLooper = nullptr;
     std::shared_ptr<VEVideoDecoder> mVideoDecoder = nullptr;
     std::shared_ptr<ALooper> mVideoDecodeLooper = nullptr;
+    std::shared_ptr<VEVideoRender> mVideoRender = nullptr;
+    std::shared_ptr<ALooper>  mVideoRenderLooper = nullptr;
+
+    std::shared_ptr<AudioOpenSLESOutput> mAudioOutput = nullptr;
+    std::shared_ptr<ALooper> mAudioOutputLooper = nullptr;
+
     std::shared_ptr<VEPacketQueue> mAPacketQueue=nullptr;
 
     std::shared_ptr<VEMediaInfo> mMediaInfo=nullptr;

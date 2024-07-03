@@ -35,6 +35,7 @@ target_link_libraries( # Specifies the target library.
         swresample
         avfilter
         android
+        OpenSLES
         GLESv3
         EGL
         ${log-lib})

@@ -20,6 +20,8 @@ public:
 
     status_t init(std::shared_ptr<VEVideoDecoder> decoder,ANativeWindow *win);
     status_t start();
+    status_t pause();
+    status_t resume();
     status_t stop();
     status_t unInit();
 
@@ -28,8 +30,12 @@ private:
     bool onInit(ANativeWindow * win);
     bool onStart();
     bool onStop();
+    bool onPause();
+    bool onReume();
     bool onUnInit();
     bool onRender();
+
+    GLuint loadShader(GLenum type, const char *shaderSrc);
 
     bool createPragram();
     bool createTexture();
@@ -51,6 +57,8 @@ private:
     GLuint          mTexture[3];
     GLuint          mProgram;
     GLuint  mVAO,mVBO;
+    EGLDisplay eglDisplay;
+    EGLSurface eglSurface;
 };
 
 #endif

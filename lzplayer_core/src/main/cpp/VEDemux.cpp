@@ -6,6 +6,9 @@ extern "C"{
     #include"libavutil/dict.h"
 }
 
+#define AUDIO_QUEUE_SIZE    50
+#define VIDEO_QUEUE_SIZE    10
+
 VEDemux::VEDemux()
 {
     mAudioCodecParams = nullptr;
@@ -38,7 +41,7 @@ status_t VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet){
             mCondAudio.wait(lock);
         }
 
-        if(mAudioPacketQueue.size() >= 10){
+        if(mAudioPacketQueue.size() >= AUDIO_QUEUE_SIZE){
             packet = mAudioPacketQueue.front();
             mAudioPacketQueue.pop_front();
             mCondAudio.notify_one();
@@ -54,7 +57,7 @@ status_t VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet){
             mCondVideo.wait(lock);
         }
 
-        if(mVideoPacketQueue.size() >= 10){
+        if(mVideoPacketQueue.size() >= VIDEO_QUEUE_SIZE){
             packet = mVideoPacketQueue.front();
             mVideoPacketQueue.pop_front();
             mCondVideo.notify_one();
@@ -140,7 +143,7 @@ void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         }
         case kWhatStart:{
             mIsStart = true;
-            (new AMessage(kWhatRead,shared_from_this()))->post();
+            onStart();
             break;
         }
         case kWhatStop:{
@@ -186,6 +189,7 @@ void VEDemux::resume() {
 }
 
 status_t VEDemux::onOpen(std::string path) {
+    ALOGI("VEDemux::%s",__FUNCTION__ );
     ///打开文件
     if(path.empty()){
         printf("## %s  %d open file failed!!!",__FUNCTION__,__LINE__);
@@ -234,11 +238,14 @@ status_t VEDemux::onOpen(std::string path) {
 }
 
 status_t VEDemux::onStart() {
-
+    ALOGI("VEDemux::%s",__FUNCTION__ );
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead,shared_from_this());
+    msg->post();
     return 0;
 }
 
 status_t VEDemux::onRead() {
+    ALOGI("VEDemux::%s",__FUNCTION__ );
     std::shared_ptr<VEPacket> packet = std::make_shared<VEPacket>();
     if(!packet){
         ALOGD("Could not allocate AVPacket");
@@ -248,9 +255,10 @@ status_t VEDemux::onRead() {
     if(av_read_frame(mFormatContext, packet->getPacket()) <0){
         return -1;
     }
+    ALOGD("%s packet pts:%" PRId64,packet->getPacket()->stream_index == mAudio_index ? "audio":"video" ,packet->getPacket()->pts);
     if(packet->getPacket()->stream_index == mAudio_index){
         std::unique_lock<std::mutex> lk(mMutexAudio);
-        if(mAudioPacketQueue.size() >= 10){
+        if(mAudioPacketQueue.size() >= AUDIO_QUEUE_SIZE){
             mCondAudio.wait(lk);
         }
         if(mAudioPacketQueue.size() == 0){
@@ -262,7 +270,7 @@ status_t VEDemux::onRead() {
     }else if (packet->getPacket()->stream_index == mVideo_index)
     {
         std::unique_lock<std::mutex> lk(mMutexVideo);
-        if(mVideoPacketQueue.size() >= 10){
+        if(mVideoPacketQueue.size() >= VIDEO_QUEUE_SIZE){
             mCondVideo.wait(lk);
         }
         if(mVideoPacketQueue.size() == 0){

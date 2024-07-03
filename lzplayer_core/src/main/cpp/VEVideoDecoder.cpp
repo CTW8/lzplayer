@@ -1,4 +1,5 @@
 #include"VEVideoDecoder.h"
+#define FRAME_QUEUE_MAX_SIZE  3
 
 VEVideoDecoder::VEVideoDecoder()
 {
@@ -40,14 +41,15 @@ void VEVideoDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
 }
 
 bool VEVideoDecoder::onInit(std::shared_ptr<AMessage> msg) {
+    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
     std::shared_ptr<void> tmp;
     msg->findObject("demux",&tmp);
 
     mDemux = std::static_pointer_cast<VEDemux>(tmp);
 
-    std::shared_ptr<VEMediaInfo> info = mDemux->getFileInfo();
+    mMediaInfo = mDemux->getFileInfo();
 
-    const AVCodec *video_codec = avcodec_find_decoder(info->mVideoCodecParams->codec_id);
+    const AVCodec *video_codec = avcodec_find_decoder(mMediaInfo->mVideoCodecParams->codec_id);
     if (!video_codec) {
         ALOGE("Could not find video codec");
         return false;
@@ -57,7 +59,7 @@ bool VEVideoDecoder::onInit(std::shared_ptr<AMessage> msg) {
         ALOGE("Could not allocate video codec context\n");
         return false;
     }
-    if (avcodec_parameters_to_context(mVideoCtx, info->mVideoCodecParams) < 0) {
+    if (avcodec_parameters_to_context(mVideoCtx, mMediaInfo->mVideoCodecParams) < 0) {
         ALOGE("Could not copy codec parameters to codec context");
         avcodec_free_context(&mVideoCtx);
         return false;
@@ -72,20 +74,24 @@ bool VEVideoDecoder::onInit(std::shared_ptr<AMessage> msg) {
 }
 
 bool VEVideoDecoder::onStart() {
+    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
     std::shared_ptr<AMessage> readMsg = std::make_shared<AMessage>(kWhatRead,shared_from_this());
     readMsg->post();
     return false;
 }
 
 bool VEVideoDecoder::onStop() {
+    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
     return false;
 }
 
 bool VEVideoDecoder::onFlush() {
+    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
     return false;
 }
 
 bool VEVideoDecoder::onDecode() {
+    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
     std::shared_ptr<VEPacket> packet;
     mDemux->read(false,packet);
     // 从解码器中读取音频帧
@@ -103,10 +109,13 @@ bool VEVideoDecoder::onDecode() {
             ALOGE("Error during decoding", ret);
             break;
         }
+        ALOGD("video frame pts:%" PRId64,av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE}));
         std::unique_lock<std::mutex> lk(mMutex);
-        if(mFrameQueue.size() >= 10){
+        if(mFrameQueue.size() >= FRAME_QUEUE_MAX_SIZE ){
             mCond.wait(lk);
-        }else if(mFrameQueue.size() == 0){
+        }
+
+        if(mFrameQueue.size() == 0){
             mFrameQueue.push_back(frame);
             mCond.notify_one();
         }else{
@@ -120,6 +129,7 @@ bool VEVideoDecoder::onDecode() {
 }
 
 bool VEVideoDecoder::onUninit() {
+    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
     if(mVideoCtx){
         avcodec_free_context(&mVideoCtx);
     }
@@ -153,7 +163,9 @@ int VEVideoDecoder::readFrame(std::shared_ptr<VEFrame> &frame) {
     std::unique_lock<std::mutex> lk(mMutex);
     if(mFrameQueue.size() == 0){
         mCond.wait(lk);
-    }else if(mFrameQueue.size() == 10){
+    }
+
+    if(mFrameQueue.size() >= FRAME_QUEUE_MAX_SIZE){
         frame = mFrameQueue.front();
         mFrameQueue.pop_front();
         mCond.notify_one();

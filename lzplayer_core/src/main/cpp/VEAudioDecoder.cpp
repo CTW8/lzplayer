@@ -1,5 +1,7 @@
 #include"VEAudioDecoder.h"
 
+#define AUDIO_FRAME_QUEUE_SIZE    50
+
 VEAudioDecoder::VEAudioDecoder(){
     mAudioCtx = nullptr;
     mMediaInfo = nullptr;
@@ -30,7 +32,7 @@ int VEAudioDecoder::readFrame(std::shared_ptr<VEFrame> &frame)
     std::unique_lock<std::mutex> lk(mMutex);
     if(mFrameQueue.size() == 0){
         mCond.wait(lk);
-    }else if(mFrameQueue.size() == 10){
+    }else if(mFrameQueue.size() == AUDIO_FRAME_QUEUE_SIZE){
         frame = mFrameQueue.front();
         mFrameQueue.pop_front();
         mCond.notify_one();
@@ -84,6 +86,7 @@ void VEAudioDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
 }
 
 bool VEAudioDecoder::onInit(std::shared_ptr<AMessage> msg) {
+    ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     std::shared_ptr<void> tmp;
     msg->findObject("demux",&tmp);
 
@@ -116,11 +119,13 @@ bool VEAudioDecoder::onInit(std::shared_ptr<AMessage> msg) {
 }
 
 bool VEAudioDecoder::onFlush() {
+    ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     avcodec_flush_buffers(mAudioCtx);
     return false;
 }
 
 bool VEAudioDecoder::onDecode() {
+    ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     std::shared_ptr<VEPacket> packet;
     mDemux->read(true,packet);
     // 从解码器中读取音频帧
@@ -139,7 +144,7 @@ bool VEAudioDecoder::onDecode() {
             break;
         }
         std::unique_lock<std::mutex> lk(mMutex);
-        if(mFrameQueue.size() >= 10){
+        if(mFrameQueue.size() >= AUDIO_FRAME_QUEUE_SIZE){
             mCond.wait(lk);
         }else if(mFrameQueue.size() == 0){
             mFrameQueue.push_back(frame);
@@ -157,6 +162,7 @@ bool VEAudioDecoder::onDecode() {
 }
 
 bool VEAudioDecoder::onUnInit() {
+    ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     // 释放资源，包括解码器上下文等
     if (mAudioCtx) {
         avcodec_free_context(&mAudioCtx);

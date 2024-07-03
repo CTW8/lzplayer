@@ -39,8 +39,8 @@ import pub.devrel.easypermissions.EasyPermissions;
 
 import com.example.lzplayer_core.NativeLib;
 
-public class MainActivity extends AppCompatActivity{
-    private final String TAG = "MainActivity";
+public class MainActivity extends AppCompatActivity implements View.OnClickListener,SurfaceHolder.Callback {
+    private final String TAG = "VEPlayer";
     private SurfaceView glSurfaceView;
     private Button btnPlay;
     private Button btnPause;
@@ -72,11 +72,13 @@ public class MainActivity extends AppCompatActivity{
     private void initView(){
         mPlayer = new VEPlayer();
         glSurfaceView=findViewById(R.id.glVideoView);
-        glSurfaceView.getHolder().addCallback(new VideoRender());
+        glSurfaceView.getHolder().addCallback(this);
 
         btnSelect = (Button) findViewById(R.id.btnSelectFile);
         btnPlay = (Button) findViewById(R.id.btnPlay);
+        btnPlay.setOnClickListener(this);
         btnPause = (Button) findViewById(R.id.btnPause);
+        btnPause.setOnClickListener(this);
 
         btnSelect.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -111,8 +113,6 @@ public class MainActivity extends AppCompatActivity{
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_CODE_CHOOSE && resultCode == RESULT_OK) {
             filePath=Matisse.obtainPathResult(data).get(0);
-            mPlayer.init(filePath,mSurface);
-            mPlayer.start();
             Log.d("Matisse", "Uris: " + Matisse.obtainResult(data)+" size:"+ Matisse.obtainResult(data).size());
             Log.d("Matisse", "Paths: " + Matisse.obtainPathResult(data));
             Log.e("Matisse", "Use the selected photos with original: "+String.valueOf(Matisse.obtainOriginalState(data)));
@@ -127,23 +127,46 @@ public class MainActivity extends AppCompatActivity{
         EasyPermissions.onRequestPermissionsResult(requestCode, permissions, grantResults, this);
     }
 
-
-    class VideoRender implements SurfaceHolder.Callback{
-
-        @Override
-        public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
-            Log.d(TAG,"surfaceCreated");
-            mSurface = surfaceHolder.getSurface();
+    @Override
+    public void onClick(View view) {
+        switch (view.getId()){
+            case R.id.btnPlay:{
+                mPlayer.init(filePath,mSurface);
+                mPlayer.start();
+                break;
+            }
+            case R.id.btnPause:{
+                mPlayer.pause();
+                break;
+            }
+            case R.id.btnStop:{
+                mPlayer.stop();
+                break;
+            }
+            default:
+                break;
         }
+    }
 
-        @Override
-        public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
-            Log.d(TAG,"surfaceChanged");
-        }
 
-        @Override
-        public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
-            Log.d(TAG,"surfaceDestroyed");
-        }
+    @Override
+    public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
+        Log.d(TAG,"surfaceCreated");
+        mSurface = surfaceHolder.getSurface();
+    }
+
+    @Override
+    public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
+        Log.d(TAG,"surfaceChanged");
+    }
+
+    @Override
+    public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
+        Log.d(TAG,"surfaceDestroyed");
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
     }
 }
