@@ -16,8 +16,8 @@ extern "C"
 #include"VEPacket.h"
 #include"VEFrame.h"
 #include "VEDemux.h"
-#include "AHandler.h"
-#include "AMessage.h"
+#include "thread/AHandler.h"
+#include "thread/AMessage.h"
 
 class VEAudioDecoder:public AHandler{
 public:

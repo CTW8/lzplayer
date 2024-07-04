@@ -1,6 +1,40 @@
 #include "VEVideoRender.h"
+#include "VEJvmOnLoad.h"
+#include "glm/fwd.hpp"
+#include "glm/ext/matrix_transform.hpp"
+#include "glm/gtc/type_ptr.hpp"
+#include "glm/ext/matrix_projection.hpp"
 
+const char* vertexShaderSource = R"(
+#version 300 es
+layout(location = 0) in vec4 aPosition;
+layout(location = 1) in vec2 aTexCoord;
+out vec2 vTexCoord;
+uniform mat4 u_TransformMatrix;
+void main() {
+    gl_Position = u_TransformMatrix * aPosition;
+    vTexCoord = aTexCoord;
+}
+)";
 
+const char* fragmentShaderSource = R"(
+#version 300 es
+precision mediump float;
+in vec2 vTexCoord;
+uniform sampler2D yTexture;
+uniform sampler2D uTexture;
+uniform sampler2D vTexture;
+out vec4 fragColor;
+void main() {
+        float y = texture(yTexture, vTexCoord).r;
+        float u = texture(uTexture, vTexCoord).r - 0.5;
+        float v = texture(vTexture, vTexCoord).r - 0.5;
+        float r = y + 1.402 * v;
+        float g = y - 0.344 * u - 0.714 * v;
+        float b = y + 1.772 * u;
+        fragColor = vec4(r, g, b, 1.0);
+}
+)";
 
 void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     switch (msg->what()) {
@@ -9,7 +43,8 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             std::shared_ptr<void> tmp;
             msg->findObject("vdec",&tmp);
             mVDec = std::static_pointer_cast<VEVideoDecoder>(tmp);
-
+            msg->findInt32("width",&mViewWidth);
+            msg->findInt32("height",&mViewHeight);
             onInit(mWin);
             break;
         }
@@ -19,8 +54,8 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         }
         case kWhatRender:{
             if(onRender()){
-                std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRender,shared_from_this());
-                msg->post();
+                std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender,shared_from_this());
+                renderMsg->post(1000000/30);
             }
             break;
         }
@@ -36,16 +71,21 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
 }
 
 VEVideoRender::VEVideoRender() {
-
+    fp = fopen("/data/local/tmp/dump_420p.yuv","wb+");
 }
 
 VEVideoRender::~VEVideoRender() {
-
+    if(fp){
+        fflush(fp);
+        fclose(fp);
+    }
 }
 
-status_t VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder,ANativeWindow *win) {
+status_t VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder,ANativeWindow *win,int width,int height) {
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit,shared_from_this());
     msg->setPointer("win",win);
+    msg->setInt32("width",width);
+    msg->setInt32("height",height);
     msg->setObject("vdec",decoder);
     msg->post();
     return 0;
@@ -68,68 +108,61 @@ status_t VEVideoRender::unInit() {
 
 bool VEVideoRender::onInit(ANativeWindow * win) {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
+    JNIEnv *env = AttachCurrentThreadEnv();
+    // 获取默认的 EGL 显示设备
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (eglDisplay == EGL_NO_DISPLAY) {
-        // 处理错误
-        ALOGE("eglGetDisplay failed!!");
+        ALOGE("eglGetDisplay failed");
         return false;
     }
-    if (!eglInitialize(eglDisplay, 0, 0)) {
-        // 处理错误
-        ALOGE("eglInitialize failed!!");
+
+    // 初始化 EGL 显示设备
+    EGLint major, minor;
+    if (!eglInitialize(eglDisplay, &major, &minor)) {
+        ALOGE("eglInitialize failed");
         return false;
     }
-    // 配置 EGL
-    EGLConfig eglConfig;
+
+    // 配置 EGL 表面属性
+    EGLConfig config;
     EGLint numConfigs;
-    const EGLint configAttribs[] = {
+    EGLint configAttribs[] = {
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
             EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-            EGL_RED_SIZE, 8,
-            EGL_GREEN_SIZE, 8,
-            EGL_BLUE_SIZE, 8,
-            EGL_ALPHA_SIZE, 8,
-            EGL_DEPTH_SIZE, 16,
-            EGL_STENCIL_SIZE, 8,
             EGL_NONE
     };
-    if (!eglChooseConfig(eglDisplay, configAttribs, &eglConfig, 1, &numConfigs) || (numConfigs < 1)) {
-        // 处理错误
-        ALOGE("eglChooseConfig failed!!");
+    if (!eglChooseConfig(eglDisplay, configAttribs, &config, 1, &numConfigs)) {
+        ALOGE("eglChooseConfig failed");
+        return false;
+    }
+
+    // 创建 EGL 上下文
+    EGLint contextAttribs[] = {
+            EGL_CONTEXT_CLIENT_VERSION, 3, // OpenGL ES 3.0
+            EGL_NONE
+    };
+    eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttribs);
+    if (eglContext == EGL_NO_CONTEXT) {
+        ALOGE("eglCreateContext failed");
         return false;
     }
 
     // 创建 EGL 表面
-    eglSurface = eglCreateWindowSurface(eglDisplay, eglConfig,
-                                                (EGLNativeWindowType)win, nullptr);
-    if (eglSurface == EGL_NO_SURFACE) {
-        // 处理错误
-        ALOGE("eglCreateWindowSurface failed!!");
-        return false;
-    }
+    eglSurface = eglCreateWindowSurface(eglDisplay, config, win, NULL);
 
-    // 创建 OpenGL ES 上下文
-    const EGLint contextAttribs[] = {
-            EGL_CONTEXT_CLIENT_VERSION, 2,
-            EGL_NONE
-    };
-    EGLContext eglContext = eglCreateContext(eglDisplay, eglConfig, EGL_NO_CONTEXT, contextAttribs);
-    if (eglContext == EGL_NO_CONTEXT) {
-        // 处理错误
-        ALOGE("eglCreateContext failed!!");
-        return false;
-    }
-
-    // 绑定上下文
+    // 将 EGL 上下文与当前线程关联
     if (!eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
-        // 处理错误
-        ALOGE("eglMakeCurrent failed!!");
+        ALOGE("eglMakeCurrent failed");
         return false;
     }
-    const char *version = (const char*)glGetString(GL_VERSION);
-    ALOGI("opengles version:%s",version);
-    createPragram();
+
+    mProgram = createProgram(vertexShaderSource,fragmentShaderSource);
     createTexture();
+    ALOGD("mViewWidth:%d,mViewHeight:%d",mViewWidth,mViewHeight);
+    glViewport(0,0,mViewWidth,mViewHeight);
+    glClearColor(0.5f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
     return true;
 }
 
@@ -152,7 +185,7 @@ bool VEVideoRender::onUnInit() {
 }
 
 bool VEVideoRender::onRender() {
-    ALOGI("VEVideoRender::%s",__FUNCTION__ );
+    ALOGI("VEVideoRender::%s enter",__FUNCTION__ );
     if(!mIsStarted){
         return false;
     }
@@ -160,146 +193,27 @@ bool VEVideoRender::onRender() {
     std::shared_ptr<VEFrame> frame = nullptr;
 
     mVDec->readFrame(frame);
-
-    glUseProgram(mProgram);
+    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    glBindVertexArray(mVAO);
+    glUseProgram(mProgram);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, mTexture[0]);
+    glBindTexture(GL_TEXTURE_2D, mTextures[0]);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, frame->getFrame()->width, frame->getFrame()->height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame->getFrame()->data[0]);
 
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, mTexture[1]);
+    glBindTexture(GL_TEXTURE_2D, mTextures[1]);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, frame->getFrame()->width / 2, frame->getFrame()->height / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame->getFrame()->data[1]);
 
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, mTexture[2]);
+    glBindTexture(GL_TEXTURE_2D, mTextures[2]);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, frame->getFrame()->width / 2, frame->getFrame()->height / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame->getFrame()->data[2]);
 
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    eglSwapBuffers(eglDisplay,eglSurface);
-
-    return true;
-}
-const char* vertexShaderSource =R"(
-#version 300 es
-layout(location = 0) in vec4 aPosition;
-layout(location = 1) in vec2 aTexCoord;
-out vec2 vTexCoord;
-void main() {
-    gl_Position = aPosition;
-    vTexCoord = aTexCoord;
-})";
-
-const char * fragmentShaderSource =R"(
-#version 300 es
-precision mediump float;
-in vec2 vTexCoord;
-layout(location = 0) out vec4 outColor;
-uniform sampler2D yTexture;
-uniform sampler2D uTexture;
-uniform sampler2D vTexture;
-void main() {
-    float y = texture(yTexture, vTexCoord).r;
-    float u = texture(uTexture, vTexCoord).r - 0.5;
-    float v = texture(vTexture, vTexCoord).r - 0.5;
-
-    float r = y + 1.402 * v;
-    float g = y - 0.344136 * u - 0.714136 * v;
-    float b = y + 1.772 * u;
-
-    outColor = vec4(r, g, b, 1.0);
-})";
-
-// 加载和编译着色器
-GLuint VEVideoRender::loadShader(GLenum type, const char *shaderSrc) {
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &shaderSrc, NULL);
-    glCompileShader(shader);
-
-    GLint compiled;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
-    if (!compiled) {
-        GLint infoLen = 0;
-        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
-        if (infoLen > 1) {
-            char *infoLog = (char *)malloc(infoLen);
-            glGetShaderInfoLog(shader, infoLen, NULL, infoLog);
-            ALOGE("Error compiling shader:\n%s\n", infoLog);
-            free(infoLog);
-        }
-        glDeleteShader(shader);
-        return 0;
-    }
-    return shader;
-}
-
-bool VEVideoRender::createPragram() {
-    GLuint vertexShader = loadShader(GL_VERTEX_SHADER, vertexShaderSource);
-    if (!vertexShader) return 0;
-
-    GLuint fragmentShader = loadShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
-    if (!fragmentShader) return 0;
-
-    // 链接程序
-    GLuint mProgram = glCreateProgram();
-    glAttachShader(mProgram, vertexShader);
-    glAttachShader(mProgram, fragmentShader);
-    glLinkProgram(mProgram);
-
-    GLint success;
-    // 检查链接错误
-    glGetProgramiv(mProgram, GL_LINK_STATUS, &success);
-    if (!success) {
-        GLchar infoLog[512];
-        glGetProgramInfoLog(mProgram, 512, NULL, infoLog);
-        ALOGE("%s",infoLog);
-        return false;
-    }
-
-    // 删除着色器，它们已经链接到程序中，不再需要了
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-}
-
-bool VEVideoRender::createTexture() {
-    // 创建纹理，初始化 OpenGL 状态
-    glGenTextures(3,mTexture);
-    for(int i =0;i<3;i++){
-        glBindTexture(GL_TEXTURE_2D, mTexture[i]);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    }
-
-
-    // 创建和绑定 VAO 和 VBO
-    glGenVertexArrays(1, &mVAO);
-    glBindVertexArray(mVAO);
-
-    glGenBuffers(1, &mVBO);
-    glBindBuffer(GL_ARRAY_BUFFER, mVBO);
-    static const GLfloat vertexData[] = {
-            -1.0f, -1.0f,
-            1.0f, -1.0f,
-            -1.0f,  1.0f,
-            1.0f,  1.0f,
-    };
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertexData), vertexData, GL_STATIC_DRAW);
-
-    GLuint texCoordBuffer;
-    glGenBuffers(1, &texCoordBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, texCoordBuffer);
-    static const GLfloat texCoordData[] = {
-            0.0f, 0.0f,
-            1.0f, 0.0f,
-            0.0f, 1.0f,
-            1.0f, 1.0f,
-    };
-    glBufferData(GL_ARRAY_BUFFER, sizeof(texCoordData), texCoordData, GL_STATIC_DRAW);
-
-    GLint posLoc = glGetAttribLocation(mProgram, "aPosition");
-    GLint texLoc = glGetAttribLocation(mProgram, "aTexCoord");
+    mFrameWidth = frame->getFrame()->width;
+    mFrameHeight = frame->getFrame()->height;
+    GLint positionLoc = glGetAttribLocation(mProgram, "aPosition");
+    GLint texCoordLoc = glGetAttribLocation(mProgram, "aTexCoord");
+    GLint transformLoc = glGetUniformLocation(mProgram, "u_TransformMatrix");
 
     GLint yTextureLoc = glGetUniformLocation(mProgram, "yTexture");
     GLint uTextureLoc = glGetUniformLocation(mProgram, "uTexture");
@@ -309,15 +223,130 @@ bool VEVideoRender::createTexture() {
     glUniform1i(uTextureLoc, 1);
     glUniform1i(vTextureLoc, 2);
 
-    glEnableVertexAttribArray(posLoc);
-    glBindBuffer(GL_ARRAY_BUFFER, mVBO);
-    glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    ALOGD("mFrameWidth:%d,mFrameHeight:%d mViewWidth:%d,mViewHeight:%d pts:%" PRId64,mFrameWidth,mFrameHeight,mViewWidth,mViewHeight,frame->getFrame()->pts);
+    {
+        fwrite(frame->getFrame()->data[0],mFrameWidth* mFrameHeight,1,fp);
+        fwrite(frame->getFrame()->data[1],mFrameWidth* mFrameHeight/4,1,fp);
+        fwrite(frame->getFrame()->data[2],mFrameWidth* mFrameHeight/4,1,fp);
+        fflush(fp);
+    }
+//    GLfloat vertices[] = {
+//            (-mFrameWidth*1.0f/mFrameHeight)/(mViewWidth*1.0f/mViewHeight), -1.0f, 0.0f, 0.0f,
+//            mFrameWidth*1.0f/mFrameHeight/(mViewWidth*1.0f/mViewHeight), -1.0f, 1.0f, 0.0f,
+//            -mFrameWidth*1.0f/mFrameHeight/(mViewWidth*1.0f/mViewHeight), 1.0f, 0.0f, 1.0f,
+//            mFrameWidth*1.0f/mFrameHeight/(mViewWidth*1.0f/mViewHeight), 1.0f, 1.0f, 1.0f,
+//    };
 
-    glEnableVertexAttribArray(texLoc);
-    glBindBuffer(GL_ARRAY_BUFFER, texCoordBuffer);
-    glVertexAttribPointer(texLoc, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    GLfloat vertices[] = {
+            -1, -1.0f, 0.0f, 0.0f,
+            1, -1.0f, 1.0f, 0.0f,
+            -1, 1.0f, 0.0f, 1.0f,
+            1, 1.0f, 1.0f, 1.0f,
+    };
 
-    glBindVertexArray(0);
+    glm::vec3 scaleVector(1.0f, -1.0f, 1.0f);
+
+    // 创建一个表示旋转角度的glm::mat4
+    float angle = 0.0f; // 旋转角度
+    glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
+
+    // 使用glm::scale和glm::rotate函数创建一个同时包含缩放和旋转的变换矩阵
+    glm::mat4 scaleRotationMatrix = glm::scale(rotationMatrix, scaleVector);
+
+    glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(scaleRotationMatrix));
+
+    glVertexAttribPointer(positionLoc, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices);
+    glEnableVertexAttribArray(positionLoc);
+
+    glVertexAttribPointer(texCoordLoc, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices + 2);
+    glEnableVertexAttribArray(texCoordLoc);
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    eglSwapBuffers(eglDisplay,eglSurface);
+    ALOGI("VEVideoRender::%s exit",__FUNCTION__ );
+    return true;
+}
+
+
+// 加载和编译着色器
+GLuint VEVideoRender::loadShader(GLenum type, const char *shaderSrc) {
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &shaderSrc, NULL);
+    glCompileShader(shader);
+    GLint compiled;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+    if (!compiled) {
+        GLint infoLen = 0;
+        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
+        if (infoLen > 1) {
+            char* infoLog = (char*)malloc(infoLen);
+            glGetShaderInfoLog(shader, infoLen, NULL, infoLog);
+            printf("Error compiling shader:\n%s\n", infoLog);
+            free(infoLog);
+        }
+        glDeleteShader(shader);
+        return 0;
+    }
+    return shader;
+}
+
+GLuint VEVideoRender::createProgram(const char *vertexSource, const char *fragmentSource) {
+    GLuint vertexShader = loadShader(GL_VERTEX_SHADER, vertexSource);
+    if (vertexShader == 0) {
+        return 0;
+    }
+    GLuint fragmentShader = loadShader(GL_FRAGMENT_SHADER, fragmentSource);
+    if (fragmentShader == 0) {
+        glDeleteShader(vertexShader);
+        return 0;
+    }
+    GLuint program = glCreateProgram();
+    if (program == 0) {
+        return 0;
+    }
+    glAttachShader(program, vertexShader);
+    if (GLenum error = glGetError() != GL_NO_ERROR) {
+        ALOGE("Error attaching vertex shader: 0x%x", error);
+        glDeleteProgram(program);
+        return 0;
+    }
+    glAttachShader(program, fragmentShader);
+    if (GLenum error = glGetError() != GL_NO_ERROR) {
+        ALOGE("Error attaching fragment shader: 0x%x", error);
+        glDeleteProgram(program);
+        return 0;
+    }
+
+    glLinkProgram(program);
+    GLint linked;
+    glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (!linked) {
+        GLint infoLen = 0;
+        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLen);
+        if (infoLen > 1) {
+            char* infoLog = (char*)malloc(infoLen);
+            glGetProgramInfoLog(program, infoLen, NULL, infoLog);
+            printf("Error linking program:\n%s\n", infoLog);
+            free(infoLog);
+        }
+        glDeleteProgram(program);
+        return 0;
+    }
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+    return program;
+}
+
+bool VEVideoRender::createTexture() {
+    glGenTextures(3, mTextures);
+
+    for (int i = 0; i < 3; i++) {
+        glBindTexture(GL_TEXTURE_2D, mTextures[i]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
     return true;
 }
 

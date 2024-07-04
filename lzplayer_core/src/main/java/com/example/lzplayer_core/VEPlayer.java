@@ -9,9 +9,9 @@ public class VEPlayer {
         mNativeHandle = new NativeLib();
     }
 
-    public int init(String path, Surface surface){
+    public int init(String path){
         if(mNativeHandle != null){
-            return mNativeHandle.init(path,surface);
+            return mNativeHandle.init(path);
         }
         return -1;
     }
@@ -23,9 +23,9 @@ public class VEPlayer {
         return -1;
     }
 
-    public int setSurface(Surface surface){
+    public int setSurface(Surface surface,int w,int h){
         if(mNativeHandle != null){
-            return mNativeHandle.setSurface(surface);
+            return mNativeHandle.setSurface(surface,w,h);
         }
         return -1;
     }

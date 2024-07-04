@@ -12,7 +12,7 @@
 #include "VEFrameQueue.h"
 #include "VEResult.h"
 #include "jni.h"
-#include "AHandler.h"
+#include "thread/AHandler.h"
 #include "VEVideoRender.h"
 #include "AudioOpenSLESOutput.h"
 
@@ -29,7 +29,7 @@ public:
     /// setDataSource
     int setDataSource(std::string path);
 
-    int setDisplayOut(ANativeWindow* win);
+    int setDisplayOut(ANativeWindow* win,int viewWidth,int viewHeight);
 
     /// prepare
     int prepare();
@@ -98,6 +98,8 @@ private:
     std::string mPath;
 
     ANativeWindow *mWindow = nullptr;
+    int mViewWidth = 0;
+    int mViewHeight = 0;
 };
 
 #endif

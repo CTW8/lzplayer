@@ -1,14 +1,20 @@
 #include"VEVideoDecoder.h"
 #define FRAME_QUEUE_MAX_SIZE  3
 
+
 VEVideoDecoder::VEVideoDecoder()
 {
     mVideoCtx = nullptr;
     mMediaInfo = nullptr;
+    fp = fopen("/data/local/tmp/dump_dec.yuv","wb+");
 }
 
 VEVideoDecoder::~VEVideoDecoder()
 {
+    if(fp){
+        fflush(fp);
+        fclose(fp);
+    }
 }
 
 void VEVideoDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
@@ -91,7 +97,7 @@ bool VEVideoDecoder::onFlush() {
 }
 
 bool VEVideoDecoder::onDecode() {
-    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
+    ALOGI("VEVideoDecoder::%s enter",__FUNCTION__ );
     std::shared_ptr<VEPacket> packet;
     mDemux->read(false,packet);
     // 从解码器中读取音频帧
@@ -109,7 +115,16 @@ bool VEVideoDecoder::onDecode() {
             ALOGE("Error during decoding", ret);
             break;
         }
-        ALOGD("video frame pts:%" PRId64,av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE}));
+        frame->timestamp = av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE});
+        ALOGD("video frame pts:%" PRId64,frame->timestamp);
+
+        {
+            fwrite(frame->getFrame()->data[0],frame->getFrame()->width* frame->getFrame()->height,1,fp);
+            fwrite(frame->getFrame()->data[1],frame->getFrame()->width* frame->getFrame()->height/4,1,fp);
+            fwrite(frame->getFrame()->data[2],frame->getFrame()->width* frame->getFrame()->height/4,1,fp);
+            fflush(fp);
+        }
+
         std::unique_lock<std::mutex> lk(mMutex);
         if(mFrameQueue.size() >= FRAME_QUEUE_MAX_SIZE ){
             mCond.wait(lk);
@@ -125,6 +140,7 @@ bool VEVideoDecoder::onDecode() {
 
     std::shared_ptr<AMessage> readMsg = std::make_shared<AMessage>(kWhatRead,shared_from_this());
     readMsg->post();
+    ALOGI("VEVideoDecoder::%s exit",__FUNCTION__ );
     return false;
 }
 
@@ -173,6 +189,7 @@ int VEVideoDecoder::readFrame(std::shared_ptr<VEFrame> &frame) {
         frame = mFrameQueue.front();
         mFrameQueue.pop_front();
     }
+    backTrace();
     return 0;
 }
 

@@ -131,7 +131,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public void onClick(View view) {
         switch (view.getId()){
             case R.id.btnPlay:{
-                mPlayer.init(filePath,mSurface);
+                mPlayer.init(filePath);
                 mPlayer.start();
                 break;
             }
@@ -152,12 +152,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
         Log.d(TAG,"surfaceCreated");
-        mSurface = surfaceHolder.getSurface();
+
     }
 
     @Override
     public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
         Log.d(TAG,"surfaceChanged");
+        mSurface = surfaceHolder.getSurface();
+        mPlayer.setSurface(mSurface,i1,i2);
     }
 
     @Override

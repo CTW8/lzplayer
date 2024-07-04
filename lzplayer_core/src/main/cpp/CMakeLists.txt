@@ -19,11 +19,19 @@ find_library(
         log-lib
         log)
 
+
+#target_compile_options(lzplayer_core PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+#target_link_options(lzplayer_core PRIVATE -fsanitize=address)
+
 target_link_directories(lzplayer_core PUBLIC "${LIB_THIRD_PATH}/${CMAKE_ANDROID_ARCH_ABI}")
+
+
 target_include_directories(lzplayer_core PUBLIC
+        ${CMAKE_CURRENT_LIST_DIR}
         ${CMAKE_CURRENT_LIST_DIR}/include
         ${CMAKE_CURRENT_LIST_DIR}/include/ffmpeg
         ${CMAKE_CURRENT_LIST_DIR}/utils
+        ${CMAKE_CURRENT_LIST_DIR}/thread
         )
 
 target_link_libraries( # Specifies the target library.

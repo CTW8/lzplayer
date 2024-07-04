@@ -8,54 +8,62 @@
     tools:context=".MainActivity">
 
     <LinearLayout
-        android:layout_weight="1"
-        android:orientation="vertical"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical">
 
         <SurfaceView
             android:id="@+id/glVideoView"
-            android:background="#443399"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
     </LinearLayout>
 
     <LinearLayout
-        android:layout_weight="5"
-        android:orientation="horizontal"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:layout_weight="5"
+        android:orientation="horizontal">
+
         <Button
             android:id="@+id/btnSelectFile"
-            android:layout_weight="1"
-            android:textAllCaps="false"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Select" />
+            android:layout_weight="1"
+            android:text="Select"
+            android:textAllCaps="false" />
 
         <Button
             android:id="@+id/btnPlay"
-            android:layout_weight="1"
-            android:textAllCaps="false"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Play" />
+            android:layout_weight="1"
+            android:text="Play"
+            android:textAllCaps="false" />
 
         <Button
             android:id="@+id/btnPause"
-            android:layout_weight="1"
-            android:textAllCaps="false"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Pause" />
+            android:layout_weight="1"
+            android:text="Pause"
+            android:textAllCaps="false" />
+
+        <Button
+            android:id="@+id/btnResume"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Resume"
+            android:textAllCaps="false" />
 
         <Button
             android:id="@+id/btnStop"
-            android:layout_weight="1"
-            android:textAllCaps="false"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Stop" />
+            android:layout_weight="1"
+            android:text="Stop"
+            android:textAllCaps="false" />
 
 
     </LinearLayout>
@@ -63,18 +71,20 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:layout_weight="5">
+        android:layout_weight="5"
+        android:orientation="vertical">
+
         <SeekBar
             android:id="@+id/seek_bar"
-            android:layout_weight="1"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"/>
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+
         <TextView
-            android:layout_weight="1"
             android:id="@+id/txt_path"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"/>
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
     </LinearLayout>
 
 </LinearLayout>

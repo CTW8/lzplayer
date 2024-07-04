@@ -6,8 +6,8 @@
 #include<deque>
 #include"VEMediaDef.h"
 #include"VEPacket.h"
-#include "AHandler.h"
-#include "AMessage.h"
+#include "thread/AHandler.h"
+#include "thread/AMessage.h"
 extern "C"
 {
     #include "libavformat/avformat.h"

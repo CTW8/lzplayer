@@ -14,16 +14,16 @@ public class NativeLib {
         mHandle = createNativeHandle();
     }
 
-    public int init(String path,Surface surface){
+    public int init(String path){
         if(mHandle != 0){
-            return nativeInit(mHandle,path,surface);
+            return nativeInit(mHandle,path);
         }
         return -1;
     }
 
-    public int setSurface(Surface surface){
+    public int setSurface(Surface surface,int width,int height){
         if(mHandle != 0){
-            return nativeSetSurface(mHandle,surface);
+            return nativeSetSurface(mHandle,surface,width,height);
         }
         return -1;
     }
@@ -64,8 +64,8 @@ public class NativeLib {
     }
 
     private static native long createNativeHandle();
-    private native int nativeInit(long handle,String path,Surface surface);
-    private native int nativeSetSurface(long handle,Surface surface);
+    private native int nativeInit(long handle,String path);
+    private native int nativeSetSurface(long handle,Surface surface,int width,int height);
 
     private native int nativeStart(long handle);
     private native int nativePause(long handle);

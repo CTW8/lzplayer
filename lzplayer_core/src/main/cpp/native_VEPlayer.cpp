@@ -14,13 +14,11 @@ Java_com_example_lzplayer_1core_NativeLib_createNativeHandle(JNIEnv *env, jclass
 extern "C"
 JNIEXPORT jint JNICALL
 Java_com_example_lzplayer_1core_NativeLib_nativeInit(JNIEnv *env, jobject thiz, jlong handle,
-                                                     jstring path, jobject surface) {
+                                                     jstring path) {
     // TODO: implement nativeInit()
     VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
     JniString jPath(env,path);
     vePlayer->setDataSource(jPath.c_str());
-    ANativeWindow *window = ANativeWindow_fromSurface(env, surface);
-    vePlayer->setDisplayOut(window);
     vePlayer->prepare();
     CHECK_NULL();
     return 0;
@@ -28,10 +26,12 @@ Java_com_example_lzplayer_1core_NativeLib_nativeInit(JNIEnv *env, jobject thiz, 
 extern "C"
 JNIEXPORT jint JNICALL
 Java_com_example_lzplayer_1core_NativeLib_nativeSetSurface(JNIEnv *env, jobject thiz, jlong handle,
-                                                           jobject surface) {
+                                                           jobject surface,jint width,jint height) {
     // TODO: implement nativeSetSurface()
     VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
     CHECK_NULL();
+    ANativeWindow *window = ANativeWindow_fromSurface(env, surface);
+    vePlayer->setDisplayOut(window,width,height);
     return 0;
 }
 extern "C"

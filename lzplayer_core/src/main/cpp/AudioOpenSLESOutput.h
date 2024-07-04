@@ -5,9 +5,9 @@
 #ifndef LZPLAYER_AUDIOOPENSLESOUTPUT_H
 #define LZPLAYER_AUDIOOPENSLESOUTPUT_H
 
-#include "Errors.h"
-#include "AHandler.h"
-#include "AMessage.h"
+#include "thread/Errors.h"
+#include "thread/AHandler.h"
+#include "thread/AMessage.h"
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
 #include "VEAudioDecoder.h"

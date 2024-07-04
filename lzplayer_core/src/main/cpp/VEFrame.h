@@ -1,6 +1,7 @@
 #ifndef __VE_FRAME__
 #define __VE_FRAME__
 #include<iostream>
+#include "VETrace.h"
 #include "Log.h"
 extern "C"{
     #include"libavcodec/avcodec.h"
@@ -42,6 +43,8 @@ public:
     }
     ~VEFrame(){
         if(mFrame){
+            ALOGI("AVFrame is release  pts:%" PRId64,mFrame->pts);
+            backTrace();
             av_frame_unref(mFrame);
             av_frame_free(&mFrame);
         }
@@ -55,6 +58,9 @@ public:
         mFrame = frame.getFrame();
         av_frame_ref(mFrame,frame.getFrame());
     }
+
+public:
+    uint64_t timestamp=0;
 
 private:
     AVFrame *mFrame;

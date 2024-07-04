@@ -1,8 +1,8 @@
 #ifndef __VE_VIDEO_RENDER__
 #define __VE_VIDEO_RENDER__
 #include <memory>
-#include "AHandler.h"
-#include "AMessage.h"
+#include "thread/AHandler.h"
+#include "thread/AMessage.h"
 #include <jni.h>
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
@@ -18,7 +18,7 @@ public:
     VEVideoRender();
     ~VEVideoRender();
 
-    status_t init(std::shared_ptr<VEVideoDecoder> decoder,ANativeWindow *win);
+    status_t init(std::shared_ptr<VEVideoDecoder> decoder,ANativeWindow *win,int width,int height);
     status_t start();
     status_t pause();
     status_t resume();
@@ -37,7 +37,7 @@ private:
 
     GLuint loadShader(GLenum type, const char *shaderSrc);
 
-    bool createPragram();
+    GLuint createProgram(const char *vertexSource, const char *fragmentSource);
     bool createTexture();
 
     enum {
@@ -54,11 +54,20 @@ private:
     std::shared_ptr<VEVideoDecoder> mVDec = nullptr;
 
 
-    GLuint          mTexture[3];
+    GLuint          mTextures[3];
     GLuint          mProgram;
     GLuint  mVAO,mVBO;
     EGLDisplay eglDisplay;
     EGLSurface eglSurface;
+    EGLContext eglContext;
+
+    int mViewWidth = 0;
+    int mViewHeight = 0;
+
+    int mFrameWidth = 0;
+    int mFrameHeight = 0;
+
+    FILE *fp = nullptr;
 };
 
 #endif

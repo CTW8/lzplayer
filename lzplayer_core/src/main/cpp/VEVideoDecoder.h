@@ -6,8 +6,8 @@
 #include"VEMediaDef.h"
 #include"VEPacket.h"
 #include"VEFrame.h"
-#include "AHandler.h"
-#include "AMessage.h"
+#include "thread/AHandler.h"
+#include "thread/AMessage.h"
 #include "VEDemux.h"
 extern "C"
 {
@@ -57,6 +57,8 @@ private:
 
     std::mutex mMutex;
     std::condition_variable mCond;
+
+    FILE *fp = nullptr;
 };
 
 

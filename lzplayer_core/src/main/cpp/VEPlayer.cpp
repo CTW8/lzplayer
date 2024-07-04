@@ -8,11 +8,7 @@ int VEPlayer::setDataSource(std::string path)
         return VE_INVALID_PARAMS;
     }
     mPath = path;
-    return 0;
-}
 
-int VEPlayer::prepare()
-{
     ///创建demux线程
     mDemuxLooper = std::make_shared<ALooper>();
     mDemuxLooper->setName("demux_thread");
@@ -24,7 +20,11 @@ int VEPlayer::prepare()
     mDemux->open(mPath);
 
     mMediaInfo = mDemux->getFileInfo();
+    return 0;
+}
 
+int VEPlayer::prepare()
+{
     ///创建audio dec thread
     mAudioDecodeLooper = std::make_shared<ALooper>();
     mAudioDecodeLooper->setName("adec_thread");
@@ -56,7 +56,7 @@ int VEPlayer::prepare()
     mVideoRender = std::make_shared<VEVideoRender>();
     mVideoRenderLooper->registerHandler(mVideoRender);
 
-    mVideoRender->init(mVideoDecoder,mWindow);
+    mVideoRender->init(mVideoDecoder,mWindow,mViewWidth,mViewHeight);
 
     //创建音频播放线程
     mAudioOutputLooper = std::make_shared<ALooper>();
@@ -76,9 +76,9 @@ int VEPlayer::start()
 
     mDemux->start();
     mVideoDecoder->start();
-    mAudioDecoder->start();
+//    mAudioDecoder->start();
     mVideoRender->start();
-    mAudioOutput->start();
+//    mAudioOutput->start();
     return 0;
 }
 
@@ -139,8 +139,10 @@ VEPlayer::~VEPlayer() {
 
 }
 
-int VEPlayer::setDisplayOut(ANativeWindow *win) {
+int VEPlayer::setDisplayOut(ANativeWindow *win,int viewWidth,int viewHeight) {
 
     mWindow = win;
+    mViewWidth = viewWidth;
+    mViewHeight = viewHeight;
     return 0;
 }

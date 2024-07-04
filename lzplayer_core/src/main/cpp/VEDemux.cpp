@@ -36,19 +36,19 @@ status_t VEDemux::open(std::string file)
 status_t VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet){
 
     if(isAudio){
-        std::unique_lock<std::mutex> lock(mMutexAudio);
-        if(mAudioPacketQueue.size() == 0){
-            mCondAudio.wait(lock);
-        }
-
-        if(mAudioPacketQueue.size() >= AUDIO_QUEUE_SIZE){
-            packet = mAudioPacketQueue.front();
-            mAudioPacketQueue.pop_front();
-            mCondAudio.notify_one();
-        }else{
-            packet = mAudioPacketQueue.front();
-            mAudioPacketQueue.pop_front();
-        }
+//        std::unique_lock<std::mutex> lock(mMutexAudio);
+//        if(mAudioPacketQueue.size() == 0){
+//            mCondAudio.wait(lock);
+//        }
+//
+//        if(mAudioPacketQueue.size() >= AUDIO_QUEUE_SIZE){
+//            packet = mAudioPacketQueue.front();
+//            mAudioPacketQueue.pop_front();
+//            mCondAudio.notify_one();
+//        }else{
+//            packet = mAudioPacketQueue.front();
+//            mAudioPacketQueue.pop_front();
+//        }
 
 
     }else{
