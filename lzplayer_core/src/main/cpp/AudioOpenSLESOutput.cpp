@@ -9,6 +9,7 @@ void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context) {
     // 播放下一个音频缓冲区，或者结束播放
     AudioOpenSLESOutput * pThis = (AudioOpenSLESOutput*)context;
     if(pThis){
+        ALOGI("AudioOpenSLESOutput bufferQueueCallback enter!!!");
         std::lock_guard<std::mutex> lk(pThis->mMutex);
         pThis->mCond.notify_one();
     }
@@ -82,6 +83,7 @@ void AudioOpenSLESOutput::onMessageReceived(const std::shared_ptr<AMessage> &msg
 }
 
 bool AudioOpenSLESOutput::onInit(int sampleRate, int channel, int format) {
+    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     // 创建并初始化 OpenSL ES 引擎
     SLresult result;
     result = slCreateEngine(&mEngineObject, 0, NULL, 0, NULL, NULL);
@@ -179,6 +181,7 @@ bool AudioOpenSLESOutput::onInit(int sampleRate, int channel, int format) {
 }
 
 bool AudioOpenSLESOutput::onStart() {
+    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     mIstarted = true;
 
     if (mPlayerPlay != NULL) {
@@ -191,6 +194,7 @@ bool AudioOpenSLESOutput::onStart() {
 }
 
 bool AudioOpenSLESOutput::onStop() {
+    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     mIstarted = false;
     if (mPlayerPlay != NULL) {
         (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_STOPPED);
@@ -199,6 +203,7 @@ bool AudioOpenSLESOutput::onStop() {
 }
 
 bool AudioOpenSLESOutput::onUnInit() {
+    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     // 释放资源
     if (mPlayerObject != NULL) {
         (*mPlayerObject)->Destroy(mPlayerObject);
@@ -221,27 +226,30 @@ bool AudioOpenSLESOutput::onUnInit() {
 }
 
 bool AudioOpenSLESOutput::onPlay() {
+    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     std::unique_lock<std::mutex> lk(mMutex);
     std::shared_ptr<VEFrame> frame = nullptr;
     mAudioDecoder->readFrame(frame);
 
-    if(frame == nullptr){
-        int len = 1024 * 2 * 2;
-        uint8_t *buf = (uint8_t *)malloc(len);
-        memset(buf,0,len);
-        (*mBufferQueue)->Enqueue(mBufferQueue, buf, len);
-    }else{
-        (*mBufferQueue)->Enqueue(mBufferQueue, frame->getFrame()->data[0], frame->getFrame()->linesize[0]);
-    }
-
-    mCond.wait(lk);
+//    if(frame == nullptr){
+//        int len = 1024 * 2 * 2;
+//        uint8_t *buf = (uint8_t *)malloc(len);
+//        memset(buf,0,len);
+//        (*mBufferQueue)->Enqueue(mBufferQueue, buf, len);
+//    }else{
+//        (*mBufferQueue)->Enqueue(mBufferQueue, frame->getFrame()->data[0], frame->getFrame()->linesize[0]);
+//    }
+//
+//    mCond.wait(lk);
 
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPlay,shared_from_this());
     msg->post();
+    ALOGI("AudioOpenSLESOutput::%s exit",__FUNCTION__ );
     return false;
 }
 
 bool AudioOpenSLESOutput::onPause() {
+    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     if (mPlayerPlay != NULL) {
         (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PAUSED);
     }
@@ -249,10 +257,12 @@ bool AudioOpenSLESOutput::onPause() {
 }
 
 AudioOpenSLESOutput::AudioOpenSLESOutput() {
+    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
 
 }
 
 AudioOpenSLESOutput::~AudioOpenSLESOutput() {
+    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
 
 }
 

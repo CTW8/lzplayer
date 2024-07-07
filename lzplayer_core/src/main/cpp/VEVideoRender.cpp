@@ -223,25 +223,33 @@ bool VEVideoRender::onRender() {
     glUniform1i(uTextureLoc, 1);
     glUniform1i(vTextureLoc, 2);
 
-    ALOGD("mFrameWidth:%d,mFrameHeight:%d mViewWidth:%d,mViewHeight:%d pts:%" PRId64,mFrameWidth,mFrameHeight,mViewWidth,mViewHeight,frame->getFrame()->pts);
-    {
-        fwrite(frame->getFrame()->data[0],mFrameWidth* mFrameHeight,1,fp);
-        fwrite(frame->getFrame()->data[1],mFrameWidth* mFrameHeight/4,1,fp);
-        fwrite(frame->getFrame()->data[2],mFrameWidth* mFrameHeight/4,1,fp);
-        fflush(fp);
+    ALOGD("### mFrameWidth:%d,mFrameHeight:%d mViewWidth:%d,mViewHeight:%d pts:%" PRId64,mFrameWidth,mFrameHeight,mViewWidth,mViewHeight,frame->timestamp);
+//    {
+//        fwrite(frame->getFrame()->data[0],mFrameWidth* mFrameHeight,1,fp);
+//        fwrite(frame->getFrame()->data[1],mFrameWidth* mFrameHeight/4,1,fp);
+//        fwrite(frame->getFrame()->data[2],mFrameWidth* mFrameHeight/4,1,fp);
+//        fflush(fp);
+//    }
+
+    float screenAspectRatio = (float)mViewWidth / mViewHeight;
+    float imageAspectRatio = (float)mFrameWidth / mFrameHeight;
+    float scaleX, scaleY;
+
+    if (mFrameWidth > mFrameHeight) {
+        // 横向图片
+        scaleX = 1.0f;
+        scaleY = screenAspectRatio / imageAspectRatio;
+    } else {
+        // 纵向图片
+        scaleX = imageAspectRatio / screenAspectRatio;
+        scaleY = 1.0f;
     }
-//    GLfloat vertices[] = {
-//            (-mFrameWidth*1.0f/mFrameHeight)/(mViewWidth*1.0f/mViewHeight), -1.0f, 0.0f, 0.0f,
-//            mFrameWidth*1.0f/mFrameHeight/(mViewWidth*1.0f/mViewHeight), -1.0f, 1.0f, 0.0f,
-//            -mFrameWidth*1.0f/mFrameHeight/(mViewWidth*1.0f/mViewHeight), 1.0f, 0.0f, 1.0f,
-//            mFrameWidth*1.0f/mFrameHeight/(mViewWidth*1.0f/mViewHeight), 1.0f, 1.0f, 1.0f,
-//    };
 
     GLfloat vertices[] = {
-            -1, -1.0f, 0.0f, 0.0f,
-            1, -1.0f, 1.0f, 0.0f,
-            -1, 1.0f, 0.0f, 1.0f,
-            1, 1.0f, 1.0f, 1.0f,
+            -scaleX, -scaleY, 0.0f, 0.0f,
+            scaleX, -scaleY, 1.0f, 0.0f,
+            -scaleX, scaleY, 0.0f, 1.0f,
+            scaleX, scaleY, 1.0f, 1.0f,
     };
 
     glm::vec3 scaleVector(1.0f, -1.0f, 1.0f);

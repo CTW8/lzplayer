@@ -34,6 +34,7 @@ public:
         av_channel_layout_default(&layout,channel);
         mFrame->ch_layout =layout;
         mFrame->nb_samples = size;
+        mFrame->format = format;
 
         int ret = av_frame_get_buffer(mFrame,0);
         if (ret < 0) {
@@ -44,7 +45,7 @@ public:
     ~VEFrame(){
         if(mFrame){
             ALOGI("AVFrame is release  pts:%" PRId64,mFrame->pts);
-            backTrace();
+//            backTrace();
             av_frame_unref(mFrame);
             av_frame_free(&mFrame);
         }

@@ -37,26 +37,26 @@ int VEPlayer::prepare()
 
     ///创建video dec thread
 
-    mVideoDecodeLooper = std::make_shared<ALooper>();
-    mVideoDecodeLooper->setName("vdec_thread");
-    mVideoDecodeLooper->start(false);
-
-    mVideoDecoder = std::make_shared<VEVideoDecoder>();
-
-    mVideoDecodeLooper->registerHandler(mVideoDecoder);
-    mVideoDecoder->init(mDemux);
+//    mVideoDecodeLooper = std::make_shared<ALooper>();
+//    mVideoDecodeLooper->setName("vdec_thread");
+//    mVideoDecodeLooper->start(false);
+//
+//    mVideoDecoder = std::make_shared<VEVideoDecoder>();
+//
+//    mVideoDecodeLooper->registerHandler(mVideoDecoder);
+//    mVideoDecoder->init(mDemux);
 
 
     ///创建视频渲染线程
 
-    mVideoRenderLooper = std::make_shared<ALooper>();
-    mVideoRenderLooper->setName("video_render");
-    mVideoRenderLooper->start(false);
-
-    mVideoRender = std::make_shared<VEVideoRender>();
-    mVideoRenderLooper->registerHandler(mVideoRender);
-
-    mVideoRender->init(mVideoDecoder,mWindow,mViewWidth,mViewHeight);
+//    mVideoRenderLooper = std::make_shared<ALooper>();
+//    mVideoRenderLooper->setName("video_render");
+//    mVideoRenderLooper->start(false);
+//
+//    mVideoRender = std::make_shared<VEVideoRender>();
+//    mVideoRenderLooper->registerHandler(mVideoRender);
+//
+//    mVideoRender->init(mVideoDecoder,mWindow,mViewWidth,mViewHeight);
 
     //创建音频播放线程
     mAudioOutputLooper = std::make_shared<ALooper>();
@@ -75,10 +75,10 @@ int VEPlayer::start()
     ///控制各个线程开始运行
 
     mDemux->start();
-    mVideoDecoder->start();
-//    mAudioDecoder->start();
-    mVideoRender->start();
-//    mAudioOutput->start();
+//    mVideoDecoder->start();
+    mAudioDecoder->start();
+//    mVideoRender->start();
+    mAudioOutput->start();
     return 0;
 }
 

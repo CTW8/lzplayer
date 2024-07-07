@@ -32,6 +32,7 @@ target_include_directories(lzplayer_core PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/include/ffmpeg
         ${CMAKE_CURRENT_LIST_DIR}/utils
         ${CMAKE_CURRENT_LIST_DIR}/thread
+        ${CMAKE_CURRENT_LIST_DIR}/libyuv/include
         )
 
 target_link_libraries( # Specifies the target library.
@@ -46,4 +47,14 @@ target_link_libraries( # Specifies the target library.
         OpenSLES
         GLESv3
         EGL
+        yuv
         ${log-lib})
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIE -mfpu=neon -D__ARM_NEON__")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIE -mfpu=neon -D__ARM_NEON__")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fPIE -pie")
+add_definitions(-D__ARM_NEON__)
+add_definitions(-DLIBYUV_DISABLE_NEON=0)
+add_definitions(-D__aarch64__=0)
+
+add_subdirectory(libyuv)

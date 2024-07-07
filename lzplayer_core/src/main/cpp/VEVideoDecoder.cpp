@@ -1,5 +1,19 @@
 #include"VEVideoDecoder.h"
 #define FRAME_QUEUE_MAX_SIZE  3
+#include "libyuv.h"
+
+void ConvertYUV420PWithStrideToContinuous(const uint8_t* src_y, int src_stride_y,
+                                          const uint8_t* src_u, int src_stride_u,
+                                          const uint8_t* src_v, int src_stride_v,
+                                          uint8_t* dst_y, uint8_t* dst_u, uint8_t* dst_v,
+                                          int width, int height) {
+    // 复制 Y 平面
+    libyuv::CopyPlane(src_y, src_stride_y, dst_y, width, width, height);
+    // 复制 U 平面
+    libyuv::CopyPlane(src_u, src_stride_u, dst_u, width / 2, width / 2, height / 2);
+    // 复制 V 平面
+    libyuv::CopyPlane(src_v, src_stride_v, dst_v, width / 2, width / 2, height / 2);
+}
 
 
 VEVideoDecoder::VEVideoDecoder()
@@ -118,12 +132,13 @@ bool VEVideoDecoder::onDecode() {
         frame->timestamp = av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE});
         ALOGD("video frame pts:%" PRId64,frame->timestamp);
 
-        {
-            fwrite(frame->getFrame()->data[0],frame->getFrame()->width* frame->getFrame()->height,1,fp);
-            fwrite(frame->getFrame()->data[1],frame->getFrame()->width* frame->getFrame()->height/4,1,fp);
-            fwrite(frame->getFrame()->data[2],frame->getFrame()->width* frame->getFrame()->height/4,1,fp);
-            fflush(fp);
-        }
+        std::shared_ptr<VEFrame> videoFrame = std::make_shared<VEFrame>(frame->getFrame()->width,frame->getFrame()->height,AV_PIX_FMT_YUV420P);
+
+        ConvertYUV420PWithStrideToContinuous(frame->getFrame()->data[0],frame->getFrame()->linesize[0],
+                                             frame->getFrame()->data[1],frame->getFrame()->linesize[1],
+                                             frame->getFrame()->data[2],frame->getFrame()->linesize[2],
+                                             videoFrame->getFrame()->data[0],videoFrame->getFrame()->data[1],videoFrame->getFrame()->data[2],
+                                             frame->getFrame()->width,frame->getFrame()->height);
 
         std::unique_lock<std::mutex> lk(mMutex);
         if(mFrameQueue.size() >= FRAME_QUEUE_MAX_SIZE ){
@@ -131,11 +146,12 @@ bool VEVideoDecoder::onDecode() {
         }
 
         if(mFrameQueue.size() == 0){
-            mFrameQueue.push_back(frame);
+            mFrameQueue.push_back(videoFrame);
             mCond.notify_one();
         }else{
-            mFrameQueue.push_back(frame);
+            mFrameQueue.push_back(videoFrame);
         }
+        ALOGD("### video frame pts:%" PRId64,frame->getFrame()->pts);
     }
 
     std::shared_ptr<AMessage> readMsg = std::make_shared<AMessage>(kWhatRead,shared_from_this());
@@ -189,7 +205,6 @@ int VEVideoDecoder::readFrame(std::shared_ptr<VEFrame> &frame) {
         frame = mFrameQueue.front();
         mFrameQueue.pop_front();
     }
-    backTrace();
     return 0;
 }
 

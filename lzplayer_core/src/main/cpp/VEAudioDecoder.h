@@ -10,6 +10,8 @@ extern "C"
     #include "libavcodec/avcodec.h"
     #include "libavutil/avutil.h"
     #include "libavutil/timestamp.h"
+    #include "libswresample/swresample.h"
+    #include "libavutil/opt.h"
 }
 
 #include"VEMediaDef.h"
@@ -35,8 +37,10 @@ public:
 
 private:
     bool onInit(std::shared_ptr<AMessage> msg);
+    bool onStart();
     bool onFlush();
     bool onDecode();
+    bool onStop();
     bool onUnInit();
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
     enum {
@@ -44,7 +48,7 @@ private:
         kWhatStart               = 'star',
         kWhatStop                = 'stop',
         kWhatFlush               = 'flus',
-        kWhatRead                = 'read',
+        kWhatDecode              = 'deco',
         kWhatUninit              = 'unin'
     };
 private:
@@ -55,6 +59,9 @@ private:
     std::condition_variable mCond;
     std::deque<std::shared_ptr<VEFrame>> mFrameQueue;
     std::shared_ptr<VEDemux> mDemux = nullptr;
+    bool mIsStarted = false;
+
+    SwrContext *mSwrCtx = nullptr;
 };
 
 #endif

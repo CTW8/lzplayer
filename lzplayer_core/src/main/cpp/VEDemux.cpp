@@ -36,21 +36,20 @@ status_t VEDemux::open(std::string file)
 status_t VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet){
 
     if(isAudio){
-//        std::unique_lock<std::mutex> lock(mMutexAudio);
-//        if(mAudioPacketQueue.size() == 0){
-//            mCondAudio.wait(lock);
-//        }
-//
-//        if(mAudioPacketQueue.size() >= AUDIO_QUEUE_SIZE){
-//            packet = mAudioPacketQueue.front();
-//            mAudioPacketQueue.pop_front();
-//            mCondAudio.notify_one();
-//        }else{
-//            packet = mAudioPacketQueue.front();
-//            mAudioPacketQueue.pop_front();
-//        }
+        std::unique_lock<std::mutex> lock(mMutexAudio);
+        ALOGD("mAudioPacketQueue size:%zu",mAudioPacketQueue.size());
+        if(mAudioPacketQueue.size() == 0){
+            mCondAudio.wait(lock);
+        }
 
-
+        if(mAudioPacketQueue.size() >= AUDIO_QUEUE_SIZE){
+            packet = mAudioPacketQueue.front();
+            mAudioPacketQueue.pop_front();
+            mCondAudio.notify_one();
+        }else{
+            packet = mAudioPacketQueue.front();
+            mAudioPacketQueue.pop_front();
+        }
     }else{
         std::unique_lock<std::mutex> lock(mMutexVideo);
         if(mVideoPacketQueue.size() == 0){
@@ -255,8 +254,9 @@ status_t VEDemux::onRead() {
     if(av_read_frame(mFormatContext, packet->getPacket()) <0){
         return -1;
     }
-    ALOGD("%s packet pts:%" PRId64,packet->getPacket()->stream_index == mAudio_index ? "audio":"video" ,packet->getPacket()->pts);
     if(packet->getPacket()->stream_index == mAudio_index){
+        ALOGD("%s packet pts:%" PRId64,packet->getPacket()->stream_index == mAudio_index ? "audio":"video" ,packet->getPacket()->pts);
+
         std::unique_lock<std::mutex> lk(mMutexAudio);
         if(mAudioPacketQueue.size() >= AUDIO_QUEUE_SIZE){
             mCondAudio.wait(lk);
@@ -267,18 +267,19 @@ status_t VEDemux::onRead() {
         }else{
             mAudioPacketQueue.push_back(packet);
         }
+        ALOGD("mAudioPacketQueue size:%zu",mAudioPacketQueue.size());
     }else if (packet->getPacket()->stream_index == mVideo_index)
     {
-        std::unique_lock<std::mutex> lk(mMutexVideo);
-        if(mVideoPacketQueue.size() >= VIDEO_QUEUE_SIZE){
-            mCondVideo.wait(lk);
-        }
-        if(mVideoPacketQueue.size() == 0){
-            mVideoPacketQueue.push_back(packet);
-            mCondVideo.notify_one();
-        }else{
-            mVideoPacketQueue.push_back(packet);
-        }
+//        std::unique_lock<std::mutex> lk(mMutexVideo);
+//        if(mVideoPacketQueue.size() >= VIDEO_QUEUE_SIZE){
+//            mCondVideo.wait(lk);
+//        }
+//        if(mVideoPacketQueue.size() == 0){
+//            mVideoPacketQueue.push_back(packet);
+//            mCondVideo.notify_one();
+//        }else{
+//            mVideoPacketQueue.push_back(packet);
+//        }
     }else{
         ALOGD("may be not use");
     }
