@@ -36,6 +36,8 @@ public:
         mFrame->nb_samples = size;
         mFrame->format = format;
 
+        ALOGI("VEFrame sample_rate:%d ch_layout:%d nb_samples:%d format:%d",mFrame->sample_rate,mFrame->ch_layout.nb_channels,mFrame->nb_samples,mFrame->format);
+
         int ret = av_frame_get_buffer(mFrame,0);
         if (ret < 0) {
             ALOGE("Could not allocate the audio frame data");

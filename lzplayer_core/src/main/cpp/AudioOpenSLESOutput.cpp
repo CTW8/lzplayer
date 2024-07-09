@@ -4,6 +4,11 @@
 
 #include "AudioOpenSLESOutput.h"
 
+#define SL_CHECK_ERROR(result, msg) \
+    if (result != SL_RESULT_SUCCESS) { \
+        ALOGE("%s failed: %d", msg, result); \
+        return; \
+    }
 
 void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context) {
     // 播放下一个音频缓冲区，或者结束播放
@@ -16,6 +21,7 @@ void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context) {
 }
 
 status_t AudioOpenSLESOutput::init(std::shared_ptr<VEAudioDecoder> decoder,int samplerate, int channel, int format) {
+    fp = fopen("/data/local/tmp/dump_audio.pcm","wb+");
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit,shared_from_this());
     msg->setInt32("samplerate",samplerate);
     msg->setInt32("channel",channel);
@@ -36,6 +42,10 @@ void AudioOpenSLESOutput::stop() {
 }
 
 void AudioOpenSLESOutput::unInit() {
+    if(fp){
+        fflush(fp);
+        fclose(fp);
+    }
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatUninit,shared_from_this());
     msg->post();
 }
@@ -66,7 +76,10 @@ void AudioOpenSLESOutput::onMessageReceived(const std::shared_ptr<AMessage> &msg
             if(!mIstarted){
                 break;
             }
-            onPlay();
+            if(onPlay()){
+                std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPlay,shared_from_this());
+                msg->post();
+            }
             break;
         }
         case kWhatStop:{
@@ -105,7 +118,7 @@ bool AudioOpenSLESOutput::onInit(int sampleRate, int channel, int format) {
     }
 
     // 创建输出混音器
-    result = (*mEngineEngine)->CreateOutputMix(mEngineEngine, &mOutputMixObject, 0, NULL, NULL);
+    result = (*mEngineEngine)->CreateOutputMix(mEngineEngine, &mOutputMixObject, 0, nullptr, nullptr);
     if (result != SL_RESULT_SUCCESS) {
         ALOGI("Failed to create output mix");
         return false;
@@ -118,7 +131,7 @@ bool AudioOpenSLESOutput::onInit(int sampleRate, int channel, int format) {
     }
 
     // 配置音频源
-    SLDataLocator_AndroidSimpleBufferQueue loc_bufq = {SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE, 1};
+    SLDataLocator_AndroidSimpleBufferQueue loc_bufq = {SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE, 2};
     SLDataFormat_PCM format_pcm = {
             SL_DATAFORMAT_PCM,
             2,
@@ -163,18 +176,16 @@ bool AudioOpenSLESOutput::onInit(int sampleRate, int channel, int format) {
     }
 
     // 注册回调函数
-    result = (*mBufferQueue)->RegisterCallback(mBufferQueue, bufferQueueCallback, NULL);
+    result = (*mBufferQueue)->RegisterCallback(mBufferQueue, bufferQueueCallback, this);
     if (result != SL_RESULT_SUCCESS) {
         ALOGI("Failed to register buffer queue callback");
         return false;
     }
 
-    // 设置播放状态
-    result = (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PLAYING);
-    if (result != SL_RESULT_SUCCESS) {
-        ALOGI("Failed to set play state");
-        return false;
-    }
+    int len = 2048 * 2 * 2;
+    uint8_t *buf = (uint8_t *)malloc(len);
+    memset(buf,0,len);
+    (*mBufferQueue)->Enqueue(mBufferQueue, buf, len);
 
     ALOGI("OpenSL ES audio player initialized successfully");
     return false;
@@ -185,12 +196,16 @@ bool AudioOpenSLESOutput::onStart() {
     mIstarted = true;
 
     if (mPlayerPlay != NULL) {
-        (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PLAYING);
+        SLresult result = (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PLAYING);
+        if (result != SL_RESULT_SUCCESS) {
+            ALOGI("Failed to set play state");
+            return false;
+        }
     }
 
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPlay,shared_from_this());
     msg->post();
-    return false;
+    return true;
 }
 
 bool AudioOpenSLESOutput::onStop() {
@@ -199,7 +214,7 @@ bool AudioOpenSLESOutput::onStop() {
     if (mPlayerPlay != NULL) {
         (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_STOPPED);
     }
-    return false;
+    return true;
 }
 
 bool AudioOpenSLESOutput::onUnInit() {
@@ -231,21 +246,21 @@ bool AudioOpenSLESOutput::onPlay() {
     std::shared_ptr<VEFrame> frame = nullptr;
     mAudioDecoder->readFrame(frame);
 
-//    if(frame == nullptr){
-//        int len = 1024 * 2 * 2;
-//        uint8_t *buf = (uint8_t *)malloc(len);
-//        memset(buf,0,len);
-//        (*mBufferQueue)->Enqueue(mBufferQueue, buf, len);
-//    }else{
-//        (*mBufferQueue)->Enqueue(mBufferQueue, frame->getFrame()->data[0], frame->getFrame()->linesize[0]);
-//    }
-//
-//    mCond.wait(lk);
+    if(frame == nullptr){
+        ALOGI("AudioOpenSLESOutput::onPlay frame is null");
+        int len = 1024 * 2 * 2;
+        uint8_t *buf = (uint8_t *)malloc(len);
+        memset(buf,0,len);
+        (*mBufferQueue)->Enqueue(mBufferQueue, buf, len);
+    }else{
+        ALOGI("AudioOpenSLESOutput::onPlay size:%d samplerate:%d  ch:%d format:%d",frame->getFrame()->linesize[0],frame->getFrame()->sample_rate,frame->getFrame()->ch_layout.nb_channels,frame->getFrame()->format);
+        fwrite(frame->getFrame()->data[0],1,frame->getFrame()->linesize[0],fp);
+        (*mBufferQueue)->Enqueue(mBufferQueue, frame->getFrame()->data[0], frame->getFrame()->linesize[0]);
+    }
 
-    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPlay,shared_from_this());
-    msg->post();
+    mCond.wait(lk);
     ALOGI("AudioOpenSLESOutput::%s exit",__FUNCTION__ );
-    return false;
+    return true;
 }
 
 bool AudioOpenSLESOutput::onPause() {

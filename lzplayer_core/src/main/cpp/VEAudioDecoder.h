@@ -62,6 +62,7 @@ private:
     bool mIsStarted = false;
 
     SwrContext *mSwrCtx = nullptr;
+    FILE *fp = nullptr;
 };
 
 #endif

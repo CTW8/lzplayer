@@ -58,6 +58,7 @@ private:
 
     std::mutex  mMutex;
     std::condition_variable mCond;
+    FILE *fp = nullptr;
 };
 
 
