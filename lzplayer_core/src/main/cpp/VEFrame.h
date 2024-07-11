@@ -60,6 +60,7 @@ public:
     VEFrame& operator=(VEFrame &frame){
         mFrame = frame.getFrame();
         av_frame_ref(mFrame,frame.getFrame());
+        return *this;
     }
 
 public:

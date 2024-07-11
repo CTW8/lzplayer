@@ -11,11 +11,13 @@
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
 #include "VEAudioDecoder.h"
+#include "VERingBuffer.h"
 
 
 void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
 
 class AudioOpenSLESOutput: public AHandler{
+    friend void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
 public:
     AudioOpenSLESOutput();
     ~AudioOpenSLESOutput();
@@ -58,6 +60,9 @@ private:
 
     std::mutex  mMutex;
     std::condition_variable mCond;
+
+    VERingBuffer *mRingBuffer = nullptr;
+    uint8_t *mFrameBuf = nullptr;
     FILE *fp = nullptr;
 };
 

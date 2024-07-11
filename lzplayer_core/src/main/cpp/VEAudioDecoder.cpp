@@ -209,6 +209,7 @@ bool VEAudioDecoder::onDecode() {
 
             memcpy(audioFrame->getFrame()->data[0],out_data[0],out_samples_per_channel * AUDIO_TARGET_OUTPUT_CHANNELS * av_get_bytes_per_sample(AUDIO_TARGET_OUTPUT_FORMAT));
             audioFrame->getFrame()->pts = frame->getFrame()->pts;
+            audioFrame->getFrame()->nb_samples = out_samples_per_channel;
             audioFrame->getFrame()->linesize[0] = out_samples_per_channel * AUDIO_TARGET_OUTPUT_CHANNELS * av_get_bytes_per_sample(AUDIO_TARGET_OUTPUT_FORMAT);
 //            {
 //                fwrite(audioFrame->getFrame()->data[0],1,audioFrame->getFrame()->linesize[0],fp);

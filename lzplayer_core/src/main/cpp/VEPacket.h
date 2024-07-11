@@ -27,8 +27,9 @@ public:
         }
     }
 
-    AVPacket& operator=(VEPacket &packet){
+    VEPacket& operator=(VEPacket &packet){
         av_packet_ref(mPacket,packet.getPacket());
+        return *this;
     }
 
     AVPacket * getPacket(){

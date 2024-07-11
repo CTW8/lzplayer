@@ -9,19 +9,36 @@
         ALOGE("%s failed: %d", msg, result); \
         return; \
     }
+#define AUDIO_OUTPUT_FRAMES_SIZE    (1024*4)
 
 void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context) {
     // 播放下一个音频缓冲区，或者结束播放
     AudioOpenSLESOutput * pThis = (AudioOpenSLESOutput*)context;
     if(pThis){
-        ALOGI("AudioOpenSLESOutput bufferQueueCallback enter!!!");
+
         std::lock_guard<std::mutex> lk(pThis->mMutex);
-        pThis->mCond.notify_one();
+        ALOGI("AudioOpenSLESOutput bufferQueueCallback enter remain size:%d",pThis->mRingBuffer->getRemainSize());
+        if(pThis->mRingBuffer->getRemainSize() >= AUDIO_OUTPUT_FRAMES_SIZE){
+            pThis->mRingBuffer->getData(pThis->mFrameBuf,AUDIO_OUTPUT_FRAMES_SIZE);
+            (*pThis->mBufferQueue)->Enqueue(pThis->mBufferQueue, pThis->mFrameBuf, AUDIO_OUTPUT_FRAMES_SIZE);
+            fwrite(pThis->mFrameBuf,AUDIO_OUTPUT_FRAMES_SIZE,1,pThis->fp);
+            ALOGI("AudioOpenSLESOutput put frame buffer not slence size:%d",pThis->mRingBuffer->getRemainSize());
+        }else{
+            int remain = pThis->mRingBuffer->getRemainSize();
+            pThis->mRingBuffer->getData(pThis->mFrameBuf,remain);
+            memset(pThis->mFrameBuf + remain,0,AUDIO_OUTPUT_FRAMES_SIZE - remain);
+            (*pThis->mBufferQueue)->Enqueue(pThis->mBufferQueue, pThis->mFrameBuf, AUDIO_OUTPUT_FRAMES_SIZE);
+            ALOGI("AudioOpenSLESOutput put frame buffer has slence");
+        }
+
+        if(pThis->mRingBuffer->getFreeSize() > 3 * AUDIO_OUTPUT_FRAMES_SIZE){
+            pThis->mCond.notify_one();
+        }
     }
 }
 
 status_t AudioOpenSLESOutput::init(std::shared_ptr<VEAudioDecoder> decoder,int samplerate, int channel, int format) {
-    fp = fopen("/data/local/tmp/dump_audio.pcm","wb+");
+    fp = fopen("/data/local/tmp/dump_arender.pcm","wb+");
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit,shared_from_this());
     msg->setInt32("samplerate",samplerate);
     msg->setInt32("channel",channel);
@@ -182,11 +199,13 @@ bool AudioOpenSLESOutput::onInit(int sampleRate, int channel, int format) {
         return false;
     }
 
-    int len = 2048 * 2 * 2;
+    int len = 512 * 2 * 2;
     uint8_t *buf = (uint8_t *)malloc(len);
     memset(buf,0,len);
     (*mBufferQueue)->Enqueue(mBufferQueue, buf, len);
 
+    mRingBuffer = new VERingBuffer(10 * 1024 * 4);
+    mFrameBuf = (uint8_t*) malloc(AUDIO_OUTPUT_FRAMES_SIZE);
     ALOGI("OpenSL ES audio player initialized successfully");
     return false;
 }
@@ -198,7 +217,7 @@ bool AudioOpenSLESOutput::onStart() {
     if (mPlayerPlay != NULL) {
         SLresult result = (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PLAYING);
         if (result != SL_RESULT_SUCCESS) {
-            ALOGI("Failed to set play state");
+            ALOGI("AudioOpenSLESOutput Failed to set play state");
             return false;
         }
     }
@@ -237,6 +256,12 @@ bool AudioOpenSLESOutput::onUnInit() {
         mEngineObject = NULL;
         mEngineEngine = NULL;
     }
+    if(mRingBuffer){
+        delete mRingBuffer;
+    }
+    if(mFrameBuf){
+        free(mFrameBuf);
+    }
     return false;
 }
 
@@ -246,19 +271,13 @@ bool AudioOpenSLESOutput::onPlay() {
     std::shared_ptr<VEFrame> frame = nullptr;
     mAudioDecoder->readFrame(frame);
 
-    if(frame == nullptr){
-        ALOGI("AudioOpenSLESOutput::onPlay frame is null");
-        int len = 1024 * 2 * 2;
-        uint8_t *buf = (uint8_t *)malloc(len);
-        memset(buf,0,len);
-        (*mBufferQueue)->Enqueue(mBufferQueue, buf, len);
-    }else{
-        ALOGI("AudioOpenSLESOutput::onPlay size:%d samplerate:%d  ch:%d format:%d",frame->getFrame()->linesize[0],frame->getFrame()->sample_rate,frame->getFrame()->ch_layout.nb_channels,frame->getFrame()->format);
-        fwrite(frame->getFrame()->data[0],1,frame->getFrame()->linesize[0],fp);
-        (*mBufferQueue)->Enqueue(mBufferQueue, frame->getFrame()->data[0], frame->getFrame()->linesize[0]);
+    if(mRingBuffer->getFreeSize() < frame->getFrame()->linesize[0]){
+        mCond.wait(lk);
     }
 
-    mCond.wait(lk);
+    if(mRingBuffer->getFreeSize() >= frame->getFrame()->linesize[0]){
+        mRingBuffer->putData(frame->getFrame()->data[0],frame->getFrame()->linesize[0]);
+    }
     ALOGI("AudioOpenSLESOutput::%s exit",__FUNCTION__ );
     return true;
 }
