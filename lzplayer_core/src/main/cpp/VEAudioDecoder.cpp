@@ -41,6 +41,9 @@ int VEAudioDecoder::readFrame(std::shared_ptr<VEFrame> &frame)
 {
     std::unique_lock<std::mutex> lk(mMutex);
     ALOGI("VEAudioDecoder::readFrame mFrameQueue size:%d",mFrameQueue.size());
+    if(mFrameQueue.size() == 0){
+        mCond.wait(lk);
+    }
     if(mFrameQueue.size() == AUDIO_FRAME_QUEUE_SIZE){
         frame = mFrameQueue.front();
         mFrameQueue.pop_front();
@@ -211,9 +214,7 @@ bool VEAudioDecoder::onDecode() {
             audioFrame->getFrame()->pts = frame->getFrame()->pts;
             audioFrame->getFrame()->nb_samples = out_samples_per_channel;
             audioFrame->getFrame()->linesize[0] = out_samples_per_channel * AUDIO_TARGET_OUTPUT_CHANNELS * av_get_bytes_per_sample(AUDIO_TARGET_OUTPUT_FORMAT);
-//            {
-//                fwrite(audioFrame->getFrame()->data[0],1,audioFrame->getFrame()->linesize[0],fp);
-//            }
+
             av_freep(&out_data[0]);
             av_freep(&out_data);
             std::unique_lock<std::mutex> lk(mMutex);

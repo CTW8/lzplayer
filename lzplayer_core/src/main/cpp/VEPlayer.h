@@ -16,6 +16,10 @@
 #include "VEVideoRender.h"
 #include "AudioOpenSLESOutput.h"
 
+typedef std::function<void(int type,int msg1,double msg2,std::string msg3,void *msg4)> funOnInfoCallback;
+typedef std::function<void(int type,int code,std::string msg)> funOnErrorCallback;
+typedef std::function<void(int progress)> funOnProgressCallback;
+
 class VEPlayer : public AHandler
 {
 public:
@@ -55,27 +59,21 @@ public:
     /// reset
     int reset();
 
-    /// setLooping
+    void setLooping();
 
-    /// isLooping
+    long getCurrentPosition();
 
-    /// getCurrentPosition
+    long getDuration();
 
-    /// getDuration
-
-    /// setDisplay
-
-    /// setVolume
-
-    /// getTrackInfo
+    void setVolume(int volume);
 
     /// setPlaybackParams
 
-    // int setOnCompletionListener(std::function)
+    void setOnInfoListener(funOnInfoCallback callback);
 
-    /// setOnErrorListener
+    void setOnErrorListener(funOnErrorCallback callback);
 
-    /// setOnSeekCompleteListener
+    void setOnProgressListener(funOnProgressCallback callback);
 
 private:
     pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -100,6 +98,10 @@ private:
     ANativeWindow *mWindow = nullptr;
     int mViewWidth = 0;
     int mViewHeight = 0;
+
+    funOnProgressCallback onProgressCallback;
+    funOnErrorCallback  onErrorCallback;
+    funOnInfoCallback onInfoCallback;
 };
 
 #endif

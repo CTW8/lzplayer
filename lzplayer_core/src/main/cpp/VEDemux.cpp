@@ -270,16 +270,16 @@ status_t VEDemux::onRead() {
         ALOGD("mAudioPacketQueue size:%zu",mAudioPacketQueue.size());
     }else if (packet->getPacket()->stream_index == mVideo_index)
     {
-//        std::unique_lock<std::mutex> lk(mMutexVideo);
-//        if(mVideoPacketQueue.size() >= VIDEO_QUEUE_SIZE){
-//            mCondVideo.wait(lk);
-//        }
-//        if(mVideoPacketQueue.size() == 0){
-//            mVideoPacketQueue.push_back(packet);
-//            mCondVideo.notify_one();
-//        }else{
-//            mVideoPacketQueue.push_back(packet);
-//        }
+        std::unique_lock<std::mutex> lk(mMutexVideo);
+        if(mVideoPacketQueue.size() >= VIDEO_QUEUE_SIZE){
+            mCondVideo.wait(lk);
+        }
+        if(mVideoPacketQueue.size() == 0){
+            mVideoPacketQueue.push_back(packet);
+            mCondVideo.notify_one();
+        }else{
+            mVideoPacketQueue.push_back(packet);
+        }
     }else{
         ALOGD("may be not use");
     }

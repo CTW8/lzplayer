@@ -37,26 +37,26 @@ int VEPlayer::prepare()
 
     ///创建video dec thread
 
-//    mVideoDecodeLooper = std::make_shared<ALooper>();
-//    mVideoDecodeLooper->setName("vdec_thread");
-//    mVideoDecodeLooper->start(false);
-//
-//    mVideoDecoder = std::make_shared<VEVideoDecoder>();
-//
-//    mVideoDecodeLooper->registerHandler(mVideoDecoder);
-//    mVideoDecoder->init(mDemux);
+    mVideoDecodeLooper = std::make_shared<ALooper>();
+    mVideoDecodeLooper->setName("vdec_thread");
+    mVideoDecodeLooper->start(false);
+
+    mVideoDecoder = std::make_shared<VEVideoDecoder>();
+
+    mVideoDecodeLooper->registerHandler(mVideoDecoder);
+    mVideoDecoder->init(mDemux);
 
 
     ///创建视频渲染线程
 
-//    mVideoRenderLooper = std::make_shared<ALooper>();
-//    mVideoRenderLooper->setName("video_render");
-//    mVideoRenderLooper->start(false);
-//
-//    mVideoRender = std::make_shared<VEVideoRender>();
-//    mVideoRenderLooper->registerHandler(mVideoRender);
-//
-//    mVideoRender->init(mVideoDecoder,mWindow,mViewWidth,mViewHeight);
+    mVideoRenderLooper = std::make_shared<ALooper>();
+    mVideoRenderLooper->setName("video_render");
+    mVideoRenderLooper->start(false);
+
+    mVideoRender = std::make_shared<VEVideoRender>();
+    mVideoRenderLooper->registerHandler(mVideoRender);
+
+    mVideoRender->init(mVideoDecoder,mWindow,mViewWidth,mViewHeight,mMediaInfo->fps,std::dynamic_pointer_cast<VEPlayer>(shared_from_this()));
 
     //创建音频播放线程
     mAudioOutputLooper = std::make_shared<ALooper>();
@@ -75,9 +75,9 @@ int VEPlayer::start()
     ///控制各个线程开始运行
 
     mDemux->start();
-//    mVideoDecoder->start();
+    mVideoDecoder->start();
     mAudioDecoder->start();
-//    mVideoRender->start();
+    mVideoRender->start();
     mAudioOutput->start();
     return 0;
 }
@@ -119,6 +119,7 @@ int VEPlayer::release()
 int VEPlayer::seek(int64_t timestamp)
 {
     ///发送seek命令
+
     return 0;
 }
 
@@ -145,4 +146,35 @@ int VEPlayer::setDisplayOut(ANativeWindow *win,int viewWidth,int viewHeight) {
     mViewWidth = viewWidth;
     mViewHeight = viewHeight;
     return 0;
+}
+
+void VEPlayer::setLooping() {
+
+}
+
+long VEPlayer::getCurrentPosition() {
+    return 0;
+}
+
+long VEPlayer::getDuration() {
+    if(mMediaInfo == nullptr){
+        return -1;
+    }
+    return mMediaInfo->duration;
+}
+
+void VEPlayer::setVolume(int volume) {
+
+}
+
+void VEPlayer::setOnInfoListener(funOnInfoCallback callback) {
+    onInfoCallback = callback;
+}
+
+void VEPlayer::setOnErrorListener(funOnErrorCallback callback) {
+    onErrorCallback = callback;
+}
+
+void VEPlayer::setOnProgressListener(funOnProgressCallback callback) {
+    onProgressCallback = callback;
 }

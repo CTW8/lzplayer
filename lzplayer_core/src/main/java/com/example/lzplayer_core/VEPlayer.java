@@ -3,6 +3,7 @@ package com.example.lzplayer_core;
 import android.view.Surface;
 
 public class VEPlayer {
+    private IVEPlayerListener mListener;
     private NativeLib mNativeHandle = null;
 
     public VEPlayer(){
@@ -47,6 +48,14 @@ public class VEPlayer {
     public int seekTo(long timestamp){
         if(mNativeHandle != null){
             return mNativeHandle.seekTo(timestamp);
+        }
+        return -1;
+    }
+
+    ///获取所有底层player信息需要在new之后立即调用
+    public int registerListener(IVEPlayerListener listener){
+        if(mNativeHandle != null){
+            return mNativeHandle.registerNativeCallback(listener);
         }
         return -1;
     }

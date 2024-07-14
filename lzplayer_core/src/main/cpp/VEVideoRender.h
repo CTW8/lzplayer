@@ -9,8 +9,10 @@
 #include <android/native_window_jni.h>
 #include "VEJvmOnLoad.h"
 #include "VEVideoDecoder.h"
+
 #include <string>
 #include <iostream>
+class VEPlayer;
 
 class VEVideoRender:public AHandler
 {
@@ -18,7 +20,8 @@ public:
     VEVideoRender();
     ~VEVideoRender();
 
-    status_t init(std::shared_ptr<VEVideoDecoder> decoder,ANativeWindow *win,int width,int height);
+    status_t init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps,
+                  std::shared_ptr<VEPlayer> player);
     status_t start();
     status_t pause();
     status_t resume();
@@ -52,7 +55,7 @@ private:
     ANativeWindow *mWin = nullptr;
     bool           mIsStarted = false;
     std::shared_ptr<VEVideoDecoder> mVDec = nullptr;
-
+    std::weak_ptr<VEPlayer> mPlayer;
 
     GLuint          mTextures[3];
     GLuint          mProgram;

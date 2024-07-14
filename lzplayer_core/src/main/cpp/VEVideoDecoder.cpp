@@ -117,7 +117,7 @@ bool VEVideoDecoder::onDecode() {
     // 从解码器中读取音频帧
     int ret = avcodec_send_packet(mVideoCtx, packet->getPacket());
     if (ret < 0) {
-        ALOGE("Error sending packet for decoding", ret);
+        ALOGE("Error sending packet for decoding ret:%d", ret);
         return false;
     }
     while (ret >= 0) {
@@ -126,7 +126,7 @@ bool VEVideoDecoder::onDecode() {
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
         } else if (ret < 0) {
-            ALOGE("Error during decoding", ret);
+            ALOGE("Error during decoding %d", ret);
             break;
         }
         frame->timestamp = av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE});

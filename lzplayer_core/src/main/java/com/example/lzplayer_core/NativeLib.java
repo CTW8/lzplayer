@@ -4,6 +4,7 @@ import android.view.Surface;
 
 public class NativeLib {
     private long mHandle = 0;
+    private IVEPlayerListener mListener;
 
     // Used to load the 'lzplayer_core' library on application startup.
     static {
@@ -61,6 +62,32 @@ public class NativeLib {
             return nativeRelease(mHandle);
         }
         return -1;
+    }
+
+    public int registerNativeCallback(IVEPlayerListener callback){
+        if(callback == null){
+            return -1;
+        }
+        mListener = callback;
+        return 1;
+    }
+
+    public void onNativeInfoCallback(int type,int msg1,double msg2,String msg3,Object obj){
+        if(mListener != null){
+            mListener.onInfo(type,msg1,msg2,msg3,obj);
+        }
+    }
+
+    public void onNativeErrorCallback(int type,int msg1,String msg3){
+        if(mListener != null){
+            mListener.onError(type,msg1,0,msg3);
+        }
+    }
+
+    public void onNativeProgress(int progress){
+        if(mListener != null){
+            mListener.onProgress(progress);
+        }
     }
 
     private static native long createNativeHandle();

@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "AHandler"
+//#define LOG_TAG "AHandler"
 #include "Log.h"
 
 #include "AHandler.h"

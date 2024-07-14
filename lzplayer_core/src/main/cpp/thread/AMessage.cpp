@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "AMessage"
+//#define LOG_TAG "AMessage"
 //#define LOG_NDEBUG 0
 //#define DUMP_STATS
 
