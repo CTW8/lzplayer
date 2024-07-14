@@ -20,14 +20,14 @@ typedef std::function<void(int type,int msg1,double msg2,std::string msg3,void *
 typedef std::function<void(int type,int code,std::string msg)> funOnErrorCallback;
 typedef std::function<void(int progress)> funOnProgressCallback;
 
-class VEPlayer : public AHandler
+class VEPlayer
 {
 public:
     VEPlayer();
     ~VEPlayer();
 
-protected:
-    void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+//protected:
+//    void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
 public:
     /// setDataSource

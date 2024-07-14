@@ -56,7 +56,7 @@ int VEPlayer::prepare()
     mVideoRender = std::make_shared<VEVideoRender>();
     mVideoRenderLooper->registerHandler(mVideoRender);
 
-    mVideoRender->init(mVideoDecoder,mWindow,mViewWidth,mViewHeight,mMediaInfo->fps,std::dynamic_pointer_cast<VEPlayer>(shared_from_this()));
+    mVideoRender->init(mVideoDecoder,mWindow,mViewWidth,mViewHeight,mMediaInfo->fps,this);
 
     //创建音频播放线程
     mAudioOutputLooper = std::make_shared<ALooper>();
@@ -128,9 +128,9 @@ int VEPlayer::reset()
     return 0;
 }
 
-void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
-
-}
+//void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
+//
+//}
 
 VEPlayer::VEPlayer() {
 

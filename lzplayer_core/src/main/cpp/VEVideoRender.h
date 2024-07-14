@@ -21,7 +21,7 @@ public:
     ~VEVideoRender();
 
     status_t init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps,
-                  std::shared_ptr<VEPlayer> player);
+                  VEPlayer* player);
     status_t start();
     status_t pause();
     status_t resume();
@@ -55,7 +55,7 @@ private:
     ANativeWindow *mWin = nullptr;
     bool           mIsStarted = false;
     std::shared_ptr<VEVideoDecoder> mVDec = nullptr;
-    std::weak_ptr<VEPlayer> mPlayer;
+    VEPlayer* mPlayer = nullptr;
 
     GLuint          mTextures[3];
     GLuint          mProgram;

@@ -43,10 +43,7 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             std::shared_ptr<void> tmp = nullptr;
             msg->findObject("vdec",&tmp);
             mVDec = std::static_pointer_cast<VEVideoDecoder>(tmp);
-            tmp = nullptr;
-            msg->findObject("player",&tmp);
-            mPlayer = std::static_pointer_cast<VEPlayer>(tmp);
-
+            msg->findPointer("player",(void**)&mPlayer);
             msg->findInt32("width",&mViewWidth);
             msg->findInt32("height",&mViewHeight);
             onInit(mWin);
@@ -86,14 +83,14 @@ VEVideoRender::~VEVideoRender() {
 }
 
 status_t VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps,
-                             std::shared_ptr<VEPlayer> player) {
+                             VEPlayer* player) {
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit,shared_from_this());
     msg->setPointer("win",win);
     msg->setInt32("width",width);
     msg->setInt32("height",height);
     msg->setInt32("fps",fps);
     msg->setObject("vdec",decoder);
-    msg->setObject("player",player);
+    msg->setPointer("player",player);
     msg->post();
     return 0;
 }
