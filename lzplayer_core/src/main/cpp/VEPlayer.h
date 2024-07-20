@@ -75,6 +75,24 @@ public:
 
     void setOnProgressListener(funOnProgressCallback callback);
 
+    void notifyInfo(int type,int msg1,double msg2,std::string msg3,void *msg4){
+        if(onInfoCallback){
+            onInfoCallback(type,msg1,msg2,msg3,msg4);
+        }
+    }
+
+    void notifyError(int type,int code,std::string msg){
+        if(onErrorCallback){
+            onErrorCallback(type,code,msg);
+        }
+    }
+
+    void notifyProgress(int64_t progress){
+        if(onProgressCallback){
+            onProgressCallback(progress);
+        }
+    }
+
 private:
     pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
     std::shared_ptr<VEDemux> mDemux = nullptr;

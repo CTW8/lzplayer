@@ -64,6 +64,13 @@ public class NativeLib {
         return -1;
     }
 
+    public long getDuration(){
+        if(mHandle != 0){
+            return nativeGetDuration(mHandle);
+        }
+        return -1;
+    }
+
     public int registerNativeCallback(IVEPlayerListener callback){
         if(callback == null){
             return -1;
@@ -93,7 +100,7 @@ public class NativeLib {
     private static native long createNativeHandle();
     private native int nativeInit(long handle,String path);
     private native int nativeSetSurface(long handle,Surface surface,int width,int height);
-
+    private native long nativeGetDuration(long handle);
     private native int nativeStart(long handle);
     private native int nativePause(long handle);
     private native int nativeStop(long handle);

@@ -208,7 +208,7 @@ status_t VEDemux::onOpen(std::string path) {
         avformat_close_input(&mFormatContext);
         return -1;
     }
-
+    mDuration = mFormatContext->duration/1000;
     ///获取文件信息
     for (unsigned int i = 0; i < mFormatContext->nb_streams; i++) {
         AVStream* stream = mFormatContext->streams[i];

@@ -52,6 +52,13 @@ public class VEPlayer {
         return -1;
     }
 
+    public long getDuration(){
+        if(mNativeHandle != null){
+            return mNativeHandle.getDuration();
+        }
+        return -1;
+    }
+
     ///获取所有底层player信息需要在new之后立即调用
     public int registerListener(IVEPlayerListener listener){
         if(mNativeHandle != null){

@@ -4,6 +4,7 @@
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 #include "glm/ext/matrix_projection.hpp"
+#include "VEPlayer.h"
 
 const char* vertexShaderSource = R"(
 #version 300 es
@@ -111,7 +112,7 @@ status_t VEVideoRender::unInit() {
 }
 
 bool VEVideoRender::onInit(ANativeWindow * win) {
-    ALOGI("VEVideoRender::%s",__FUNCTION__ );
+    ALOGI("VEPlayer VEVideoRender::%s",__FUNCTION__ );
     JNIEnv *env = AttachCurrentThreadEnv();
     // 获取默认的 EGL 显示设备
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -197,6 +198,12 @@ bool VEVideoRender::onRender() {
     std::shared_ptr<VEFrame> frame = nullptr;
 
     mVDec->readFrame(frame);
+
+    if(frame == nullptr){
+        ALOGE("VEVideoRender::onRender read frame is null!!!");
+        return false;
+    }
+
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -275,7 +282,9 @@ bool VEVideoRender::onRender() {
 
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     eglSwapBuffers(eglDisplay,eglSurface);
-    ALOGI("VEVideoRender::%s exit",__FUNCTION__ );
+
+    mPlayer->notifyProgress(frame->timestamp);
+    ALOGI("VEVideoRender::%s exit timestamp:%" PRId64,__FUNCTION__ ,frame->timestamp);
     return true;
 }
 

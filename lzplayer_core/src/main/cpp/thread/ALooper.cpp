@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "ALooper"
+//#define LOG_TAG "ALooper"
 #include "ALooper.h"
 
 #include "ALooperRoster.h"

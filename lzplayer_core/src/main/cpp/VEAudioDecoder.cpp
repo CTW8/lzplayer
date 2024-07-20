@@ -40,7 +40,7 @@ int VEAudioDecoder::flush()
 int VEAudioDecoder::readFrame(std::shared_ptr<VEFrame> &frame)
 {
     std::unique_lock<std::mutex> lk(mMutex);
-    ALOGI("VEAudioDecoder::readFrame mFrameQueue size:%d",mFrameQueue.size());
+    ALOGI("VEAudioDecoder::readFrame mFrameQueue size:%lu",mFrameQueue.size());
     if(mFrameQueue.size() == 0){
         mCond.wait(lk);
     }

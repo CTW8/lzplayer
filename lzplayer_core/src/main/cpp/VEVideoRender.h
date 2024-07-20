@@ -1,5 +1,6 @@
 #ifndef __VE_VIDEO_RENDER__
 #define __VE_VIDEO_RENDER__
+
 #include <memory>
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
@@ -9,11 +10,9 @@
 #include <android/native_window_jni.h>
 #include "VEJvmOnLoad.h"
 #include "VEVideoDecoder.h"
-
 #include <string>
 #include <iostream>
 class VEPlayer;
-
 class VEVideoRender:public AHandler
 {
 public:

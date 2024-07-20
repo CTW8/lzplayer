@@ -129,8 +129,7 @@ bool VEVideoDecoder::onDecode() {
             ALOGE("Error during decoding %d", ret);
             break;
         }
-        frame->timestamp = av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE});
-        ALOGD("video frame pts:%" PRId64,frame->timestamp);
+
 
         std::shared_ptr<VEFrame> videoFrame = std::make_shared<VEFrame>(frame->getFrame()->width,frame->getFrame()->height,AV_PIX_FMT_YUV420P);
 
@@ -139,6 +138,9 @@ bool VEVideoDecoder::onDecode() {
                                              frame->getFrame()->data[2],frame->getFrame()->linesize[2],
                                              videoFrame->getFrame()->data[0],videoFrame->getFrame()->data[1],videoFrame->getFrame()->data[2],
                                              frame->getFrame()->width,frame->getFrame()->height);
+
+        videoFrame->timestamp = av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE});
+        ALOGD("video frame pts:%" PRId64,videoFrame->timestamp);
 
         std::unique_lock<std::mutex> lk(mMutex);
         if(mFrameQueue.size() >= FRAME_QUEUE_MAX_SIZE ){

@@ -22,7 +22,8 @@ Java_com_example_lzplayer_1core_NativeLib_nativeInit(JNIEnv *env, jobject thiz, 
     global_NativeLib = env->NewGlobalRef(thiz);
     // TODO: implement nativeInit()
     VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
-    vePlayer->setOnInfoListener([env](int type,int msg1,double msg2,std::string msg3,void*msg4){
+    vePlayer->setOnInfoListener([](int type,int msg1,double msg2,std::string msg3,void*msg4){
+        JNIEnv *env = AttachCurrentThreadEnv();
         jclass jclass_NativeLib = env->GetObjectClass(global_NativeLib);
         jmethodID methodId = env->GetMethodID(jclass_NativeLib, "onNativeInfoCallback", "(IIDLjava/lang/String;Ljava/lang/Object;)V");
 
@@ -30,22 +31,27 @@ Java_com_example_lzplayer_1core_NativeLib_nativeInit(JNIEnv *env, jobject thiz, 
         jobject someObject = NULL; // 或者用一个实际的Java对象
         env->CallVoidMethod(global_NativeLib, methodId, type, msg1, msg2, message, someObject);
         env->DeleteLocalRef(message);
+        env->DeleteLocalRef(jclass_NativeLib);
     });
 
-    vePlayer->setOnErrorListener([env](int type,int code,std::string msg){
+    vePlayer->setOnErrorListener([](int type,int code,std::string msg){
+        JNIEnv *env = AttachCurrentThreadEnv();
         jclass jclass_NativeLib = env->GetObjectClass(global_NativeLib);
         jmethodID methodId = env->GetMethodID(jclass_NativeLib, "onNativeErrorCallback", "(IILjava/lang/String;)V");
 
         jstring message = env->NewStringUTF(msg.c_str());
         env->CallVoidMethod(global_NativeLib, methodId, type, code, message);
         env->DeleteLocalRef(message);
+        env->DeleteLocalRef(jclass_NativeLib);
     });
 
-    vePlayer->setOnProgressListener([env](int progress){
+    vePlayer->setOnProgressListener([](int progress){
+        JNIEnv *env = AttachCurrentThreadEnv();
         jclass jclass_NativeLib = env->GetObjectClass(global_NativeLib);
         jmethodID methodId = env->GetMethodID(jclass_NativeLib, "onNativeProgress", "(I)V");
 
         env->CallVoidMethod(global_NativeLib, methodId, progress);
+        env->DeleteLocalRef(jclass_NativeLib);
     });
 
     JniString jPath(env,path);
@@ -111,4 +117,13 @@ Java_com_example_lzplayer_1core_NativeLib_nativeRelease(JNIEnv *env, jobject thi
     vePlayer->release();
     env->DeleteGlobalRef(global_NativeLib);
     return 0;
+}
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_com_example_lzplayer_1core_NativeLib_nativeGetDuration(JNIEnv *env, jobject thiz,
+                                                            jlong handle) {
+    // TODO: implement nativeGetDuration()
+    VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
+    CHECK_NULL();
+    return vePlayer->getDuration();
 }
