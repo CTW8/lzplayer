@@ -4,7 +4,24 @@
 
 #include "VEJvmOnLoad.h"
 #include <jni.h>
+
+#include "native_PlayerInterface.h"
 JavaVM* gJvm = nullptr;
+
+
+// 定义 JNI 方法表
+static JNINativeMethod gVEPlayerMethods[] = {
+        {"createNativeHandle", "()J", (void *)createNativeHandle},
+        {"nativeInit", "(JLjava/lang/String;)I", (void *)nativeInit},
+        {"nativeSetSurface", "(JLandroid/view/Surface;II)I", (void *)nativeSetSurface},
+        {"nativeGetDuration", "(J)J", (void *)nativeGetDuration},
+        {"nativeStart", "(J)I", (void *)nativeStart},
+        {"nativePause", "(J)I", (void *)nativePause},
+        {"nativeStop", "(J)I", (void *)nativeStop},
+        {"nativeSeekTo", "(JJ)I", (void *)nativeSeekTo},
+        {"nativeRelease", "(J)I", (void *)nativeRelease},
+};
+
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     JNIEnv* env;
@@ -13,21 +30,19 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
         return JNI_ERR;
     }
 
-    // Register native methods here if needed
-    // jclass clazz = env->FindClass("com/example/myapp/MainActivity");
-    // if (clazz == nullptr) {
-    //     ALOGE("Failed to find class 'com/example/myapp/MainActivity'");
-    //     return JNI_ERR;
-    // }
-    // JNINativeMethod methods[] = {
-    //     {"nativeMethod", "()V", reinterpret_cast<void*>(Java_com_example_myapp_MainActivity_nativeMethod)}
-    // };
-    // if (env->RegisterNatives(clazz, methods, sizeof(methods) / sizeof(methods[0])) < 0) {
-    //     ALOGE("Failed to register native methods");
-    //     return JNI_ERR;
-    // }
-
     gJvm = vm;
+
+    // 获取 Java 类
+    jclass clazz = env->FindClass("com/example/lzplayer_core/NativeLib");
+    if (clazz == nullptr) {
+        return -1;
+    }
+
+    // 注册 JNI 方法
+    if (env->RegisterNatives(clazz, gVEPlayerMethods, sizeof(gVEPlayerMethods) / sizeof(gVEPlayerMethods[0])) < 0) {
+        return -1;
+    }
+
     ALOGI("JNI_OnLoad called successfully");
     return JNI_VERSION_1_6;
 }

@@ -132,6 +132,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 btnSeekBar.setProgress((int)(progress*1000.0f/(mDuration*1000)));
             }
         });
+
+        btnSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+                Log.d(TAG,"onProgressChanged value:" + i);
+                mPlayer.seekTo(i*mDuration/1000);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+
+            }
+        });
     }
 
     @Override

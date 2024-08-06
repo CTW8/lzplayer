@@ -25,6 +25,7 @@ public:
     status_t init(std::shared_ptr<VEAudioDecoder> decoder,int samplerate,int channel,int format);
     void start();
     void pause();
+    void resume();
     void stop();
     void unInit();
 
@@ -35,6 +36,7 @@ private:
     bool onStart();
     bool onPlay();
     bool onPause();
+    bool onResume();
     bool onStop();
     bool onUnInit();
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
@@ -43,6 +45,7 @@ private:
         kWhatInit                = 'init',
         kWhatStart               = 'star',
         kWhatPause               = 'paus',
+        kWhatResume              = 'resu',
         kWhatStop                = 'stop',
         kWhatPlay                = 'play',
         kWhatUninit              = 'unin'

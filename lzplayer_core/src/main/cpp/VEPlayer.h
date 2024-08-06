@@ -67,23 +67,17 @@ public:
 
     void setVolume(int volume);
 
+    int setSpeedRate(float speed);
+
     /// setPlaybackParams
 
     void setOnInfoListener(funOnInfoCallback callback);
-
-    void setOnErrorListener(funOnErrorCallback callback);
 
     void setOnProgressListener(funOnProgressCallback callback);
 
     void notifyInfo(int type,int msg1,double msg2,std::string msg3,void *msg4){
         if(onInfoCallback){
             onInfoCallback(type,msg1,msg2,msg3,msg4);
-        }
-    }
-
-    void notifyError(int type,int code,std::string msg){
-        if(onErrorCallback){
-            onErrorCallback(type,code,msg);
         }
     }
 
@@ -118,7 +112,6 @@ private:
     int mViewHeight = 0;
 
     funOnProgressCallback onProgressCallback;
-    funOnErrorCallback  onErrorCallback;
     funOnInfoCallback onInfoCallback;
 };
 

@@ -96,13 +96,16 @@ int VEPlayer::stop()
 int VEPlayer::pause()
 {
     //控制各个线程执行状态
+    mVideoRender->pause();
+    mAudioOutput->pause();
     return 0;
 }
 
 int VEPlayer::resume()
 {
     //控制各个线程执行状态
-
+    mVideoRender->resume();
+    mAudioOutput->start();
     return 0;
 }
 
@@ -119,12 +122,17 @@ int VEPlayer::release()
 int VEPlayer::seek(int64_t timestamp)
 {
     ///发送seek命令
-
+    mDemux->seek(timestamp);
+    mVideoDecoder->flush();
+    mAudioDecoder->flush();
     return 0;
 }
 
 int VEPlayer::reset()
 {
+    mDemux->seek(0);
+    mVideoDecoder->flush();
+    mAudioDecoder->flush();
     return 0;
 }
 
@@ -169,10 +177,6 @@ void VEPlayer::setVolume(int volume) {
 
 void VEPlayer::setOnInfoListener(funOnInfoCallback callback) {
     onInfoCallback = callback;
-}
-
-void VEPlayer::setOnErrorListener(funOnErrorCallback callback) {
-    onErrorCallback = callback;
 }
 
 void VEPlayer::setOnProgressListener(funOnProgressCallback callback) {

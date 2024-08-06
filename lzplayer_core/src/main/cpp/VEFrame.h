@@ -8,6 +8,7 @@ extern "C"{
     #include "libavutil/pixfmt.h"
     #include "libavutil/channel_layout.h"
 }
+
 class VEFrame{
 public:
     VEFrame(){
@@ -63,10 +64,24 @@ public:
         return *this;
     }
 
-public:
-    uint64_t timestamp=0;
+    void setTimestamp(uint64_t pts){
+        timestamp = pts;
+    }
+
+    uint64_t getTimestamp(){
+        return timestamp;
+    }
+
+    enum EFrameType{
+        E_FRAME_TYPE_UNKNOW = -1,
+        E_FRAME_TYPE_VIDEO,
+        E_FRAME_TYPE_AUDIO,
+        E_FRAME_TYPE_EOF
+    };
 
 private:
+    uint64_t timestamp = 0;
+    EFrameType eFrameType = E_FRAME_TYPE_UNKNOW;
     AVFrame *mFrame;
 };
 #endif

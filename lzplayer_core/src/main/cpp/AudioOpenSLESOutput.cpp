@@ -89,6 +89,14 @@ void AudioOpenSLESOutput::onMessageReceived(const std::shared_ptr<AMessage> &msg
             onStart();
             break;
         }
+        case kWhatPause:{
+            onPause();
+            break;
+        }
+        case kWhatResume:{
+            onResume();
+            break;
+        }
         case kWhatPlay:{
             if(!mIstarted){
                 break;
@@ -305,4 +313,14 @@ AudioOpenSLESOutput::~AudioOpenSLESOutput() {
 void AudioOpenSLESOutput::pause() {
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPause,shared_from_this());
     msg->post();
+}
+
+void AudioOpenSLESOutput::resume() {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatResume,shared_from_this());
+    msg->post();
+}
+
+bool AudioOpenSLESOutput::onResume() {
+
+    return false;
 }

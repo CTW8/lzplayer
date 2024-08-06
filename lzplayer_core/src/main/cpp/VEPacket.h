@@ -36,7 +36,15 @@ public:
         return mPacket;
     }
 
+    enum EPacketType{
+        E_PACKET_TYPE_UNKNOW = -1,
+        E_PACKET_TYPE_VIDEO,
+        E_PACKET_TYPE_AUDIO,
+        E_PACKET_TYPE_EOF
+    };
+
 private:
+    EPacketType ePacketType = E_PACKET_TYPE_UNKNOW;
     AVPacket * mPacket;
 };
 

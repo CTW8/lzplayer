@@ -139,8 +139,8 @@ bool VEVideoDecoder::onDecode() {
                                              videoFrame->getFrame()->data[0],videoFrame->getFrame()->data[1],videoFrame->getFrame()->data[2],
                                              frame->getFrame()->width,frame->getFrame()->height);
 
-        videoFrame->timestamp = av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE});
-        ALOGD("video frame pts:%" PRId64,videoFrame->timestamp);
+        videoFrame->setTimestamp(av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE}));
+        ALOGD("video frame pts:%" PRId64,videoFrame->getTimestamp());
 
         std::unique_lock<std::mutex> lk(mMutex);
         if(mFrameQueue.size() >= FRAME_QUEUE_MAX_SIZE ){

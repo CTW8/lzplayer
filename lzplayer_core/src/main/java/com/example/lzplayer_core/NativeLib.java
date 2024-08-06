@@ -79,6 +79,12 @@ public class NativeLib {
         return 1;
     }
 
+    private static void postEventFromNative(int type,int msg1,double msg2,String msg3,Object obj){
+        switch (type){
+
+        }
+    }
+
     public void onNativeInfoCallback(int type,int msg1,double msg2,String msg3,Object obj){
         if(mListener != null){
             mListener.onInfo(type,msg1,msg2,msg3,obj);

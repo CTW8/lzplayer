@@ -234,7 +234,7 @@ bool VEVideoRender::onRender() {
     glUniform1i(uTextureLoc, 1);
     glUniform1i(vTextureLoc, 2);
 
-    ALOGD("### mFrameWidth:%d,mFrameHeight:%d mViewWidth:%d,mViewHeight:%d pts:%" PRId64,mFrameWidth,mFrameHeight,mViewWidth,mViewHeight,frame->timestamp);
+    ALOGD("### mFrameWidth:%d,mFrameHeight:%d mViewWidth:%d,mViewHeight:%d pts:%" PRId64,mFrameWidth,mFrameHeight,mViewWidth,mViewHeight,frame->getTimestamp());
 //    {
 //        fwrite(frame->getFrame()->data[0],mFrameWidth* mFrameHeight,1,fp);
 //        fwrite(frame->getFrame()->data[1],mFrameWidth* mFrameHeight/4,1,fp);
@@ -283,8 +283,8 @@ bool VEVideoRender::onRender() {
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     eglSwapBuffers(eglDisplay,eglSurface);
 
-    mPlayer->notifyProgress(frame->timestamp);
-    ALOGI("VEVideoRender::%s exit timestamp:%" PRId64,__FUNCTION__ ,frame->timestamp);
+    mPlayer->notifyProgress(frame->getTimestamp());
+    ALOGI("VEVideoRender::%s exit timestamp:%" PRId64,__FUNCTION__ ,frame->getTimestamp());
     return true;
 }
 

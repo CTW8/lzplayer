@@ -34,17 +34,6 @@ Java_com_example_lzplayer_1core_NativeLib_nativeInit(JNIEnv *env, jobject thiz, 
         env->DeleteLocalRef(jclass_NativeLib);
     });
 
-    vePlayer->setOnErrorListener([](int type,int code,std::string msg){
-        JNIEnv *env = AttachCurrentThreadEnv();
-        jclass jclass_NativeLib = env->GetObjectClass(global_NativeLib);
-        jmethodID methodId = env->GetMethodID(jclass_NativeLib, "onNativeErrorCallback", "(IILjava/lang/String;)V");
-
-        jstring message = env->NewStringUTF(msg.c_str());
-        env->CallVoidMethod(global_NativeLib, methodId, type, code, message);
-        env->DeleteLocalRef(message);
-        env->DeleteLocalRef(jclass_NativeLib);
-    });
-
     vePlayer->setOnProgressListener([](int progress){
         JNIEnv *env = AttachCurrentThreadEnv();
         jclass jclass_NativeLib = env->GetObjectClass(global_NativeLib);
