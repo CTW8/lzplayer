@@ -9,8 +9,11 @@
 #include "ScopedUtfChars.h"
 #include "VEJvmOnLoad.h"
 #include "JNIHelpers.h"
+#include "VEDef.h"
 
 #define  CHECK_NULL()  {if(vePlayer == nullptr){ return -1;}}while(0)
+
+jmethodID jNativeCallback;
 //-----------------------------------------------------------------------------------
 // ref-counted object for callbacks
 class JNIMediaPlayerListener: public MediaPlayerListener
@@ -55,6 +58,26 @@ void JNIMediaPlayerListener::notify(int msg, int ext1, int ext2, const void *obj
 {
     JNIEnv *env = AttachCurrentThreadEnv();
     switch (msg) {
+        case VE_PLAYER_NOTIFY_EVENT_ON_EOS:{
+            env->CallStaticVoidMethod(mClass, jNativeCallback, mObject,msg, ext1, ext2, NULL);
+            break;
+        }
+        case VE_PLAYER_NOTIFY_EVENT_ON_ERROR:{
+            env->CallStaticVoidMethod(mClass, jNativeCallback, mObject,msg, ext1, ext2, NULL);
+            break;
+        }
+        case VE_PLAYER_NOTIFY_EVENT_ON_INFO:{
+            env->CallStaticVoidMethod(mClass, jNativeCallback, mObject,msg, ext1, ext2, NULL);
+            break;
+        }
+        case VE_PLAYER_NOTIFY_EVENT_ON_PREPARED:{
+            env->CallStaticVoidMethod(mClass, jNativeCallback, mObject,msg, ext1, ext2, NULL);
+            break;
+        }
+        case VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS:{
+            env->CallStaticVoidMethod(mClass, jNativeCallback, mObject,msg, ext1, ext2, NULL);
+            break;
+        }
         default:
             break;
     }
@@ -73,10 +96,10 @@ jlong createNativeHandle(JNIEnv *env, jclass clazz) {
         return -1;
     }
 
-    fields.post_event = env->GetStaticMethodID(clazz, "postEventFromNative",
+    jNativeCallback = env->GetStaticMethodID(clazz, "postEventFromNative",
                                                "(Ljava/lang/Object;IIILjava/lang/Object;)V");
-    if (fields.post_event == NULL) {
-        return;
+    if (jNativeCallback == NULL) {
+        return -1;
     }
 
     env->DeleteLocalRef(clazzNativeLib);
@@ -85,9 +108,10 @@ jlong createNativeHandle(JNIEnv *env, jclass clazz) {
 }
 
 // 初始化
-jint nativeInit(JNIEnv *env, jobject obj, jlong handle, jstring path) {
+jint nativeInit(JNIEnv *env, jobject thiz,jobject weak_this, jlong handle, jstring path) {
     VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
     CHECK_NULL();
+    std::shared_ptr<JNIMediaPlayerListener> listener = std::make_shared<JNIMediaPlayerListener>(env,thiz,weak_this);
     const char *nativePath = ScopedUtfChars(env,path).c_str();
     return vePlayer->setDataSource(nativePath);
 }

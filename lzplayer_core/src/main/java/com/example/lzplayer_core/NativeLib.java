@@ -1,10 +1,21 @@
 package com.example.lzplayer_core;
 
+import static com.example.lzplayer_core.IMediaPlayerListener.*;
+
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
+import android.os.Message;
 import android.view.Surface;
+
+import androidx.annotation.NonNull;
+
+import java.lang.ref.WeakReference;
 
 public class NativeLib {
     private long mHandle = 0;
     private IVEPlayerListener mListener;
+    private Handler mEventHandler;
 
     // Used to load the 'lzplayer_core' library on application startup.
     static {
@@ -17,7 +28,10 @@ public class NativeLib {
 
     public int init(String path){
         if(mHandle != 0){
-            return nativeInit(mHandle,path);
+            HandlerThread handlerThread = new HandlerThread("veplayer");
+            handlerThread.start();
+            mEventHandler = new EventHandler(handlerThread.getLooper());
+            return nativeInit(new WeakReference<NativeLib>(this), mHandle, path);
         }
         return -1;
     }
@@ -79,9 +93,21 @@ public class NativeLib {
         return 1;
     }
 
-    private static void postEventFromNative(int type,int msg1,double msg2,String msg3,Object obj){
+    private static void postEventFromNative(Object player_ref ,int type,int msg1,double msg2,String msg3,Object obj){
+        final NativeLib mp = (NativeLib)((WeakReference)player_ref).get();
         switch (type){
-
+            case VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS:{
+                break;
+            }
+            case VE_PLAYER_NOTIFY_EVENT_ON_INFO:{
+                break;
+            }
+            case VE_PLAYER_NOTIFY_EVENT_ON_PREPARED:{
+                break;
+            }
+            default:{
+                break;
+            }
         }
     }
 
@@ -103,8 +129,25 @@ public class NativeLib {
         }
     }
 
+    private class EventHandler extends Handler{
+        public EventHandler(Looper looper) {
+            super(looper);
+        }
+        @Override
+        public void handleMessage(@NonNull Message msg) {
+            switch (msg.what){
+                case VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS:{
+                    break;
+                }
+                default:{
+                    break;
+                }
+            }
+        }
+    }
+
     private static native long createNativeHandle();
-    private native int nativeInit(long handle,String path);
+    private native int nativeInit(Object mediaplayerThis,long handle,String path);
     private native int nativeSetSurface(long handle,Surface surface,int width,int height);
     private native long nativeGetDuration(long handle);
     private native int nativeStart(long handle);

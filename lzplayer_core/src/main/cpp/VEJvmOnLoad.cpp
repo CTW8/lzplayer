@@ -12,7 +12,7 @@ JavaVM* gJvm = nullptr;
 // 定义 JNI 方法表
 static JNINativeMethod gVEPlayerMethods[] = {
         {"createNativeHandle", "()J", (void *)createNativeHandle},
-        {"nativeInit", "(JLjava/lang/String;)I", (void *)nativeInit},
+        {"nativeInit", "(Ljava/lang/Object;JLjava/lang/String;)I", (void *)nativeInit},
         {"nativeSetSurface", "(JLandroid/view/Surface;II)I", (void *)nativeSetSurface},
         {"nativeGetDuration", "(J)J", (void *)nativeGetDuration},
         {"nativeStart", "(J)I", (void *)nativeStart},
