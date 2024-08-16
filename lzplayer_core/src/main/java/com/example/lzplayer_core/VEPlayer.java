@@ -59,6 +59,20 @@ public class VEPlayer {
         return -1;
     }
 
+    public int prepare(){
+        if(mNativeHandle != null){
+            return mNativeHandle.prepare();
+        }
+        return -1;
+    }
+
+    public int prepareAsync(){
+        if(mNativeHandle != null){
+            return mNativeHandle.prepareAsync();
+        }
+        return -1;
+    }
+
     ///获取所有底层player信息需要在new之后立即调用
     public int registerListener(IVEPlayerListener listener){
         if(mNativeHandle != null){

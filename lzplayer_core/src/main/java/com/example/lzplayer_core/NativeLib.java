@@ -15,7 +15,7 @@ import java.lang.ref.WeakReference;
 public class NativeLib {
     private long mHandle = 0;
     private IVEPlayerListener mListener;
-    private Handler mEventHandler;
+    private EventHandler mEventHandler;
 
     // Used to load the 'lzplayer_core' library on application startup.
     static {
@@ -30,7 +30,7 @@ public class NativeLib {
         if(mHandle != 0){
             HandlerThread handlerThread = new HandlerThread("veplayer");
             handlerThread.start();
-            mEventHandler = new EventHandler(handlerThread.getLooper());
+            mEventHandler = new EventHandler(this,handlerThread.getLooper());
             return nativeInit(new WeakReference<NativeLib>(this), mHandle, path);
         }
         return -1;
@@ -85,6 +85,20 @@ public class NativeLib {
         return -1;
     }
 
+    public int prepare(){
+        if(mHandle != 0){
+            return nativePrepare(mHandle);
+        }
+        return -1;
+    }
+
+    public int prepareAsync(){
+        if(mHandle != 0){
+            return nativePrepareAsync(mHandle);
+        }
+        return -1;
+    }
+
     public int registerNativeCallback(IVEPlayerListener callback){
         if(callback == null){
             return -1;
@@ -93,27 +107,17 @@ public class NativeLib {
         return 1;
     }
 
-    private static void postEventFromNative(Object player_ref ,int type,int msg1,double msg2,String msg3,Object obj){
+    private static void postEventFromNative(Object player_ref ,int what, int arg1, int arg2,Object obj){
         final NativeLib mp = (NativeLib)((WeakReference)player_ref).get();
-        switch (type){
-            case VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS:{
-                break;
-            }
-            case VE_PLAYER_NOTIFY_EVENT_ON_INFO:{
-                break;
-            }
-            case VE_PLAYER_NOTIFY_EVENT_ON_PREPARED:{
-                break;
-            }
-            default:{
-                break;
-            }
+        if (mp.mEventHandler != null) {
+            Message m = mp.mEventHandler.obtainMessage(what, arg1, arg2, obj);
+            mp.mEventHandler.sendMessage(m);
         }
     }
 
-    public void onNativeInfoCallback(int type,int msg1,double msg2,String msg3,Object obj){
+    public void onNativeInfoCallback(int type,int msg1,Object obj){
         if(mListener != null){
-            mListener.onInfo(type,msg1,msg2,msg3,obj);
+            mListener.onInfo(type,msg1,obj);
         }
     }
 
@@ -130,13 +134,32 @@ public class NativeLib {
     }
 
     private class EventHandler extends Handler{
-        public EventHandler(Looper looper) {
+        private NativeLib mMediaPlayer;
+
+        public EventHandler(NativeLib mp, Looper looper) {
             super(looper);
+            mMediaPlayer = mp;
         }
+
         @Override
         public void handleMessage(@NonNull Message msg) {
             switch (msg.what){
                 case VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS:{
+                    mMediaPlayer.onNativeProgress(msg.arg1);
+                    break;
+                }
+                case VE_PLAYER_NOTIFY_EVENT_ON_ERROR:{
+                    mMediaPlayer.onNativeErrorCallback(msg.arg1,msg.arg2,(String)msg.obj);
+                    break;
+                }
+                case VE_PLAYER_NOTIFY_EVENT_ON_EOS:{
+                    break;
+                }
+                case VE_PLAYER_NOTIFY_EVENT_ON_FIRST_FRAME:{
+                    break;
+                }
+                case VE_PLAYER_NOTIFY_EVENT_ON_INFO:{
+                    mMediaPlayer.onNativeInfoCallback(msg.arg1,msg.arg2,msg.obj);
                     break;
                 }
                 default:{
@@ -150,6 +173,8 @@ public class NativeLib {
     private native int nativeInit(Object mediaplayerThis,long handle,String path);
     private native int nativeSetSurface(long handle,Surface surface,int width,int height);
     private native long nativeGetDuration(long handle);
+    private native int nativePrepare(long handle);
+    private native int nativePrepareAsync(long handle);
     private native int nativeStart(long handle);
     private native int nativePause(long handle);
     private native int nativeStop(long handle);

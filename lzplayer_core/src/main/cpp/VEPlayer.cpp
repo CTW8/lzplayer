@@ -1,8 +1,11 @@
 #include "VEPlayer.h"
 
+#include <utility>
+
 
 int VEPlayer::setDataSource(std::string path)
 {
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     if(path.empty()){
         printf("## %s %d  params is invalid!!\n",__FUNCTION__,__LINE__);
         return VE_INVALID_PARAMS;
@@ -25,6 +28,7 @@ int VEPlayer::setDataSource(std::string path)
 
 int VEPlayer::prepare()
 {
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     ///创建audio dec thread
     mAudioDecodeLooper = std::make_shared<ALooper>();
     mAudioDecodeLooper->setName("adec_thread");
@@ -45,7 +49,6 @@ int VEPlayer::prepare()
 
     mVideoDecodeLooper->registerHandler(mVideoDecoder);
     mVideoDecoder->init(mDemux);
-
 
     ///创建视频渲染线程
 
@@ -73,7 +76,7 @@ int VEPlayer::prepare()
 int VEPlayer::start()
 {
     ///控制各个线程开始运行
-
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     mDemux->start();
     mVideoDecoder->start();
     mAudioDecoder->start();
@@ -84,6 +87,7 @@ int VEPlayer::start()
 
 int VEPlayer::stop()
 {
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     //控制各个线程执行状态
     mDemux->stop();
     mVideoDecoder->stop();
@@ -95,6 +99,7 @@ int VEPlayer::stop()
 
 int VEPlayer::pause()
 {
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     //控制各个线程执行状态
     mVideoRender->pause();
     mAudioOutput->pause();
@@ -103,6 +108,7 @@ int VEPlayer::pause()
 
 int VEPlayer::resume()
 {
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     //控制各个线程执行状态
     mVideoRender->resume();
     mAudioOutput->start();
@@ -112,7 +118,7 @@ int VEPlayer::resume()
 int VEPlayer::release()
 {
     ////释放播放器
-
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     if(mWindow){
         ANativeWindow_release(mWindow);
     }
@@ -121,6 +127,7 @@ int VEPlayer::release()
 
 int VEPlayer::seek(int64_t timestamp)
 {
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     ///发送seek命令
     mDemux->seek(timestamp);
     mVideoDecoder->flush();
@@ -130,6 +137,7 @@ int VEPlayer::seek(int64_t timestamp)
 
 int VEPlayer::reset()
 {
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     mDemux->seek(0);
     mVideoDecoder->flush();
     mAudioDecoder->flush();
@@ -145,11 +153,12 @@ VEPlayer::VEPlayer() {
 }
 
 VEPlayer::~VEPlayer() {
-
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
 }
 
-int VEPlayer::setDisplayOut(ANativeWindow *win,int viewWidth,int viewHeight) {
-
+int VEPlayer::setDisplayOut(ANativeWindow *win,int viewWidth,int viewHeight)
+{
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     mWindow = win;
     mViewWidth = viewWidth;
     mViewHeight = viewHeight;
@@ -157,14 +166,16 @@ int VEPlayer::setDisplayOut(ANativeWindow *win,int viewWidth,int viewHeight) {
 }
 
 void VEPlayer::setLooping() {
-
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
 }
 
 long VEPlayer::getCurrentPosition() {
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     return 0;
 }
 
 long VEPlayer::getDuration() {
+    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     if(mMediaInfo == nullptr){
         return -1;
     }
@@ -176,9 +187,13 @@ void VEPlayer::setVolume(int volume) {
 }
 
 void VEPlayer::setOnInfoListener(funOnInfoCallback callback) {
-    onInfoCallback = callback;
+    onInfoCallback = std::move(callback);
 }
 
 void VEPlayer::setOnProgressListener(funOnProgressCallback callback) {
-    onProgressCallback = callback;
+    onProgressCallback = std::move(callback);
+}
+
+int VEPlayer::setSpeedRate(float speed) {
+    return 0;
 }

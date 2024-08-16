@@ -124,3 +124,7 @@ void VEPlayerDirver::notifyListener(int msg, int ext1, int ext2, const void *obj
         mListener->notify(msg, ext1, ext2, obj);
     }
 }
+
+int VEPlayerDirver::prepareAsync() {
+    return 0;
+}

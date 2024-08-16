@@ -85,7 +85,7 @@ void JNIMediaPlayerListener::notify(int msg, int ext1, int ext2, const void *obj
 //-----------------------------------------------------------------------------------
 
 jlong createNativeHandle(JNIEnv *env, jclass clazz) {
-    ALOGD("createNativeHandle called");
+    ALOGD("%s %d called",__FUNCTION__ ,__LINE__);
     VEPlayerDirver *player = new VEPlayerDirver();
 
 
@@ -109,27 +109,88 @@ jlong createNativeHandle(JNIEnv *env, jclass clazz) {
 
 // 初始化
 jint nativeInit(JNIEnv *env, jobject thiz,jobject weak_this, jlong handle, jstring path) {
-    VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
+    ALOGD("%s %d called",__FUNCTION__ ,__LINE__);
+    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
     CHECK_NULL();
     std::shared_ptr<JNIMediaPlayerListener> listener = std::make_shared<JNIMediaPlayerListener>(env,thiz,weak_this);
-    const char *nativePath = ScopedUtfChars(env,path).c_str();
-    return vePlayer->setDataSource(nativePath);
+    ScopedUtfChars tmp(env, path);
+    std::string filePath = tmp.c_str();
+    return vePlayer->setDataSource(filePath);
 }
 
 // 设置 Surface
 jint nativeSetSurface(JNIEnv *env, jobject obj, jlong handle, jobject surface, jint width, jint height) {
-    VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
+    ALOGD("%s %d called",__FUNCTION__ ,__LINE__);
+    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
     CHECK_NULL();
 
     ANativeWindow* nativeWindow = ANativeWindow_fromSurface(env, surface);
     ALOGD("nativeSetSurface called with handle: %ld, width: %d, height: %d", handle, width, height);
+    {
+        GLuint          mProgram;
+        GLuint  mVAO,mVBO;
+        EGLDisplay eglDisplay;
+        EGLSurface eglSurface;
+        EGLContext eglContext;
 
-    return vePlayer->setDisplayOut(nativeWindow,width,height);
+        eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        if (eglDisplay == EGL_NO_DISPLAY) {
+            ALOGE("VEVideoRender eglGetDisplay failed");
+            return false;
+        }
+
+        // 初始化 EGL 显示设备
+        EGLint major, minor;
+        if (!eglInitialize(eglDisplay, &major, &minor)) {
+            ALOGE("VEVideoRender eglInitialize failed");
+            return false;
+        }
+
+        // 配置 EGL 表面属性
+        EGLConfig config;
+        EGLint numConfigs;
+        EGLint configAttribs[] = {
+                EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+                EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+                EGL_NONE
+        };
+        if (!eglChooseConfig(eglDisplay, configAttribs, &config, 1, &numConfigs)) {
+            ALOGE("VEVideoRender eglChooseConfig failed");
+            return false;
+        }
+
+        // 创建 EGL 上下文
+        EGLint contextAttribs[] = {
+                EGL_CONTEXT_CLIENT_VERSION, 3, // OpenGL ES 3.0
+                EGL_NONE
+        };
+        eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttribs);
+        if (eglContext == EGL_NO_CONTEXT) {
+            ALOGE("VEVideoRender eglCreateContext failed");
+            return false;
+        }
+
+        // 创建 EGL 表面
+        eglSurface = eglCreateWindowSurface(eglDisplay, config, nativeWindow, NULL);
+
+        // 将 EGL 上下文与当前线程关联
+        if (!eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
+            ALOGE("VEVideoRender eglMakeCurrent failed");
+            return false;
+        }
+
+        ALOGD("VEVideoRender mViewWidth:%d,mViewHeight:%d",width,height);
+        glViewport(0,0,width,height);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(0.5f, 1.0f, 1.0f, 1.0f);
+    }
+    return 0;//vePlayer->setSurface(nativeWindow,width,height);
 }
 
 // 获取时长
 jlong nativeGetDuration(JNIEnv *env, jobject obj, jlong handle) {
-    VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
+    ALOGD("%s %d called",__FUNCTION__ ,__LINE__);
+    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
     CHECK_NULL();
     ALOGD("nativeGetDuration called with handle: %ld", handle);
 
@@ -139,7 +200,7 @@ jlong nativeGetDuration(JNIEnv *env, jobject obj, jlong handle) {
 // 开始播放
 jint nativeStart(JNIEnv *env, jobject obj, jlong handle) {
     ALOGD("nativeStart called with handle: %ld", handle);
-    VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
+    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
     CHECK_NULL();
 
     return vePlayer->start();
@@ -148,14 +209,14 @@ jint nativeStart(JNIEnv *env, jobject obj, jlong handle) {
 // 暂停播放
 jint nativePause(JNIEnv *env, jobject obj, jlong handle) {
     ALOGD("nativePause called with handle: %ld", handle);
-    VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
+    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
     CHECK_NULL();
     return vePlayer->pause();
 }
 
 // 停止播放
 jint nativeStop(JNIEnv *env, jobject obj, jlong handle) {
-    VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
+    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
     CHECK_NULL();
     ALOGD("nativeStop called with handle: %ld", handle);
     return vePlayer->stop();
@@ -164,16 +225,33 @@ jint nativeStop(JNIEnv *env, jobject obj, jlong handle) {
 // 跳转
 jint nativeSeekTo(JNIEnv *env, jobject obj, jlong handle, jlong timestamp) {
     ALOGD("nativeSeekTo called with handle: %ld, timestamp: %ld", handle, timestamp);
-    VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
+    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
     CHECK_NULL();
-    return vePlayer->seek(timestamp);
+    return vePlayer->seekTo(timestamp);
 }
 
 // 释放资源
 jint nativeRelease(JNIEnv *env, jobject obj, jlong handle) {
     ALOGD("nativeRelease called with handle: %ld", handle);
-    VEPlayer * vePlayer = reinterpret_cast<VEPlayer*>(handle);
+    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
     CHECK_NULL();
     delete vePlayer;
     return 0;
+}
+
+jint nativePrepare(JNIEnv *env, jobject obj, jlong handle)
+{
+    ALOGD("nativePrepare called with handle: %ld", handle);
+    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    CHECK_NULL();
+
+    return vePlayer->prepare();
+}
+jint nativePrepareAsync(JNIEnv *env, jobject obj, jlong handle)
+{
+    ALOGD("nativePrepareAsync called with handle: %ld", handle);
+    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    CHECK_NULL();
+
+    return vePlayer->prepareAsync();
 }

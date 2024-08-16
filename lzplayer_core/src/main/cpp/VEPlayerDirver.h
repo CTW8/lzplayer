@@ -21,6 +21,7 @@ public:
     int setDataSource(std::string path);
     int setSurface(ANativeWindow * win,int width,int height);
     int prepare();
+    int prepareAsync();
     int start();
     int stop();
     int pause();

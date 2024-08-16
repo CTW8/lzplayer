@@ -112,19 +112,19 @@ status_t VEVideoRender::unInit() {
 }
 
 bool VEVideoRender::onInit(ANativeWindow * win) {
-    ALOGI("VEPlayer VEVideoRender::%s",__FUNCTION__ );
+    ALOGI("VEVideoRender::%s",__FUNCTION__ );
     JNIEnv *env = AttachCurrentThreadEnv();
     // 获取默认的 EGL 显示设备
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (eglDisplay == EGL_NO_DISPLAY) {
-        ALOGE("eglGetDisplay failed");
+        ALOGE("VEVideoRender eglGetDisplay failed");
         return false;
     }
 
     // 初始化 EGL 显示设备
     EGLint major, minor;
     if (!eglInitialize(eglDisplay, &major, &minor)) {
-        ALOGE("eglInitialize failed");
+        ALOGE("VEVideoRender eglInitialize failed");
         return false;
     }
 
@@ -137,7 +137,7 @@ bool VEVideoRender::onInit(ANativeWindow * win) {
             EGL_NONE
     };
     if (!eglChooseConfig(eglDisplay, configAttribs, &config, 1, &numConfigs)) {
-        ALOGE("eglChooseConfig failed");
+        ALOGE("VEVideoRender eglChooseConfig failed");
         return false;
     }
 
@@ -148,7 +148,7 @@ bool VEVideoRender::onInit(ANativeWindow * win) {
     };
     eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttribs);
     if (eglContext == EGL_NO_CONTEXT) {
-        ALOGE("eglCreateContext failed");
+        ALOGE("VEVideoRender eglCreateContext failed");
         return false;
     }
 
@@ -157,13 +157,13 @@ bool VEVideoRender::onInit(ANativeWindow * win) {
 
     // 将 EGL 上下文与当前线程关联
     if (!eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
-        ALOGE("eglMakeCurrent failed");
+        ALOGE("VEVideoRender eglMakeCurrent failed");
         return false;
     }
 
     mProgram = createProgram(vertexShaderSource,fragmentShaderSource);
     createTexture();
-    ALOGD("mViewWidth:%d,mViewHeight:%d",mViewWidth,mViewHeight);
+    ALOGD("VEVideoRender mViewWidth:%d,mViewHeight:%d",mViewWidth,mViewHeight);
     glViewport(0,0,mViewWidth,mViewHeight);
     glClearColor(0.5f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);

@@ -16,6 +16,8 @@ jlong createNativeHandle(JNIEnv *env, jclass clazz);
 jint nativeInit(JNIEnv *env, jobject thiz,jobject weak_this, jlong handle, jstring path);
 jint nativeSetSurface(JNIEnv *env, jobject obj, jlong handle, jobject surface, jint width, jint height);
 jlong nativeGetDuration(JNIEnv *env, jobject obj, jlong handle);
+jint nativePrepare(JNIEnv *env, jobject obj, jlong handle);
+jint nativePrepareAsync(JNIEnv *env, jobject obj, jlong handle);
 jint nativeStart(JNIEnv *env, jobject obj, jlong handle);
 jint nativePause(JNIEnv *env, jobject obj, jlong handle);
 jint nativeStop(JNIEnv *env, jobject obj, jlong handle);

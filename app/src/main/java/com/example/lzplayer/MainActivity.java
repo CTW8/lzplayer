@@ -117,7 +117,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         mPlayer.registerListener(new IVEPlayerListener() {
             @Override
-            public void onInfo(int type, int msg1, double msg2, String msg3, Object obj) {
+            public void onInfo(int type, int msg1, Object obj) {
 
             }
 
@@ -176,6 +176,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         switch (view.getId()){
             case R.id.btnPlay:{
                 mPlayer.init(filePath);
+                mPlayer.prepare();
                 mDuration = mPlayer.getDuration();
                 Log.d(TAG,"mDuration:"+mDuration);
                 mPlayer.start();
