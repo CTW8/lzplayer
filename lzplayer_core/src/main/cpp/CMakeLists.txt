@@ -51,7 +51,7 @@ target_link_libraries( # Specifies the target library.
         ${log-lib})
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIE -mfpu=neon -D__ARM_NEON__")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIE -mfpu=neon -D__ARM_NEON__")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIE -mfpu=neon -D__ARM_NEON__ -pedantic  -Wconversion")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fPIE -pie")
 add_definitions(-D__ARM_NEON__)
 add_definitions(-DLIBYUV_DISABLE_NEON=0)

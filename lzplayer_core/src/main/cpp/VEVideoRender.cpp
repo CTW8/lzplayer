@@ -73,14 +73,14 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
 }
 
 VEVideoRender::VEVideoRender() {
-    fp = fopen("/data/local/tmp/dump_420p.yuv","wb+");
+//    fp = fopen("/data/local/tmp/dump_420p.yuv","wb+");
 }
 
 VEVideoRender::~VEVideoRender() {
-    if(fp){
-        fflush(fp);
-        fclose(fp);
-    }
+//    if(fp){
+//        fflush(fp);
+//        fclose(fp);
+//    }
 }
 
 status_t VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps,

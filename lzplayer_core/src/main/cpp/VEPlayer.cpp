@@ -125,11 +125,11 @@ int VEPlayer::release()
     return 0;
 }
 
-int VEPlayer::seek(int64_t timestamp)
+int VEPlayer::seek(double timestampMs)
 {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     ///发送seek命令
-    mDemux->seek(timestamp);
+    mDemux->seek(timestampMs);
     mVideoDecoder->flush();
     mAudioDecoder->flush();
     return 0;

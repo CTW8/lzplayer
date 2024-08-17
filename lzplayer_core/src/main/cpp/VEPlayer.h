@@ -18,7 +18,7 @@
 
 typedef std::function<void(int type,int msg1,double msg2,std::string msg3,void *msg4)> funOnInfoCallback;
 typedef std::function<void(int type,int code,std::string msg)> funOnErrorCallback;
-typedef std::function<void(int progress)> funOnProgressCallback;
+typedef std::function<void(double progress)> funOnProgressCallback;
 
 class VEPlayer
 {
@@ -54,7 +54,7 @@ public:
     int release();
 
     /// seekTo
-    int seek(int64_t timestamp);
+    int seek(double timestampMs);
 
     /// reset
     int reset();
@@ -83,7 +83,7 @@ public:
 
     void notifyProgress(int64_t progress){
         if(onProgressCallback){
-            onProgressCallback(progress);
+            onProgressCallback((double)progress*1000.f/AV_TIME_BASE);
         }
     }
 

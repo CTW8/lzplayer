@@ -3,14 +3,17 @@
 //
 
 #include "VEPlayerDirver.h"
+#include "VEDef.h"
+
 VEPlayerDirver::VEPlayerDirver()
         : currentState(MEDIA_PLAYER_IDLE), mPlayer(std::make_shared<VEPlayer>()) {
     mPlayer->setOnInfoListener([this](int type, int msg1, double msg2, std::string msg3, void *msg4) {
-        notifyListener(type, msg1, static_cast<int>(msg2), msg4);
+        notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_INFO, msg1, static_cast<int>(msg2), msg4);
     });
 
-    mPlayer->setOnProgressListener([this](int progress) {
-        notifyListener(0, progress, 0, nullptr); // Assuming 0 is the progress type
+    mPlayer->setOnProgressListener([this](double progress) {
+        ALOGD("setOnProgressListener progress:%f",progress);
+        notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS, 0, progress, nullptr); // Assuming 0 is the progress type
     });
 }
 
@@ -28,9 +31,9 @@ int VEPlayerDirver::setDataSource(std::string path) {
 }
 
 int VEPlayerDirver::setSurface(ANativeWindow *win,int width,int height) {
-    if (currentState != MEDIA_PLAYER_INITIALIZED && currentState != MEDIA_PLAYER_PREPARED) {
-        return -1; // Error: Invalid state
-    }
+//    if (currentState != MEDIA_PLAYER_INITIALIZED && currentState != MEDIA_PLAYER_PREPARED) {
+//        return -1; // Error: Invalid state
+//    }
     if (mPlayer->setDisplayOut(win, width, height) == 0) { // Assuming 0 width and height for simplicity
         return 0;
     }
@@ -112,14 +115,14 @@ int VEPlayerDirver::setListener(std::shared_ptr<MediaPlayerListener> listener) {
     return 0;
 }
 
-int VEPlayerDirver::seekTo(int64_t timestamp) {
+int VEPlayerDirver::seekTo(double timestampMs) {
     if (currentState != MEDIA_PLAYER_STARTED && currentState != MEDIA_PLAYER_PAUSED) {
         return -1; // Error: Invalid state
     }
-    return mPlayer->seek(timestamp);
+    return mPlayer->seek(timestampMs);
 }
 
-void VEPlayerDirver::notifyListener(int msg, int ext1, int ext2, const void *obj) {
+void VEPlayerDirver::notifyListener(int msg, int ext1, double ext2, const void *obj) {
     if (mListener) {
         mListener->notify(msg, ext1, ext2, obj);
     }

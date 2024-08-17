@@ -7,9 +7,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.media.MediaPlayer;
-import android.net.Uri;
-import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Surface;
@@ -18,12 +15,8 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
 import android.widget.SeekBar;
-import android.widget.TextView;
 
 import com.example.lzplayer.databinding.ActivityMainBinding;
-
-import javax.microedition.khronos.egl.EGLConfig;
-import javax.microedition.khronos.opengles.GL10;
 
 
 import com.example.lzplayer_core.IVEPlayerListener;
@@ -31,15 +24,8 @@ import com.example.lzplayer_core.VEPlayer;
 import com.zhihu.matisse.Matisse;
 import com.zhihu.matisse.MimeType;
 import com.zhihu.matisse.engine.impl.GlideEngine;
-import com.zhihu.matisse.engine.impl.PicassoEngine;
-import com.zhihu.matisse.filter.Filter;
-import com.zhihu.matisse.internal.entity.CaptureStrategy;
-
-import java.io.IOException;
 
 import pub.devrel.easypermissions.EasyPermissions;
-
-import com.example.lzplayer_core.NativeLib;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener,SurfaceHolder.Callback {
     private final String TAG = "VEPlayer";
@@ -127,9 +113,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
 
             @Override
-            public void onProgress(int progress) {
-                Log.d(TAG,"progress :" + (int)(progress*1000.0f/(mDuration*1000)) + "  value:"+(progress*1.0f)/mDuration);
-                btnSeekBar.setProgress((int)(progress*1000.0f/(mDuration*1000)));
+            public void onProgress(double progressMs) {
+                double pre = progressMs/mDuration;
+                int value = (int)(pre*1000);
+                Log.d(TAG,"progressMs :" +progressMs + "  pre:"+ progressMs/mDuration + " value:"+value);
+
+                btnSeekBar.setProgress(value);
             }
         });
 
@@ -137,7 +126,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             @Override
             public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
                 Log.d(TAG,"onProgressChanged value:" + i);
-                mPlayer.seekTo(i*mDuration/1000);
+                if(b) {
+                    mPlayer.seekTo(i * mDuration / 1000);
+                }
             }
 
             @Override

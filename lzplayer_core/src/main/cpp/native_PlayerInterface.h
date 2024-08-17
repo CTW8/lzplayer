@@ -21,7 +21,7 @@ jint nativePrepareAsync(JNIEnv *env, jobject obj, jlong handle);
 jint nativeStart(JNIEnv *env, jobject obj, jlong handle);
 jint nativePause(JNIEnv *env, jobject obj, jlong handle);
 jint nativeStop(JNIEnv *env, jobject obj, jlong handle);
-jint nativeSeekTo(JNIEnv *env, jobject obj, jlong handle, jlong timestamp);
+jint nativeSeekTo(JNIEnv *env, jobject obj, jlong handle, jdouble timestamp);
 jint nativeRelease(JNIEnv *env, jobject obj, jlong handle);
 
 #ifdef __cplusplus

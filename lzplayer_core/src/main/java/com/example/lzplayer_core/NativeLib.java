@@ -2,10 +2,12 @@ package com.example.lzplayer_core;
 
 import static com.example.lzplayer_core.IMediaPlayerListener.*;
 
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
+import android.util.Log;
 import android.view.Surface;
 
 import androidx.annotation.NonNull;
@@ -16,6 +18,7 @@ public class NativeLib {
     private long mHandle = 0;
     private IVEPlayerListener mListener;
     private EventHandler mEventHandler;
+    private static final String TAG = "NativeLib";
 
     // Used to load the 'lzplayer_core' library on application startup.
     static {
@@ -64,9 +67,9 @@ public class NativeLib {
         return -1;
     }
 
-    public int seekTo(long timestamp){
+    public int seekTo(double timestampMs){
         if(mHandle != 0){
-            return nativeSeekTo(mHandle,timestamp);
+            return nativeSeekTo(mHandle,timestampMs);
         }
         return -1;
     }
@@ -107,10 +110,17 @@ public class NativeLib {
         return 1;
     }
 
-    private static void postEventFromNative(Object player_ref ,int what, int arg1, int arg2,Object obj){
+    private static void postEventFromNative(Object player_ref ,int what, int arg1, double arg2,Object obj){
         final NativeLib mp = (NativeLib)((WeakReference)player_ref).get();
         if (mp.mEventHandler != null) {
-            Message m = mp.mEventHandler.obtainMessage(what, arg1, arg2, obj);
+            Log.d(TAG,"postEventFromNative what:" + what + " arg1:" + arg1 + " arg2:" + arg2 + " obj:" + obj);
+            Message m = Message.obtain();
+            m.what = what;
+            m.arg1 = arg1;
+            Bundle data = new Bundle();
+            data.putDouble("arg2",arg2);
+            m.setData(data);
+            m.obj = obj;
             mp.mEventHandler.sendMessage(m);
         }
     }
@@ -127,7 +137,7 @@ public class NativeLib {
         }
     }
 
-    public void onNativeProgress(int progress){
+    public void onNativeProgress(double progress){
         if(mListener != null){
             mListener.onProgress(progress);
         }
@@ -145,7 +155,9 @@ public class NativeLib {
         public void handleMessage(@NonNull Message msg) {
             switch (msg.what){
                 case VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS:{
-                    mMediaPlayer.onNativeProgress(msg.arg1);
+                    Bundle data = msg.getData();
+                    double arg2 = data.getDouble("arg2");
+                    mMediaPlayer.onNativeProgress(arg2);
                     break;
                 }
                 case VE_PLAYER_NOTIFY_EVENT_ON_ERROR:{
@@ -178,6 +190,6 @@ public class NativeLib {
     private native int nativeStart(long handle);
     private native int nativePause(long handle);
     private native int nativeStop(long handle);
-    private native int nativeSeekTo(long handle,long timestamp);
+    private native int nativeSeekTo(long handle,double timestampMs);
     private native int nativeRelease(long handle);
 }

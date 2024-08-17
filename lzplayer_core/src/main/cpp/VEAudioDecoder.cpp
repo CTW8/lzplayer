@@ -10,15 +10,15 @@ VEAudioDecoder::VEAudioDecoder(){
     mAudioCtx = nullptr;
     mMediaInfo = nullptr;
     mIsStarted = false;
-    fp = fopen("/data/local/tmp/dump_dec.pcm","wb+");
+//    fp = fopen("/data/local/tmp/dump_dec.pcm","wb+");
 }
 
 VEAudioDecoder::~VEAudioDecoder()
 {
-    if(fp){
-        fflush(fp);
-        fclose(fp);
-    }
+//    if(fp){
+//        fflush(fp);
+//        fclose(fp);
+//    }
     uninit();
 }
 

@@ -45,7 +45,7 @@ public class VEPlayer {
         return -1;
     }
 
-    public int seekTo(long timestamp){
+    public int seekTo(double timestamp){
         if(mNativeHandle != null){
             return mNativeHandle.seekTo(timestamp);
         }

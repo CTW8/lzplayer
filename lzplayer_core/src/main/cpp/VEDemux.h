@@ -29,7 +29,7 @@ public:
     void pause();
     void resume();
     status_t read(bool isAudio,std::shared_ptr<VEPacket> &packet);
-    status_t seek(uint64_t pos);
+    status_t seek(double posMs);
     status_t close();
     std::shared_ptr<VEMediaInfo> getFileInfo();
 
@@ -37,6 +37,8 @@ private:
     status_t onOpen(std::string path);
     status_t onStart();
     status_t onRead();
+    status_t onSeek(double posMs);
+    void putPacket(std::shared_ptr<VEPacket> packet,bool isAudio);
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
 private:

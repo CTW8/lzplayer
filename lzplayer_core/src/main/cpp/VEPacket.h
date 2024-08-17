@@ -8,6 +8,13 @@ extern "C"
     #include "libavcodec/avcodec.h"
 }
 
+enum EPacketType{
+    E_PACKET_TYPE_UNKNOW = -1,
+    E_PACKET_TYPE_VIDEO,
+    E_PACKET_TYPE_AUDIO,
+    E_PACKET_TYPE_EOF
+};
+
 class VEPacket{
 public:
     VEPacket(){
@@ -36,12 +43,13 @@ public:
         return mPacket;
     }
 
-    enum EPacketType{
-        E_PACKET_TYPE_UNKNOW = -1,
-        E_PACKET_TYPE_VIDEO,
-        E_PACKET_TYPE_AUDIO,
-        E_PACKET_TYPE_EOF
-    };
+    void setPacketType(EPacketType type){
+        ePacketType = type;
+    }
+
+    EPacketType getPacketType(){
+        return ePacketType;
+    }
 
 private:
     EPacketType ePacketType = E_PACKET_TYPE_UNKNOW;

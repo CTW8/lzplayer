@@ -20,7 +20,7 @@ static JNINativeMethod gVEPlayerMethods[] = {
         {"nativeStart", "(J)I", (void *)nativeStart},
         {"nativePause", "(J)I", (void *)nativePause},
         {"nativeStop", "(J)I", (void *)nativeStop},
-        {"nativeSeekTo", "(JJ)I", (void *)nativeSeekTo},
+        {"nativeSeekTo", "(JD)I", (void *)nativeSeekTo},
         {"nativeRelease", "(J)I", (void *)nativeRelease},
 };
 

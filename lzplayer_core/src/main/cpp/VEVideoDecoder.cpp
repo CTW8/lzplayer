@@ -20,15 +20,15 @@ VEVideoDecoder::VEVideoDecoder()
 {
     mVideoCtx = nullptr;
     mMediaInfo = nullptr;
-    fp = fopen("/data/local/tmp/dump_dec.yuv","wb+");
+//    fp = fopen("/data/local/tmp/dump_dec.yuv","wb+");
 }
 
 VEVideoDecoder::~VEVideoDecoder()
 {
-    if(fp){
-        fflush(fp);
-        fclose(fp);
-    }
+//    if(fp){
+//        fflush(fp);
+//        fclose(fp);
+//    }
 }
 
 void VEVideoDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {

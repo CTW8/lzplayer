@@ -6,7 +6,7 @@
 
 #define SL_CHECK_ERROR(result, msg) \
     if (result != SL_RESULT_SUCCESS) { \
-        ALOGE("%s failed: %d", msg, result); \
+        LOGE("AudioOpenSLESOutput","%s failed: %d", msg, result); \
         return; \
     }
 #define AUDIO_OUTPUT_FRAMES_SIZE    (1024*4)
@@ -17,18 +17,18 @@ void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context) {
     if(pThis){
 
         std::lock_guard<std::mutex> lk(pThis->mMutex);
-        ALOGI("AudioOpenSLESOutput bufferQueueCallback enter remain size:%d",pThis->mRingBuffer->getAvailableData());
+        LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput bufferQueueCallback enter remain size:%d",pThis->mRingBuffer->getAvailableData());
         if(pThis->mRingBuffer->getAvailableData() >= AUDIO_OUTPUT_FRAMES_SIZE){
             pThis->mRingBuffer->read(pThis->mFrameBuf,AUDIO_OUTPUT_FRAMES_SIZE);
             (*pThis->mBufferQueue)->Enqueue(pThis->mBufferQueue, pThis->mFrameBuf, AUDIO_OUTPUT_FRAMES_SIZE);
-            fwrite(pThis->mFrameBuf,AUDIO_OUTPUT_FRAMES_SIZE,1,pThis->fp);
-            ALOGI("AudioOpenSLESOutput put frame buffer not slence size:%d",pThis->mRingBuffer->getAvailableData());
+//            fwrite(pThis->mFrameBuf,AUDIO_OUTPUT_FRAMES_SIZE,1,pThis->fp);
+            LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput put frame buffer not slence size:%d",pThis->mRingBuffer->getAvailableData());
         }else{
             int remain = pThis->mRingBuffer->getAvailableData();
             pThis->mRingBuffer->read(pThis->mFrameBuf,remain);
             memset(pThis->mFrameBuf + remain,0,AUDIO_OUTPUT_FRAMES_SIZE - remain);
             (*pThis->mBufferQueue)->Enqueue(pThis->mBufferQueue, pThis->mFrameBuf, AUDIO_OUTPUT_FRAMES_SIZE);
-            ALOGI("AudioOpenSLESOutput put frame buffer has slence");
+            LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput put frame buffer has slence");
         }
 
         if(pThis->mRingBuffer->getAvailableData() > 3 * AUDIO_OUTPUT_FRAMES_SIZE){
@@ -38,7 +38,7 @@ void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context) {
 }
 
 status_t AudioOpenSLESOutput::init(std::shared_ptr<VEAudioDecoder> decoder,int samplerate, int channel, int format) {
-    fp = fopen("/data/local/tmp/dump_arender.pcm","wb+");
+//    fp = fopen("/data/local/tmp/dump_arender.pcm","wb+");
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit,shared_from_this());
     msg->setInt32("samplerate",samplerate);
     msg->setInt32("channel",channel);
@@ -59,10 +59,10 @@ void AudioOpenSLESOutput::stop() {
 }
 
 void AudioOpenSLESOutput::unInit() {
-    if(fp){
-        fflush(fp);
-        fclose(fp);
-    }
+//    if(fp){
+//        fflush(fp);
+//        fclose(fp);
+//    }
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatUninit,shared_from_this());
     msg->post();
 }
@@ -121,37 +121,37 @@ void AudioOpenSLESOutput::onMessageReceived(const std::shared_ptr<AMessage> &msg
 }
 
 bool AudioOpenSLESOutput::onInit(int sampleRate, int channel, int format) {
-    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
+    LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     // 创建并初始化 OpenSL ES 引擎
     SLresult result;
     result = slCreateEngine(&mEngineObject, 0, NULL, 0, NULL, NULL);
     if (result != SL_RESULT_SUCCESS) {
-        ALOGI("Failed to create engine");
+        LOGI("AudioOpenSLESOutput","Failed to create engine");
         return false;
     }
 
     result = (*mEngineObject)->Realize(mEngineObject, SL_BOOLEAN_FALSE);
     if (result != SL_RESULT_SUCCESS) {
-        ALOGI("Failed to realize engine");
+        LOGI("AudioOpenSLESOutput","Failed to realize engine");
         return false;
     }
 
     result = (*mEngineObject)->GetInterface(mEngineObject, SL_IID_ENGINE, &mEngineEngine);
     if (result != SL_RESULT_SUCCESS) {
-        ALOGI("Failed to get engine interface");
+        LOGI("AudioOpenSLESOutput","Failed to get engine interface");
         return false;
     }
 
     // 创建输出混音器
     result = (*mEngineEngine)->CreateOutputMix(mEngineEngine, &mOutputMixObject, 0, nullptr, nullptr);
     if (result != SL_RESULT_SUCCESS) {
-        ALOGI("Failed to create output mix");
+        LOGI("AudioOpenSLESOutput","Failed to create output mix");
         return false;
     }
 
     result = (*mOutputMixObject)->Realize(mOutputMixObject, SL_BOOLEAN_FALSE);
     if (result != SL_RESULT_SUCCESS) {
-        ALOGI("Failed to realize output mix");
+        LOGI("AudioOpenSLESOutput","Failed to realize output mix");
         return false;
     }
 
@@ -178,32 +178,32 @@ bool AudioOpenSLESOutput::onInit(int sampleRate, int channel, int format) {
 
     result = (*mEngineEngine)->CreateAudioPlayer(mEngineEngine, &mPlayerObject, &audioSrc, &audioSnk, 2, ids, req);
     if (result != SL_RESULT_SUCCESS) {
-        ALOGI("Failed to create audio player");
+        LOGI("AudioOpenSLESOutput","Failed to create audio player");
         return false;
     }
 
     result = (*mPlayerObject)->Realize(mPlayerObject, SL_BOOLEAN_FALSE);
     if (result != SL_RESULT_SUCCESS) {
-        ALOGI("Failed to realize audio player");
+        LOGI("AudioOpenSLESOutput","Failed to realize audio player");
         return false;
     }
 
     result = (*mPlayerObject)->GetInterface(mPlayerObject, SL_IID_PLAY, &mPlayerPlay);
     if (result != SL_RESULT_SUCCESS) {
-        ALOGI("Failed to get play interface");
+        LOGI("AudioOpenSLESOutput","Failed to get play interface");
         return false;
     }
 
     result = (*mPlayerObject)->GetInterface(mPlayerObject, SL_IID_BUFFERQUEUE, &mBufferQueue);
     if (result != SL_RESULT_SUCCESS) {
-        ALOGI("Failed to get buffer queue interface");
+        LOGI("AudioOpenSLESOutput","Failed to get buffer queue interface");
         return false;
     }
 
     // 注册回调函数
     result = (*mBufferQueue)->RegisterCallback(mBufferQueue, bufferQueueCallback, this);
     if (result != SL_RESULT_SUCCESS) {
-        ALOGI("Failed to register buffer queue callback");
+        LOGI("AudioOpenSLESOutput","Failed to register buffer queue callback");
         return false;
     }
 
@@ -214,18 +214,18 @@ bool AudioOpenSLESOutput::onInit(int sampleRate, int channel, int format) {
 
     mRingBuffer = new VERingBuffer(10 * 1024 * 4);
     mFrameBuf = (uint8_t*) malloc(AUDIO_OUTPUT_FRAMES_SIZE);
-    ALOGI("OpenSL ES audio player initialized successfully");
+    LOGI("AudioOpenSLESOutput","OpenSL ES audio player initialized successfully");
     return false;
 }
 
 bool AudioOpenSLESOutput::onStart() {
-    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
+    LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     mIstarted = true;
 
     if (mPlayerPlay != NULL) {
         SLresult result = (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PLAYING);
         if (result != SL_RESULT_SUCCESS) {
-            ALOGI("AudioOpenSLESOutput Failed to set play state");
+            LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput Failed to set play state");
             return false;
         }
     }
@@ -236,7 +236,7 @@ bool AudioOpenSLESOutput::onStart() {
 }
 
 bool AudioOpenSLESOutput::onStop() {
-    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
+    LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     mIstarted = false;
     if (mPlayerPlay != NULL) {
         (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_STOPPED);
@@ -245,7 +245,7 @@ bool AudioOpenSLESOutput::onStop() {
 }
 
 bool AudioOpenSLESOutput::onUnInit() {
-    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
+    LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     // 释放资源
     if (mPlayerObject != NULL) {
         (*mPlayerObject)->Destroy(mPlayerObject);
@@ -274,7 +274,7 @@ bool AudioOpenSLESOutput::onUnInit() {
 }
 
 bool AudioOpenSLESOutput::onPlay() {
-    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
+    LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     std::unique_lock<std::mutex> lk(mMutex);
     std::shared_ptr<VEFrame> frame = nullptr;
     mAudioDecoder->readFrame(frame);
@@ -288,12 +288,12 @@ bool AudioOpenSLESOutput::onPlay() {
         }
     }
 
-    ALOGI("AudioOpenSLESOutput::%s exit",__FUNCTION__ );
+    LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s exit",__FUNCTION__ );
     return true;
 }
 
 bool AudioOpenSLESOutput::onPause() {
-    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
+    LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     if (mPlayerPlay != NULL) {
         (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PAUSED);
     }
@@ -301,12 +301,12 @@ bool AudioOpenSLESOutput::onPause() {
 }
 
 AudioOpenSLESOutput::AudioOpenSLESOutput() {
-    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
+    LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
 
 }
 
 AudioOpenSLESOutput::~AudioOpenSLESOutput() {
-    ALOGI("AudioOpenSLESOutput::%s enter",__FUNCTION__ );
+    LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
 
 }
 

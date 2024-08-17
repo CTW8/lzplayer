@@ -10,7 +10,7 @@
 
 class MediaPlayerListener {
 public:
-    virtual void notify(int msg, int ext1, int ext2, const void *obj) = 0;
+    virtual void notify(int msg, int ext1, double ext2, const void *obj) = 0;
 };
 
 class VEPlayerDirver {
@@ -30,7 +30,7 @@ public:
     int setLooping(bool looping);
     int setSpeedRate(float speed);
     int setListener(std::shared_ptr<MediaPlayerListener> listener);
-    int seekTo(int64_t timestamp);
+    int seekTo(double timestampMs);
 
 private:
     enum media_player_states {
@@ -49,7 +49,7 @@ private:
     std::shared_ptr<VEPlayer> mPlayer;
     std::shared_ptr<MediaPlayerListener> mListener;
 
-    void notifyListener(int msg, int ext1, int ext2, const void *obj);
+    void notifyListener(int msg, int ext1, double ext2, const void *obj);
 };
 
 
