@@ -105,7 +105,7 @@ void VEAudioDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     }
 }
 
-bool VEAudioDecoder::onInit(std::shared_ptr<AMessage> msg) {
+status_t VEAudioDecoder::onInit(std::shared_ptr<AMessage> msg) {
     ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     std::shared_ptr<void> tmp;
     msg->findObject("demux",&tmp);
@@ -138,18 +138,24 @@ bool VEAudioDecoder::onInit(std::shared_ptr<AMessage> msg) {
     return false;
 }
 
-bool VEAudioDecoder::onFlush() {
+status_t VEAudioDecoder::onFlush() {
     ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     avcodec_flush_buffers(mAudioCtx);
     return false;
 }
 
-bool VEAudioDecoder::onDecode() {
+status_t VEAudioDecoder::onDecode() {
     ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     std::shared_ptr<VEPacket> packet;
     mDemux->read(true,packet);
-    // 从解码器中读取音频帧
-    int ret = avcodec_send_packet(mAudioCtx, packet->getPacket());
+    int ret =0;
+    if(packet->getPacketType() == E_PACKET_TYPE_AUDIO){
+        // 从解码器中读取音频帧
+        ret = avcodec_send_packet(mAudioCtx, packet->getPacket());
+    }else if(packet->getPacketType() == E_PACKET_TYPE_EOF){
+        ret = avcodec_send_packet(mAudioCtx, nullptr);
+    }
+
     if (ret < 0) {
         ALOGE("VEAudioDecoder Error sending packet for decoding", ret);
         return false;
@@ -157,18 +163,20 @@ bool VEAudioDecoder::onDecode() {
     while (ret >= 0) {
         std::shared_ptr<VEFrame> frame = std::make_shared<VEFrame>();
         ret = avcodec_receive_frame(mAudioCtx, frame->getFrame());
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+        if (ret == AVERROR(EAGAIN)){
+            ret = OK;
+            break;
+        }else if(ret == AVERROR_EOF) {
+            frame->setFrameType(E_FRAME_TYPE_AUDIO);
+            queueFrame(frame);
+            ret = UNKNOWN_ERROR;
             break;
         } else if (ret < 0) {
             ALOGE("VEAudioDecoder Error during decoding", ret);
+            ret = UNKNOWN_ERROR;
             break;
         }
-//        if(frame->getFrame()->format == 8){
-//            for(int i=0;i<frame->getFrame()->nb_samples;i++){
-//                fwrite(frame->getFrame()->data[0] + i*4,1,4,fp);
-//                fwrite(frame->getFrame()->data[1] + i*4,1,4,fp);
-//            }
-//        }
+
         if(frame->getFrame()->format != (int)AUDIO_TARGET_OUTPUT_FORMAT || frame->getFrame()->sample_rate != AUDIO_TARGET_OUTPUT_SAMPLERATE || frame->getFrame()->ch_layout.nb_channels != AUDIO_TARGET_OUTPUT_CHANNELS){
             if(mSwrCtx == nullptr){
 
@@ -217,30 +225,11 @@ bool VEAudioDecoder::onDecode() {
 
             av_freep(&out_data[0]);
             av_freep(&out_data);
-            std::unique_lock<std::mutex> lk(mMutex);
-            if(mFrameQueue.size() >= AUDIO_FRAME_QUEUE_SIZE){
-                mCond.wait(lk);
-            }
-
-            if(mFrameQueue.size() == 0){
-                mFrameQueue.push_back(audioFrame);
-                mCond.notify_one();
-            }else{
-                mFrameQueue.push_back(audioFrame);
-            }
+            queueFrame(audioFrame);
         }else{
-            std::unique_lock<std::mutex> lk(mMutex);
-            if(mFrameQueue.size() >= AUDIO_FRAME_QUEUE_SIZE){
-                mCond.wait(lk);
-            }
-
-            if(mFrameQueue.size() == 0){
-                mFrameQueue.push_back(frame);
-                mCond.notify_one();
-            }else{
-                mFrameQueue.push_back(frame);
-            }
+            queueFrame(frame);
         }
+        ret = OK;
         // 处理解码后的音频帧
         ALOGI("VEAudioDecoder Audio frame: pts=%s, nb_samples=%d, channels=%d samplerate:%d format:%d\n",
                av_ts2str(frame->getFrame()->pts),
@@ -250,10 +239,10 @@ bool VEAudioDecoder::onDecode() {
               frame->getFrame()->format);
     }
     ALOGI("VEAudioDecoder::%s exit",__FUNCTION__ );
-    return true;
+    return ret;
 }
 
-bool VEAudioDecoder::onUnInit() {
+status_t VEAudioDecoder::onUnInit() {
     ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     // 释放资源，包括解码器上下文等
     if (mAudioCtx) {
@@ -264,7 +253,7 @@ bool VEAudioDecoder::onUnInit() {
     return false;
 }
 
-bool VEAudioDecoder::onStart() {
+status_t VEAudioDecoder::onStart() {
     ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     mIsStarted = true;
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatDecode,shared_from_this());
@@ -272,8 +261,22 @@ bool VEAudioDecoder::onStart() {
     return false;
 }
 
-bool VEAudioDecoder::onStop() {
+status_t VEAudioDecoder::onStop() {
     ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     mIsStarted = false;
     return false;
+}
+
+void VEAudioDecoder::queueFrame(std::shared_ptr<VEFrame> frame) {
+    std::unique_lock<std::mutex> lk(mMutex);
+    if(mFrameQueue.size() >= AUDIO_FRAME_QUEUE_SIZE){
+        mCond.wait(lk);
+    }
+
+    if(mFrameQueue.size() == 0){
+        mFrameQueue.push_back(frame);
+        mCond.notify_one();
+    }else{
+        mFrameQueue.push_back(frame);
+    }
 }

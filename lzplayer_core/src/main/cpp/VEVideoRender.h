@@ -29,13 +29,13 @@ public:
 
 private:
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
-    bool onInit(ANativeWindow * win);
-    bool onStart();
-    bool onStop();
-    bool onPause();
-    bool onReume();
-    bool onUnInit();
-    bool onRender();
+    status_t onInit(ANativeWindow * win);
+    status_t onStart();
+    status_t onStop();
+    status_t onPause();
+    status_t onReume();
+    status_t onUnInit();
+    status_t onRender();
 
     GLuint loadShader(GLenum type, const char *shaderSrc);
 

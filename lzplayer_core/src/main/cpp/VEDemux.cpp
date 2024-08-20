@@ -253,7 +253,6 @@ status_t VEDemux::onRead() {
         return NO_ERROR;
     }
 
-
     int ret = av_read_frame(mFormatContext, packet->getPacket());
     if (ret == AVERROR_EOF) {
         // 已经到达文件末尾
@@ -271,11 +270,12 @@ status_t VEDemux::onRead() {
     }
 
     if(packet->getPacket()->stream_index == mAudio_index){
+        packet->setPacketType(E_PACKET_TYPE_AUDIO);
         ALOGD("%s packet pts:%" PRId64,packet->getPacket()->stream_index == mAudio_index ? "audio":"video" ,packet->getPacket()->pts);
         putPacket(packet,true);
         ALOGD("mAudioPacketQueue size:%zu",mAudioPacketQueue.size());
-    }else if (packet->getPacket()->stream_index == mVideo_index)
-    {
+    }else if (packet->getPacket()->stream_index == mVideo_index){
+        packet->setPacketType(E_PACKET_TYPE_VIDEO);
         putPacket(packet,false);
     }else{
         ALOGD("may be not use");

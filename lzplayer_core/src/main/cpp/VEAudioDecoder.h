@@ -36,12 +36,13 @@ public:
     int uninit();
 
 private:
-    bool onInit(std::shared_ptr<AMessage> msg);
-    bool onStart();
-    bool onFlush();
-    bool onDecode();
-    bool onStop();
-    bool onUnInit();
+    status_t onInit(std::shared_ptr<AMessage> msg);
+    status_t onStart();
+    status_t onFlush();
+    status_t onDecode();
+    status_t onStop();
+    status_t onUnInit();
+    void queueFrame(std::shared_ptr<VEFrame> frame);
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
     enum {
         kWhatInit                = 'init',

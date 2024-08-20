@@ -3,6 +3,7 @@
 #include<iostream>
 #include "VETrace.h"
 #include "Log.h"
+#include "VEDef.h"
 extern "C"{
     #include"libavcodec/avcodec.h"
     #include "libavutil/pixfmt.h"
@@ -72,12 +73,13 @@ public:
         return timestamp;
     }
 
-    enum EFrameType{
-        E_FRAME_TYPE_UNKNOW = -1,
-        E_FRAME_TYPE_VIDEO,
-        E_FRAME_TYPE_AUDIO,
-        E_FRAME_TYPE_EOF
-    };
+    void setFrameType(EFrameType type){
+        eFrameType = type;
+    }
+
+    EFrameType getFrameType(){
+        return eFrameType;
+    }
 
 private:
     uint64_t timestamp = 0;

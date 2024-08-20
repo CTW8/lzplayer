@@ -144,9 +144,15 @@ int VEPlayer::reset()
     return 0;
 }
 
-//void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
-//
-//}
+void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
+    switch (msg->what()) {
+        case VE_PLAYER_NOTIFY_EVENT_ON_EOS:{
+
+        }default:{
+            break;
+        }
+    }
+}
 
 VEPlayer::VEPlayer() {
 

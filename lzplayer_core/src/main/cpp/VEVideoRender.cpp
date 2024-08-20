@@ -111,21 +111,21 @@ status_t VEVideoRender::unInit() {
     return 0;
 }
 
-bool VEVideoRender::onInit(ANativeWindow * win) {
+status_t VEVideoRender::onInit(ANativeWindow * win) {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     JNIEnv *env = AttachCurrentThreadEnv();
     // 获取默认的 EGL 显示设备
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (eglDisplay == EGL_NO_DISPLAY) {
         ALOGE("VEVideoRender eglGetDisplay failed");
-        return false;
+        return UNKNOWN_ERROR;
     }
 
     // 初始化 EGL 显示设备
     EGLint major, minor;
     if (!eglInitialize(eglDisplay, &major, &minor)) {
         ALOGE("VEVideoRender eglInitialize failed");
-        return false;
+        return UNKNOWN_ERROR;
     }
 
     // 配置 EGL 表面属性
@@ -138,7 +138,7 @@ bool VEVideoRender::onInit(ANativeWindow * win) {
     };
     if (!eglChooseConfig(eglDisplay, configAttribs, &config, 1, &numConfigs)) {
         ALOGE("VEVideoRender eglChooseConfig failed");
-        return false;
+        return UNKNOWN_ERROR;
     }
 
     // 创建 EGL 上下文
@@ -149,7 +149,7 @@ bool VEVideoRender::onInit(ANativeWindow * win) {
     eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttribs);
     if (eglContext == EGL_NO_CONTEXT) {
         ALOGE("VEVideoRender eglCreateContext failed");
-        return false;
+        return UNKNOWN_ERROR;
     }
 
     // 创建 EGL 表面
@@ -158,7 +158,7 @@ bool VEVideoRender::onInit(ANativeWindow * win) {
     // 将 EGL 上下文与当前线程关联
     if (!eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
         ALOGE("VEVideoRender eglMakeCurrent failed");
-        return false;
+        return UNKNOWN_ERROR;
     }
 
     mProgram = createProgram(vertexShaderSource,fragmentShaderSource);
@@ -168,31 +168,31 @@ bool VEVideoRender::onInit(ANativeWindow * win) {
     glClearColor(0.5f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    return true;
+    return OK;
 }
 
-bool VEVideoRender::onStart() {
+status_t VEVideoRender::onStart() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     mIsStarted = true;
     std::make_shared<AMessage>(kWhatRender,shared_from_this())->post();
-    return false;
+    return OK;
 }
 
-bool VEVideoRender::onStop() {
+status_t VEVideoRender::onStop() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     mIsStarted = false;
-    return false;
+    return OK;
 }
 
-bool VEVideoRender::onUnInit() {
+status_t VEVideoRender::onUnInit() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
-    return false;
+    return OK;
 }
 
-bool VEVideoRender::onRender() {
+status_t VEVideoRender::onRender() {
     ALOGI("VEVideoRender::%s enter",__FUNCTION__ );
     if(!mIsStarted){
-        return false;
+        return UNKNOWN_ERROR;
     }
 
     std::shared_ptr<VEFrame> frame = nullptr;
@@ -201,7 +201,12 @@ bool VEVideoRender::onRender() {
 
     if(frame == nullptr){
         ALOGE("VEVideoRender::onRender read frame is null!!!");
-        return false;
+        return UNKNOWN_ERROR;
+    }
+
+    if(frame->getFrameType() == E_FRAME_TYPE_EOF){
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>();
+        msg->dup();
     }
 
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -285,7 +290,7 @@ bool VEVideoRender::onRender() {
 
     mPlayer->notifyProgress(frame->getTimestamp());
     ALOGI("VEVideoRender::%s exit timestamp:%" PRId64,__FUNCTION__ ,frame->getTimestamp());
-    return true;
+    return OK;
 }
 
 
@@ -368,7 +373,7 @@ bool VEVideoRender::createTexture() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
-    return true;
+    return 0;
 }
 
 status_t VEVideoRender::pause() {
@@ -379,12 +384,12 @@ status_t VEVideoRender::resume() {
     return 0;
 }
 
-bool VEVideoRender::onPause() {
+status_t VEVideoRender::onPause() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
-    return false;
+    return 0;
 }
 
-bool VEVideoRender::onReume() {
+status_t VEVideoRender::onReume() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
-    return false;
+    return 0;
 }

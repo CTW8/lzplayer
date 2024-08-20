@@ -33,19 +33,20 @@ public:
     int uninit();
 
 private:
+    void queueFrame(std::shared_ptr<VEFrame> frame);
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
-    bool onInit(std::shared_ptr<AMessage> msg);
-    bool onStart();
-    bool onStop();
-    bool onFlush();
-    bool onDecode();
-    bool onUninit();
+    status_t onInit(std::shared_ptr<AMessage> msg);
+    status_t onStart();
+    status_t onStop();
+    status_t onFlush();
+    status_t onDecode();
+    status_t onUninit();
     enum {
         kWhatInit                = 'init',
         kWhatStart               = 'star',
         kWhatStop                = 'stop',
         kWhatFlush               = 'flus',
-        kWhatRead                = 'read',
+        kWhatDecode              = 'deco',
         kWhatUninit              = 'unin'
     };
 private:
@@ -57,6 +58,8 @@ private:
 
     std::mutex mMutex;
     std::condition_variable mCond;
+
+    bool mIsStoped = true;
 
     FILE *fp = nullptr;
 };
