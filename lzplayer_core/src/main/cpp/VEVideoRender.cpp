@@ -42,9 +42,10 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         case kWhatInit:{
             msg->findPointer("win",(void**)&mWin);
             std::shared_ptr<void> tmp = nullptr;
+
             msg->findObject("vdec",&tmp);
             mVDec = std::static_pointer_cast<VEVideoDecoder>(tmp);
-            msg->findPointer("player",(void**)&mPlayer);
+
             msg->findInt32("width",&mViewWidth);
             msg->findInt32("height",&mViewHeight);
             onInit(mWin);
@@ -55,7 +56,7 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             break;
         }
         case kWhatRender:{
-            if(onRender()){
+            if(onRender() == OK){
                 std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender,shared_from_this());
                 renderMsg->post(1000000/30);
             }
@@ -72,26 +73,21 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     }
 }
 
-VEVideoRender::VEVideoRender() {
-//    fp = fopen("/data/local/tmp/dump_420p.yuv","wb+");
+VEVideoRender::VEVideoRender(std::shared_ptr<AMessage> notify) {
+    mNotify = notify;
 }
 
 VEVideoRender::~VEVideoRender() {
-//    if(fp){
-//        fflush(fp);
-//        fclose(fp);
-//    }
+
 }
 
-status_t VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps,
-                             VEPlayer* player) {
+status_t VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps) {
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit,shared_from_this());
     msg->setPointer("win",win);
     msg->setInt32("width",width);
     msg->setInt32("height",height);
     msg->setInt32("fps",fps);
     msg->setObject("vdec",decoder);
-    msg->setPointer("player",player);
     msg->post();
     return 0;
 }
@@ -205,8 +201,10 @@ status_t VEVideoRender::onRender() {
     }
 
     if(frame->getFrameType() == E_FRAME_TYPE_EOF){
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>();
-        msg->dup();
+        std::shared_ptr<AMessage> msg = mNotify->dup();
+        msg->setInt32("what",kWhatEOS);
+        msg->post();
+        return UNKNOWN_ERROR;
     }
 
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -288,7 +286,11 @@ status_t VEVideoRender::onRender() {
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     eglSwapBuffers(eglDisplay,eglSurface);
 
-    mPlayer->notifyProgress(frame->getTimestamp());
+    if(mNotify){
+        std::shared_ptr<AMessage> msg = mNotify->dup();
+        msg->setInt32("what",kWhatProgress);
+        msg->setInt64("progress",static_cast<int64_t>(frame->getTimestamp()));
+    }
     ALOGI("VEVideoRender::%s exit timestamp:%" PRId64,__FUNCTION__ ,frame->getTimestamp());
     return OK;
 }

@@ -16,16 +16,19 @@ class VEPlayer;
 class VEVideoRender:public AHandler
 {
 public:
-    VEVideoRender();
+    VEVideoRender(std::shared_ptr<AMessage> notify);
     ~VEVideoRender();
 
-    status_t init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps,
-                  VEPlayer* player);
+    status_t init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps);
     status_t start();
     status_t pause();
     status_t resume();
     status_t stop();
     status_t unInit();
+    enum {
+        kWhatEOS            = 'eosf',
+        kWhatProgress       = 'prog'
+    };
 
 private:
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
@@ -54,14 +57,14 @@ private:
     ANativeWindow *mWin = nullptr;
     bool           mIsStarted = false;
     std::shared_ptr<VEVideoDecoder> mVDec = nullptr;
-    VEPlayer* mPlayer = nullptr;
+    std::shared_ptr<AMessage> mNotify = nullptr;
 
-    GLuint          mTextures[3];
-    GLuint          mProgram;
-    GLuint  mVAO,mVBO;
-    EGLDisplay eglDisplay;
-    EGLSurface eglSurface;
-    EGLContext eglContext;
+    GLuint          mTextures[3]{};
+    GLuint          mProgram{};
+    GLuint  mVAO{},mVBO{};
+    EGLDisplay eglDisplay{};
+    EGLSurface eglSurface{};
+    EGLContext eglContext{};
 
     int mViewWidth = 0;
     int mViewHeight = 0;

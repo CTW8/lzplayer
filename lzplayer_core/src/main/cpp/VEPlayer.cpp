@@ -56,10 +56,12 @@ int VEPlayer::prepare()
     mVideoRenderLooper->setName("video_render");
     mVideoRenderLooper->start(false);
 
-    mVideoRender = std::make_shared<VEVideoRender>();
+    std::shared_ptr<AMessage> renderNotify = std::make_shared<AMessage>(kWhatRenderEvent,shared_from_this());
+
+    mVideoRender = std::make_shared<VEVideoRender>(renderNotify);
     mVideoRenderLooper->registerHandler(mVideoRender);
 
-    mVideoRender->init(mVideoDecoder,mWindow,mViewWidth,mViewHeight,mMediaInfo->fps,this);
+    mVideoRender->init(mVideoDecoder,mWindow,mViewWidth,mViewHeight,mMediaInfo->fps);
 
     //创建音频播放线程
     mAudioOutputLooper = std::make_shared<ALooper>();
@@ -146,9 +148,20 @@ int VEPlayer::reset()
 
 void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     switch (msg->what()) {
-        case VE_PLAYER_NOTIFY_EVENT_ON_EOS:{
-
-        }default:{
+        case kWhatRenderEvent:{
+            onRenderNotify(msg);
+            break;
+        }
+        case kWhatAudioDecEvent:{
+            break;
+        }
+        case kWhatDemuxEvent:{
+            break;
+        }
+        case kWhatVideoDecEvent:{
+            break;
+        }
+        default:{
             break;
         }
     }
@@ -202,4 +215,24 @@ void VEPlayer::setOnProgressListener(funOnProgressCallback callback) {
 
 int VEPlayer::setSpeedRate(float speed) {
     return 0;
+}
+
+void VEPlayer::onRenderNotify(std::shared_ptr<AMessage> msg) {
+    int32_t what=0;
+    msg->findInt32("what",&what);
+    switch (what) {
+        case VEVideoRender::kWhatEOS:{
+
+            break;
+        }
+        case VEVideoRender::kWhatProgress:{
+            int64_t value;
+            msg->findInt64("progress",&value);
+            notifyProgress(value);
+            break;
+        }
+        default:{
+            break;
+        }
+    }
 }

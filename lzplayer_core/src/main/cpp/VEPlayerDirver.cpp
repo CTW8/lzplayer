@@ -7,6 +7,13 @@
 
 VEPlayerDirver::VEPlayerDirver()
         : currentState(MEDIA_PLAYER_IDLE), mPlayer(std::make_shared<VEPlayer>()) {
+
+    mPlayerLooper = std::make_shared<ALooper>();
+    mPlayerLooper->setName("player_thread");
+    mPlayerLooper->start(false);
+    mPlayerLooper->registerHandler(mPlayer);
+
+
     mPlayer->setOnInfoListener([this](int type, int msg1, double msg2, std::string msg3, void *msg4) {
         notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_INFO, msg1, static_cast<int>(msg2), msg4);
     });

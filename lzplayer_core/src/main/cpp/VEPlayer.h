@@ -27,6 +27,7 @@ public:
     ~VEPlayer();
 
 private:
+    void onRenderNotify(std::shared_ptr<AMessage> msg);
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
 public:
@@ -88,6 +89,13 @@ public:
     }
 
 private:
+    enum {
+        kWhatRenderEvent        = 'renE',
+        kWhatVideoDecEvent      = 'vdec',
+        kWhatAudioDecEvent      = 'adec',
+        kWhatDemuxEvent         = 'demx'
+    };
+
     pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
     std::shared_ptr<VEDemux> mDemux = nullptr;
     std::shared_ptr<ALooper> mDemuxLooper = nullptr;

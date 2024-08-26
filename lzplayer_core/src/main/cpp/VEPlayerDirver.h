@@ -46,6 +46,7 @@ private:
     };
 
     int currentState;
+    std::shared_ptr<ALooper> mPlayerLooper = nullptr;
     std::shared_ptr<VEPlayer> mPlayer;
     std::shared_ptr<MediaPlayerListener> mListener;
 
