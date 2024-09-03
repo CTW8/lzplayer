@@ -38,7 +38,8 @@ private:
     status_t onPause();
     status_t onReume();
     status_t onUnInit();
-    status_t onRender();
+    status_t onAVSync();
+    status_t onRender(std::shared_ptr<AMessage> msg);
 
     GLuint loadShader(GLenum type, const char *shaderSrc);
 
@@ -49,6 +50,7 @@ private:
         kWhatInit                = 'init',
         kWhatStart               = 'star',
         kWhatStop                = 'stop',
+        kWhatSync                = 'sync',
         kWhatRender              = 'rend',
         kWhatUninit              = 'unin'
     };

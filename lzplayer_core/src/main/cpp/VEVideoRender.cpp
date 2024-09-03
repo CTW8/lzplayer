@@ -55,9 +55,15 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             onStart();
             break;
         }
+        case kWhatSync:{
+            if(onAVSync() != OK){
+                ///todo
+            }
+            break;
+        }
         case kWhatRender:{
-            if(onRender() == OK){
-                std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender,shared_from_this());
+            if(onRender(msg) == OK){
+                std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatSync,shared_from_this());
                 renderMsg->post(1000000/30);
             }
             break;
@@ -170,7 +176,7 @@ status_t VEVideoRender::onInit(ANativeWindow * win) {
 status_t VEVideoRender::onStart() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     mIsStarted = true;
-    std::make_shared<AMessage>(kWhatRender,shared_from_this())->post();
+    std::make_shared<AMessage>(kWhatSync,shared_from_this())->post();
     return OK;
 }
 
@@ -185,27 +191,17 @@ status_t VEVideoRender::onUnInit() {
     return OK;
 }
 
-status_t VEVideoRender::onRender() {
+status_t VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
     ALOGI("VEVideoRender::%s enter",__FUNCTION__ );
     if(!mIsStarted){
         return UNKNOWN_ERROR;
     }
 
     std::shared_ptr<VEFrame> frame = nullptr;
+    std::shared_ptr<void> tmp;
+    msg->findObject("render",&tmp);
 
-    mVDec->readFrame(frame);
-
-    if(frame == nullptr){
-        ALOGE("VEVideoRender::onRender read frame is null!!!");
-        return UNKNOWN_ERROR;
-    }
-
-    if(frame->getFrameType() == E_FRAME_TYPE_EOF){
-        std::shared_ptr<AMessage> msg = mNotify->dup();
-        msg->setInt32("what",kWhatEOS);
-        msg->post();
-        return UNKNOWN_ERROR;
-    }
+    frame = std::static_pointer_cast<VEFrame>(tmp);
 
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -394,4 +390,32 @@ status_t VEVideoRender::onPause() {
 status_t VEVideoRender::onReume() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     return 0;
+}
+
+status_t VEVideoRender::onAVSync() {
+    ALOGI("VEVideoRender::%s enter",__FUNCTION__ );
+    if(!mIsStarted){
+        return UNKNOWN_ERROR;
+    }
+
+    std::shared_ptr<VEFrame> frame = nullptr;
+
+    mVDec->readFrame(frame);
+
+    if(frame == nullptr){
+        ALOGE("VEVideoRender::onRender read frame is null!!!");
+        return UNKNOWN_ERROR;
+    }
+
+    if(frame->getFrameType() == E_FRAME_TYPE_EOF){
+        std::shared_ptr<AMessage> msg = mNotify->dup();
+        msg->setInt32("what",kWhatEOS);
+        msg->post();
+        return UNKNOWN_ERROR;
+    }
+
+    std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender,shared_from_this());
+    renderMsg->setObject("render",frame);
+    renderMsg->post(0);
+    return OK;
 }
