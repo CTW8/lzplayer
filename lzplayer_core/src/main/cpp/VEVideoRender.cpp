@@ -5,6 +5,7 @@
 #include "glm/gtc/type_ptr.hpp"
 #include "glm/ext/matrix_projection.hpp"
 #include "VEPlayer.h"
+#include "VEAVsync.h"
 
 const char* vertexShaderSource = R"(
 #version 300 es
@@ -399,7 +400,6 @@ status_t VEVideoRender::onAVSync() {
     }
 
     std::shared_ptr<VEFrame> frame = nullptr;
-
     mVDec->readFrame(frame);
 
     if(frame == nullptr){
@@ -407,15 +407,17 @@ status_t VEVideoRender::onAVSync() {
         return UNKNOWN_ERROR;
     }
 
-    if(frame->getFrameType() == E_FRAME_TYPE_EOF){
-        std::shared_ptr<AMessage> msg = mNotify->dup();
-        msg->setInt32("what",kWhatEOS);
-        msg->post();
-        return UNKNOWN_ERROR;
+    m_AVSync.updateVideoPts(frame->getTimestamp());
+
+    if (m_AVSync.shouldDropFrame()) {
+        ALOGI("Dropping frame due to sync issues");
+        return OK; // 丢帧
     }
 
-    std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender,shared_from_this());
-    renderMsg->setObject("render",frame);
-    renderMsg->post(0);
+    int64_t waitTime = m_AVSync.getWaitTime(); // 获取等待时间
+
+    std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender, shared_from_this());
+    renderMsg->setObject("render", frame);
+    renderMsg->post(waitTime); // 根据同步状态设置等待时间
     return OK;
 }
