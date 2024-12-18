@@ -1,7 +1,9 @@
 #include "VEAVsync.h"
 
-VEAVsync::VEAVsync(VEMediaClock* mediaClock)
-    : m_MediaClock(mediaClock), m_VideoPts(0), m_PlaybackSpeed(1.0), m_FrameRate(30) {}
+VEAVsync::VEAVsync()
+    : m_VideoPts(0), m_PlaybackSpeed(1.0), m_FrameRate(30) {
+    m_MediaClock = std::shared_ptr<VEMediaClock>();
+}
 
 VEAVsync::~VEAVsync() {}
 

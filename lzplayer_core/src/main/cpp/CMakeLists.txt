@@ -29,8 +29,11 @@ target_link_directories(lzplayer_core PUBLIC "${LIB_THIRD_PATH}/${CMAKE_ANDROID_
 target_include_directories(lzplayer_core PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}
         ${CMAKE_CURRENT_LIST_DIR}/include
+        ${CMAKE_CURRENT_LIST_DIR}/include/libyuv
         ${CMAKE_CURRENT_LIST_DIR}/include/ffmpeg
         ${CMAKE_CURRENT_LIST_DIR}/utils
+        ${CMAKE_CURRENT_LIST_DIR}/interface
+        ${CMAKE_CURRENT_LIST_DIR}/platform
         ${CMAKE_CURRENT_LIST_DIR}/thread
         ${CMAKE_CURRENT_LIST_DIR}/libyuv/include
         )
@@ -56,5 +59,3 @@ set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fPIE -pie")
 add_definitions(-D__ARM_NEON__)
 add_definitions(-DLIBYUV_DISABLE_NEON=0)
 add_definitions(-D__aarch64__=0)
-
-add_subdirectory(libyuv)

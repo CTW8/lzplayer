@@ -57,8 +57,8 @@ int VEPlayer::prepare()
     mVideoRenderLooper->start(false);
 
     std::shared_ptr<AMessage> renderNotify = std::make_shared<AMessage>(kWhatRenderEvent,shared_from_this());
-
-    mVideoRender = std::make_shared<VEVideoRender>(renderNotify);
+    mAVSync = std::make_shared<VEAVsync>();
+    mVideoRender = std::make_shared<VEVideoRender>(renderNotify,mAVSync);
     mVideoRenderLooper->registerHandler(mVideoRender);
 
     mVideoRender->init(mVideoDecoder,mWindow,mViewWidth,mViewHeight,mMediaInfo->fps);

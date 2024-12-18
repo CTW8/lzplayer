@@ -12,11 +12,13 @@
 #include "VEVideoDecoder.h"
 #include <string>
 #include <iostream>
+#include "VEAVsync.h"
+
 class VEPlayer;
 class VEVideoRender:public AHandler
 {
 public:
-    VEVideoRender(std::shared_ptr<AMessage> notify);
+    VEVideoRender(std::shared_ptr<AMessage> notify, std::shared_ptr<VEAVsync> avSync);
     ~VEVideoRender();
 
     status_t init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps);
@@ -75,6 +77,8 @@ private:
     int mFrameHeight = 0;
 
     FILE *fp = nullptr;
+
+    std::shared_ptr<VEAVsync> m_AVSync;
 };
 
 #endif

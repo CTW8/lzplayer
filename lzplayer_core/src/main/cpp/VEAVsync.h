@@ -7,7 +7,7 @@
 
 class VEAVsync {
 public:
-    VEAVsync(VEMediaClock* mediaClock);
+    VEAVsync();
     ~VEAVsync();
 
     // 更新音频 PTS
@@ -29,11 +29,11 @@ public:
     bool shouldDropFrame() const;
 
 private:
-    VEMediaClock* m_MediaClock; // 媒体时钟
+    std::shared_ptr<VEMediaClock> m_MediaClock; // 媒体时钟
     double m_VideoPts;          // 当前视频 PTS
     double m_PlaybackSpeed;     // 播放速度
     int m_FrameRate;            // 帧率
-    std::mutex m_Mutex;         // 线程安全保护
+    mutable std::mutex m_Mutex;         // 线程安全保护
 };
 
 #endif

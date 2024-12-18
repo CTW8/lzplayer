@@ -105,6 +105,7 @@ private:
     std::shared_ptr<ALooper> mVideoDecodeLooper = nullptr;
     std::shared_ptr<VEVideoRender> mVideoRender = nullptr;
     std::shared_ptr<ALooper>  mVideoRenderLooper = nullptr;
+    std::shared_ptr<VEAVsync> mAVSync = nullptr;
 
     std::shared_ptr<AudioOpenSLESOutput> mAudioOutput = nullptr;
     std::shared_ptr<ALooper> mAudioOutputLooper = nullptr;

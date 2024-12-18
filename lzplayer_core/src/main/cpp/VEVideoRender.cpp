@@ -80,12 +80,11 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     }
 }
 
-VEVideoRender::VEVideoRender(std::shared_ptr<AMessage> notify) {
-    mNotify = notify;
-}
+VEVideoRender::VEVideoRender(std::shared_ptr<AMessage> notify, std::shared_ptr<VEAVsync> avSync)
+    : mNotify(notify), m_AVSync(avSync) {}
 
 VEVideoRender::~VEVideoRender() {
-
+    stop();
 }
 
 status_t VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps) {
@@ -407,14 +406,14 @@ status_t VEVideoRender::onAVSync() {
         return UNKNOWN_ERROR;
     }
 
-    m_AVSync.updateVideoPts(frame->getTimestamp());
+    m_AVSync->updateVideoPts(frame->getTimestamp());
 
-    if (m_AVSync.shouldDropFrame()) {
+    if (m_AVSync->shouldDropFrame()) {
         ALOGI("Dropping frame due to sync issues");
         return OK; // 丢帧
     }
 
-    int64_t waitTime = m_AVSync.getWaitTime(); // 获取等待时间
+    int64_t waitTime = m_AVSync->getWaitTime(); // 获取等待时间
 
     std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender, shared_from_this());
     renderMsg->setObject("render", frame);

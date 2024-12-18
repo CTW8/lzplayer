@@ -18,3 +18,4 @@ rootProject.name = "lzplayer"
 include ':app'
 include ':lzplayer_core'
 include ':MediaPipeline'
+
