@@ -12,7 +12,7 @@
 
 class VEAudioRender : public AHandler {
 public:
-    VEAudioRender(std::shared_ptr<IAudioRenderer> audioRenderer, std::shared_ptr<VEAudioDecoder> audioDecoder);
+    VEAudioRender(std::shared_ptr<IAudioRender> audioRenderer, std::shared_ptr<VEAudioDecoder> audioDecoder);
     ~VEAudioRender();
 
     // 初始化音频渲染
@@ -31,7 +31,7 @@ protected:
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
 private:
-    std::shared_ptr<IAudioRenderer> m_AudioRenderer; // 音频渲染器接口
+    std::shared_ptr<IAudioRender> m_AudioRenderer; // 音频渲染器接口
     std::shared_ptr<VEAudioDecoder> m_AudioDecoder;  // 音频解码器
     std::deque<std::shared_ptr<VEFrame>> m_FrameQueue; // PCM帧队列
     std::mutex m_Mutex;

@@ -21,6 +21,7 @@ VEVideoDecoder::VEVideoDecoder()
 {
     mVideoCtx = nullptr;
     mMediaInfo = nullptr;
+    mIsStoped = false;
 //    fp = fopen("/data/local/tmp/dump_dec.yuv","wb+");
 }
 
@@ -106,16 +107,42 @@ status_t VEVideoDecoder::onStart() {
 
 status_t VEVideoDecoder::onStop() {
     ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
+
+    // 停止解码器
+    avcodec_flush_buffers(mVideoCtx);
+
+    // 清空帧队列
+    std::unique_lock<std::mutex> lk(mMutex);
+    mFrameQueue.clear();
+    mCond.notify_all();
+
+    // 停止解码线程
+    mIsStoped = true;
+
     return OK;
 }
 
 status_t VEVideoDecoder::onFlush() {
     ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
+
+    // 清空解码器缓冲区
+    avcodec_flush_buffers(mVideoCtx);
+
+    // 清空帧队列
+    std::unique_lock<std::mutex> lk(mMutex);
+    mFrameQueue.clear();
+    mCond.notify_all();
+
     return OK;
 }
 
 status_t VEVideoDecoder::onDecode() {
     ALOGI("VEVideoDecoder::%s enter",__FUNCTION__ );
+    if (mIsStoped) {
+        ALOGI("VEVideoDecoder::%s stop requested, exiting",__FUNCTION__ );
+        return UNKNOWN_ERROR;
+    }
+
     std::shared_ptr<VEPacket> packet;
     mDemux->read(false,packet);
     int ret =0;
@@ -178,6 +205,7 @@ int VEVideoDecoder::init(std::shared_ptr<VEDemux> demux) {
 }
 
 void VEVideoDecoder::start() {
+    mIsStoped = false;
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart,shared_from_this());
     msg->post();
 }

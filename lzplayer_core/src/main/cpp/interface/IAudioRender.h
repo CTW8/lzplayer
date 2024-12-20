@@ -11,9 +11,9 @@ struct AudioConfig {
     int sampleFormat;    // 采样格式
 };
 
-class IAudioRenderer {
+class IAudioRender {
 public:
-    virtual ~IAudioRenderer() = default;
+    virtual ~IAudioRender() = default;
 
     // 初始化音频渲染器
     virtual int init() = 0;

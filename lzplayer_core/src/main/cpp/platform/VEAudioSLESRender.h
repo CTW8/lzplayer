@@ -1,7 +1,7 @@
 #ifndef __VE_AUDIO_SLES_RENDER__
 #define __VE_AUDIO_SLES_RENDER__
 
-#include "IAudioRenderer.h"
+#include "IAudioRender.h"
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
 #include <memory>
@@ -9,7 +9,7 @@
 #include <mutex>
 #include <condition_variable>
 
-class VEAudioSLESRender : public IAudioRenderer {
+class VEAudioSLESRender : public IAudioRender {
 public:
     VEAudioSLESRender();
     ~VEAudioSLESRender();

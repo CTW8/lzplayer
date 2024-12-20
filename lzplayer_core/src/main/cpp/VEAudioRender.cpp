@@ -1,6 +1,6 @@
 #include "VEAudioRender.h"
 
-VEAudioRender::VEAudioRender(std::shared_ptr<IAudioRenderer> audioRenderer, std::shared_ptr<VEAudioDecoder> audioDecoder)
+VEAudioRender::VEAudioRender(std::shared_ptr<IAudioRender> audioRenderer, std::shared_ptr<VEAudioDecoder> audioDecoder)
     : m_AudioRenderer(audioRenderer), m_AudioDecoder(audioDecoder) {}
 
 VEAudioRender::~VEAudioRender() {

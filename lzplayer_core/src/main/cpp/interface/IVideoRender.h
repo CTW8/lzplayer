@@ -6,9 +6,9 @@
 #include "../thread/AMessage.h"
 #include "../VEFrame.h"
 
-class IVideoRenderer {
+class IVideoRender {
 public:
-    virtual ~IVideoRenderer() = default;
+    virtual ~IVideoRender() = default;
 
     // 初始化渲染器，platformData 可用于传递平台特定的数据（如窗口句柄、Surface等）
     virtual int initialize(void* platformData) = 0;

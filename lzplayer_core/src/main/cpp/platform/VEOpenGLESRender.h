@@ -1,21 +1,21 @@
 #ifndef __VE_OPENGLES_RENDER__
 #define __VE_OPENGLES_RENDER__
 
-#include "IRenderer.h"
+#include "IVideoRender.h"
 #include <GLES3/gl3.h>
 #include <EGL/egl.h>
 #include <memory>
 
-class VEOpenGLESRender : public IRenderer {
+class VEOpenGLESRender : public IVideoRender {
 public:
     VEOpenGLESRender();
     ~VEOpenGLESRender();
 
     // 初始化渲染器
-    int init() override;
+    int init();
 
     // 配置渲染器参数
-    int configure(const std::string &config) override;
+    int configure(const std::string &config);
 
     // 开始渲染
     void start() override;
@@ -24,10 +24,10 @@ public:
     void stop() override;
 
     // 渲染帧
-    void renderFrame(std::shared_ptr<VEFrame> frame) override;
+    void renderFrame(std::shared_ptr<VEFrame> frame);
 
     // 释放渲染器资源
-    int uninit() override;
+    int uninit();
 
 private:
     EGLDisplay eglDisplay;

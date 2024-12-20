@@ -295,6 +295,19 @@ status_t VEDemux::onSeek(double posMs) {
         ALOGE( "Error: Couldn't seek.\n");
         return -1;
     }
+
+    // 清空音频和视频队列
+    {
+        std::unique_lock<std::mutex> lk(mMutexAudio);
+        mAudioPacketQueue.clear();
+        mCondAudio.notify_all();
+    }
+    {
+        std::unique_lock<std::mutex> lk(mMutexVideo);
+        mVideoPacketQueue.clear();
+        mCondVideo.notify_all();
+    }
+
     return 0;
 }
 

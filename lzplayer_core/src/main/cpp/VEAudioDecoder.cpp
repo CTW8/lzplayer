@@ -141,6 +141,12 @@ status_t VEAudioDecoder::onInit(std::shared_ptr<AMessage> msg) {
 status_t VEAudioDecoder::onFlush() {
     ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     avcodec_flush_buffers(mAudioCtx);
+
+    // 清空帧队列
+    std::unique_lock<std::mutex> lk(mMutex);
+    mFrameQueue.clear();
+    mCond.notify_all();
+
     return false;
 }
 
@@ -264,6 +270,15 @@ status_t VEAudioDecoder::onStart() {
 status_t VEAudioDecoder::onStop() {
     ALOGI("VEAudioDecoder::%s enter",__FUNCTION__ );
     mIsStarted = false;
+
+    // 停止解码器
+    avcodec_flush_buffers(mAudioCtx);
+
+    // 清空帧队列
+    std::unique_lock<std::mutex> lk(mMutex);
+    mFrameQueue.clear();
+    mCond.notify_all();
+
     return false;
 }
 
