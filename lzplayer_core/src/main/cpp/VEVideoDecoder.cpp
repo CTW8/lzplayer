@@ -8,6 +8,7 @@ void ConvertYUV420PWithStrideToContinuous(const uint8_t* src_y, int src_stride_y
                                           const uint8_t* src_v, int src_stride_v,
                                           uint8_t* dst_y, uint8_t* dst_u, uint8_t* dst_v,
                                           int width, int height) {
+    ALOGI("ConvertYUV420PWithStrideToContinuous enter");
     // 复制 Y 平面
     libyuv::CopyPlane(src_y, src_stride_y, dst_y, width, width, height);
     // 复制 U 平面
@@ -16,9 +17,9 @@ void ConvertYUV420PWithStrideToContinuous(const uint8_t* src_y, int src_stride_y
     libyuv::CopyPlane(src_v, src_stride_v, dst_v, width / 2, width / 2, height / 2);
 }
 
-
 VEVideoDecoder::VEVideoDecoder()
 {
+    ALOGI("VEVideoDecoder::VEVideoDecoder enter");
     mVideoCtx = nullptr;
     mMediaInfo = nullptr;
     mIsStoped = false;
@@ -27,6 +28,7 @@ VEVideoDecoder::VEVideoDecoder()
 
 VEVideoDecoder::~VEVideoDecoder()
 {
+    ALOGI("VEVideoDecoder::~VEVideoDecoder enter");
 //    if(fp){
 //        fflush(fp);
 //        fclose(fp);
@@ -34,6 +36,7 @@ VEVideoDecoder::~VEVideoDecoder()
 }
 
 void VEVideoDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
+    ALOGI("VEVideoDecoder::onMessageReceived enter");
     switch (msg->what()) {
         case kWhatInit:{
             onInit(msg);
@@ -66,7 +69,7 @@ void VEVideoDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
 }
 
 status_t VEVideoDecoder::onInit(std::shared_ptr<AMessage> msg) {
-    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
+    ALOGI("VEVideoDecoder::onInit enter");
     std::shared_ptr<void> tmp;
     msg->findObject("demux",&tmp);
 
@@ -76,21 +79,21 @@ status_t VEVideoDecoder::onInit(std::shared_ptr<AMessage> msg) {
 
     const AVCodec *video_codec = avcodec_find_decoder(mMediaInfo->mVideoCodecParams->codec_id);
     if (!video_codec) {
-        ALOGE("Could not find video codec");
+        ALOGE("VEVideoDecoder::onInit Could not find video codec");
         return UNKNOWN_ERROR;
     }
     mVideoCtx = avcodec_alloc_context3(video_codec);
     if (!mVideoCtx) {
-        ALOGE("Could not allocate video codec context\n");
+        ALOGE("VEVideoDecoder::onInit Could not allocate video codec context\n");
         return UNKNOWN_ERROR;
     }
     if (avcodec_parameters_to_context(mVideoCtx, mMediaInfo->mVideoCodecParams) < 0) {
-        ALOGE("Could not copy codec parameters to codec context");
+        ALOGE("VEVideoDecoder::onInit Could not copy codec parameters to codec context");
         avcodec_free_context(&mVideoCtx);
         return UNKNOWN_ERROR;
     }
     if (avcodec_open2(mVideoCtx, video_codec, NULL) < 0) {
-        fprintf(stderr, "Could not open video codec\n");
+        fprintf(stderr, "VEVideoDecoder::onInit Could not open video codec\n");
         avcodec_free_context(&mVideoCtx);
         return UNKNOWN_ERROR;
     }
@@ -99,14 +102,14 @@ status_t VEVideoDecoder::onInit(std::shared_ptr<AMessage> msg) {
 }
 
 status_t VEVideoDecoder::onStart() {
-    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
+    ALOGI("VEVideoDecoder::onStart enter");
     std::shared_ptr<AMessage> readMsg = std::make_shared<AMessage>(kWhatDecode,shared_from_this());
     readMsg->post();
     return OK;
 }
 
 status_t VEVideoDecoder::onStop() {
-    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
+    ALOGI("VEVideoDecoder::onStop enter");
 
     // 停止解码器
     avcodec_flush_buffers(mVideoCtx);
@@ -123,7 +126,7 @@ status_t VEVideoDecoder::onStop() {
 }
 
 status_t VEVideoDecoder::onFlush() {
-    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
+    ALOGI("VEVideoDecoder::onFlush enter");
 
     // 清空解码器缓冲区
     avcodec_flush_buffers(mVideoCtx);
@@ -137,23 +140,26 @@ status_t VEVideoDecoder::onFlush() {
 }
 
 status_t VEVideoDecoder::onDecode() {
-    ALOGI("VEVideoDecoder::%s enter",__FUNCTION__ );
+    ALOGI("VEVideoDecoder::onDecode enter");
     if (mIsStoped) {
-        ALOGI("VEVideoDecoder::%s stop requested, exiting",__FUNCTION__ );
+        ALOGI("VEVideoDecoder::onDecode stop requested, exiting");
         return UNKNOWN_ERROR;
     }
 
     std::shared_ptr<VEPacket> packet;
     mDemux->read(false,packet);
-    int ret =0;
+    int ret = 0;
     if(packet->getPacketType() == E_PACKET_TYPE_EOF){
         ret = avcodec_send_packet(mVideoCtx, nullptr);
     }else{
+        ALOGI("VEVideoDecoder::onDecode send packet, size: %d", packet->getPacket()->size);
         ret = avcodec_send_packet(mVideoCtx, packet->getPacket());
     }
 
     if (ret < 0) {
-        ALOGE("Error sending packet for decoding ret:%d", ret);
+        char errbuf[128];
+        av_strerror(ret, errbuf, sizeof(errbuf));
+        ALOGE("VEVideoDecoder::onDecode Error sending packet for decoding: %s", errbuf);
         return false;
     }
     while (ret >= 0) {
@@ -168,7 +174,7 @@ status_t VEVideoDecoder::onDecode() {
             ret = UNKNOWN_ERROR;
             break;
         }else if (ret < 0) {
-            ALOGE("Error during decoding %d", ret);
+            ALOGE("VEVideoDecoder::onDecode Error during decoding %d", ret);
             break;
         }
 
@@ -181,16 +187,16 @@ status_t VEVideoDecoder::onDecode() {
                                              frame->getFrame()->width,frame->getFrame()->height);
 
         videoFrame->setTimestamp(av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE}));
-        ALOGD("video frame pts:%" PRId64,videoFrame->getTimestamp());
+        ALOGD("VEVideoDecoder::onDecode video frame pts:%" PRId64,videoFrame->getTimestamp());
         queueFrame(videoFrame);
         ret = OK;
     }
-    ALOGI("VEVideoDecoder::%s exit",__FUNCTION__ );
+    ALOGI("VEVideoDecoder::onDecode exit");
     return ret;
 }
 
 status_t VEVideoDecoder::onUninit() {
-    ALOGI("VEVideoDecoder::%s",__FUNCTION__ );
+    ALOGI("VEVideoDecoder::onUninit enter");
     if(mVideoCtx){
         avcodec_free_context(&mVideoCtx);
     }
@@ -198,6 +204,7 @@ status_t VEVideoDecoder::onUninit() {
 }
 
 int VEVideoDecoder::init(std::shared_ptr<VEDemux> demux) {
+    ALOGI("VEVideoDecoder::init enter");
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit,shared_from_this());
     msg->setObject("demux",demux);
     msg->post();
@@ -205,24 +212,30 @@ int VEVideoDecoder::init(std::shared_ptr<VEDemux> demux) {
 }
 
 void VEVideoDecoder::start() {
+    ALOGI("VEVideoDecoder::start enter");
     mIsStoped = false;
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart,shared_from_this());
     msg->post();
 }
 
 void VEVideoDecoder::stop() {
+    ALOGI("VEVideoDecoder::stop enter");
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStop,shared_from_this());
     msg->post();
 }
 
 int VEVideoDecoder::flush() {
+    ALOGI("VEVideoDecoder::flush enter");
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatFlush,shared_from_this());
     msg->post();
     return 0;
 }
 
 int VEVideoDecoder::readFrame(std::shared_ptr<VEFrame> &frame) {
+    ALOGI("VEVideoDecoder::readFrame enter");
+    ALOGD("VEVideoDecoder::readFrame %s enter",__FUNCTION__ );
     std::unique_lock<std::mutex> lk(mMutex);
+    ALOGI("VEVideoDecoder::readFrame %s mFrameQueue size:%d",__FUNCTION__ ,mFrameQueue.size());
     if(mFrameQueue.size() == 0){
         mCond.wait(lk);
     }
@@ -239,12 +252,14 @@ int VEVideoDecoder::readFrame(std::shared_ptr<VEFrame> &frame) {
 }
 
 int VEVideoDecoder::uninit() {
+    ALOGI("VEVideoDecoder::uninit enter");
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatUninit,shared_from_this());
     msg->post();
     return 0;
 }
 
 void VEVideoDecoder::queueFrame(std::shared_ptr<VEFrame> videoFrame) {
+    ALOGI("VEVideoDecoder::queueFrame enter");
     std::unique_lock<std::mutex> lk(mMutex);
     if(mFrameQueue.size() >= FRAME_QUEUE_MAX_SIZE ){
         mCond.wait(lk);

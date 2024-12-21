@@ -116,6 +116,9 @@ private:
 
     std::string mPath;
 
+    bool mVideoEOS = false;
+    bool mAudioEOS = false;
+
     ANativeWindow *mWindow = nullptr;
     int mViewWidth = 0;
     int mViewHeight = 0;

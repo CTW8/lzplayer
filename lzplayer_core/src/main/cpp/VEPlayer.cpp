@@ -222,7 +222,8 @@ void VEPlayer::onRenderNotify(std::shared_ptr<AMessage> msg) {
     msg->findInt32("what",&what);
     switch (what) {
         case VEVideoRender::kWhatEOS:{
-
+            ALOGI("VEPlayer::%s msg->kWhatEOS",__FUNCTION__ );
+            mVideoEOS = true;
             break;
         }
         case VEVideoRender::kWhatProgress:{

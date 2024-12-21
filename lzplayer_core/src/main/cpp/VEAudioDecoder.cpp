@@ -90,7 +90,7 @@ void VEAudioDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             if(!mIsStarted){
                 break;
             }
-            if(onDecode()){
+            if(onDecode() == OK){
                 std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatDecode,shared_from_this());
                 msg->post();
             }
@@ -244,7 +244,7 @@ status_t VEAudioDecoder::onDecode() {
               frame->getFrame()->sample_rate,
               frame->getFrame()->format);
     }
-    ALOGI("VEAudioDecoder::%s exit",__FUNCTION__ );
+    ALOGI("VEAudioDecoder::%s exit,ret:%d",__FUNCTION__ ,ret);
     return ret;
 }
 
