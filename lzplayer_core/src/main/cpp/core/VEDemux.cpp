@@ -14,6 +14,8 @@ VEDemux::VEDemux()
     mAudioCodecParams = nullptr;
     mVideoCodecParams = nullptr;
     mFormatContext = nullptr;
+    mAudioStartPts = -1;
+    mVideoStartPts = -1;
 }
 
 VEDemux::~VEDemux()
@@ -268,17 +270,32 @@ status_t VEDemux::onRead() {
         return -1;
     }
 
-    // 将AVPacket中的pts和dts换算后赋值给VEPacket
-    packet->setPts(av_rescale_q(packet->getPacket()->pts, mFormatContext->streams[packet->getPacket()->stream_index]->time_base, AV_TIME_BASE_Q));
-    packet->setDts(av_rescale_q(packet->getPacket()->dts, mFormatContext->streams[packet->getPacket()->stream_index]->time_base, AV_TIME_BASE_Q));
+    int64_t pts = av_rescale_q(packet->getPacket()->pts, mFormatContext->streams[packet->getPacket()->stream_index]->time_base, AV_TIME_BASE_Q);
+    int64_t dts = av_rescale_q(packet->getPacket()->dts, mFormatContext->streams[packet->getPacket()->stream_index]->time_base, AV_TIME_BASE_Q);
 
     if(packet->getPacket()->stream_index == mAudio_index){
         packet->setPacketType(E_PACKET_TYPE_AUDIO);
-        ALOGD("%s packet pts:%" PRId64,packet->getPacket()->stream_index == mAudio_index ? "audio":"video" ,packet->getPacket()->pts);
+        if(mAudioStartPts == -1){
+            mAudioStartPts = pts;
+        }
+
+        packet->setPts(pts);
+        packet->setDts(dts);
+        packet->getPacket()->pts = packet->getPts();
+        packet->getPacket()->dts = packet->getDts();
+        ALOGD("Audio packet pts (original): %" PRId64 ", converted: %" PRId64 " | dts (original): %" PRId64 ", converted: %" PRId64, packet->getPacket()->pts, packet->getPts(), packet->getPacket()->dts, packet->getDts());
         putPacket(packet,true);
-        ALOGD("mAudioPacketQueue size:%zu",mAudioPacketQueue.size());
     }else if (packet->getPacket()->stream_index == mVideo_index){
         packet->setPacketType(E_PACKET_TYPE_VIDEO);
+        if(mVideoStartPts == -1){
+            mVideoStartPts = pts;
+        }
+
+        packet->setPts(pts - mVideoStartPts);
+        packet->setDts(dts);
+        packet->getPacket()->pts = packet->getPts();
+        packet->getPacket()->dts = packet->getDts();
+        ALOGD("Video packet pts (original): %" PRId64 ", converted: %" PRId64 " | dts (original): %" PRId64 ", converted: %" PRId64, packet->getPacket()->pts, packet->getPts(), packet->getPacket()->dts, packet->getDts());
         putPacket(packet,false);
     }else{
         ALOGD("may be not use");

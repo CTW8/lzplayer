@@ -113,7 +113,7 @@ int VEPlayerDirver::setLooping(bool looping) {
 
 int VEPlayerDirver::setSpeedRate(float speed) {
     // Assume VEPlayer has a method to set speed rate, this is a placeholder
-     mPlayer->setSpeedRate(speed);
+    mPlayer->setPlaySpeed(speed);
     return 0;
 }
 
@@ -123,7 +123,9 @@ int VEPlayerDirver::setListener(std::shared_ptr<MediaPlayerListener> listener) {
 }
 
 int VEPlayerDirver::seekTo(double timestampMs) {
+    ALOGI("VEPlayerDirver::%s timestampMs:%f, currentState:%d", __FUNCTION__, timestampMs, currentState);
     if (currentState != MEDIA_PLAYER_STARTED && currentState != MEDIA_PLAYER_PAUSED) {
+        ALOGE("VEPlayerDirver::%s Invalid state for seekTo: %d", __FUNCTION__, currentState);
         return -1; // Error: Invalid state
     }
     return mPlayer->seek(timestampMs);

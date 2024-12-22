@@ -113,7 +113,7 @@ int VEPlayer::resume()
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     //控制各个线程执行状态
     mVideoRender->resume();
-    mAudioOutput->start();
+    mAudioOutput->resume();
     return 0;
 }
 
@@ -215,7 +215,8 @@ void VEPlayer::setOnProgressListener(funOnProgressCallback callback) {
     onProgressCallback = std::move(callback);
 }
 
-int VEPlayer::setSpeedRate(float speed) {
+int VEPlayer::setPlaySpeed(float speed) {
+
     return 0;
 }
 
@@ -251,11 +252,17 @@ void VEPlayer::onRenderNotify(std::shared_ptr<AMessage> msg) {
 void VEPlayer::onEOS() {
     if(mVideoEOS && mAudioEOS){
         if(!mEnableLoop){
-            notifyInfo(VE_PLAYER_NOTIFY_EVENT_ON_EOS,1,0.f, nullptr, nullptr);
+            notifyInfo(VE_PLAYER_NOTIFY_EVENT_ON_EOS,1,0.f, "", nullptr);
+            mVideoEOS = false;
+            mAudioEOS = false;
+            seek(0);
+            pause();
         }else{
             mVideoEOS = false;
             mAudioEOS = false;
             seek(0);
+            start();
+            ALOGI("VEPlayer::%s Starting loop", __FUNCTION__);
         }
     }
 }

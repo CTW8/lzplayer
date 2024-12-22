@@ -26,7 +26,9 @@ double VEMediaClock::getCurrentMediaTime() const {
     }
 
     int64_t currentSystemTime = getCurrentSystemTime();
-    double elapsedTime = (currentSystemTime - m_BaseSystemTime);
+    double elapsedTime = (currentSystemTime - m_AudioSystemTime);
+    ALOGI("MediaClock::%s - Current elapsed time: %f, m_AudioTimestamp: %f", __FUNCTION__, elapsedTime * m_PlaybackSpeed, m_AudioTimestamp);
+
     return elapsedTime * m_PlaybackSpeed + m_AudioTimestamp;
 }
 

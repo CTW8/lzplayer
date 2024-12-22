@@ -157,6 +157,14 @@ jint nativePause(JNIEnv *env, jobject obj, jlong handle) {
     return vePlayer->pause();
 }
 
+// 暂停播放
+jint nativeResume(JNIEnv *env, jobject obj, jlong handle) {
+    ALOGD("nativeResume called with handle: %ld", handle);
+    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    CHECK_NULL();
+    return vePlayer->resume();
+}
+
 // 停止播放
 jint nativeStop(JNIEnv *env, jobject obj, jlong handle) {
     VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
@@ -197,4 +205,17 @@ jint nativePrepareAsync(JNIEnv *env, jobject obj, jlong handle)
     CHECK_NULL();
 
     return vePlayer->prepareAsync();
+}
+jint nativeSetLooping(JNIEnv *env, jobject obj, jlong handle, jboolean loop) {
+    ALOGD("nativeSetLooping called with handle: %ld, loop: %d", handle, loop);
+    VEPlayerDirver *vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    CHECK_NULL();
+    return vePlayer->setLooping(loop);
+}
+
+jint nativeSetPlaySpeed(JNIEnv *env, jobject obj, jlong handle, jfloat speed) {
+    ALOGD("nativeSetPlaySpeed called with handle: %ld, speed: %f", handle, speed);
+    VEPlayerDirver *vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    CHECK_NULL();
+    return vePlayer->setSpeedRate(speed);
 }

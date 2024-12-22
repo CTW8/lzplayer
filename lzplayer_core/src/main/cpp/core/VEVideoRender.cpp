@@ -77,6 +77,18 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             onUnInit();
             break;
         }
+        case kWhatPause:{
+            mIsStarted = false;
+            break;
+        }
+        case kWhatResume:{
+            mIsStarted = true;
+            std::make_shared<AMessage>(kWhatSync,shared_from_this())->post();
+            break;
+        }
+        default:{
+            break;
+        }
     }
 }
 
@@ -197,8 +209,16 @@ status_t VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
         return UNKNOWN_ERROR;
     }
 
+    int32_t isDrop = false;
+    msg->findInt32("drop",&isDrop);
+
+    if(isDrop){
+        return OK;
+    }
+
     std::shared_ptr<VEFrame> frame = nullptr;
     std::shared_ptr<void> tmp;
+
     msg->findObject("render",&tmp);
 
     frame = std::static_pointer_cast<VEFrame>(tmp);
@@ -233,7 +253,8 @@ status_t VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
     glUniform1i(uTextureLoc, 1);
     glUniform1i(vTextureLoc, 2);
 
-    ALOGD("VEVideoRender::%s ### mFrameWidth:%d,mFrameHeight:%d mViewWidth:%d,mViewHeight:%d pts:%" PRId64, __FUNCTION__, mFrameWidth, mFrameHeight, mViewWidth, mViewHeight, frame->getTimestamp());
+    ALOGD("VEVideoRender::%s ### mFrameWidth:%d,mFrameHeight:%d mViewWidth:%d,mViewHeight:%d pts:%" PRId64, __FUNCTION__, mFrameWidth, mFrameHeight, mViewWidth, mViewHeight,
+          frame->getPts());
 //    {
 //        fwrite(frame->getFrame()->data[0],mFrameWidth* mFrameHeight,1,fp);
 //        fwrite(frame->getFrame()->data[1],mFrameWidth* mFrameHeight/4,1,fp);
@@ -285,11 +306,12 @@ status_t VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
     if(mNotify){
         std::shared_ptr<AMessage> msg = mNotify->dup();
         msg->setInt32("type",kWhatProgress);
-        msg->setInt64("progress",static_cast<int64_t>(frame->getTimestamp()));
+        msg->setInt64("progress",static_cast<int64_t>(frame->getPts()));
         msg->post();
-        ALOGI("VEVideoRender::%s - Notifying progress: %" PRId64 "  what:%d", __FUNCTION__, frame->getTimestamp(),msg->what());
+        ALOGI("VEVideoRender::%s - Notifying progress: %" PRId64 "  what:%d", __FUNCTION__,
+              frame->getPts(), msg->what());
     }
-    ALOGI("VEVideoRender::%s exit timestamp:%" PRId64,__FUNCTION__ ,frame->getTimestamp());
+    ALOGI("VEVideoRender::%s exit timestamp:%" PRId64,__FUNCTION__ , frame->getPts());
     return OK;
 }
 
@@ -377,10 +399,12 @@ bool VEVideoRender::createTexture() {
 }
 
 status_t VEVideoRender::pause() {
+    std::make_shared<AMessage>(kWhatPause,shared_from_this())->post();
     return 0;
 }
 
 status_t VEVideoRender::resume() {
+    std::make_shared<AMessage>(kWhatResume,shared_from_this())->post();
     return 0;
 }
 
@@ -389,7 +413,7 @@ status_t VEVideoRender::onPause() {
     return 0;
 }
 
-status_t VEVideoRender::onReume() {
+status_t VEVideoRender::onResume() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     return 0;
 }
@@ -400,6 +424,7 @@ status_t VEVideoRender::onAVSync() {
         return UNKNOWN_ERROR;
     }
 
+    bool isDrop = false;
     std::shared_ptr<VEFrame> frame = nullptr;
     mVDec->readFrame(frame);
 
@@ -415,17 +440,18 @@ status_t VEVideoRender::onAVSync() {
         return UNKNOWN_ERROR;
     }
 
-    m_AVSync->updateVideoPts(frame->getTimestamp());
+    m_AVSync->updateVideoPts(frame->getPts());
 
     if (m_AVSync->shouldDropFrame()) {
         ALOGI("VEVideoRender::%s Dropping frame due to sync issues", __FUNCTION__);
-        return OK; // 丢帧
+        isDrop = true; // 丢帧
     }
 
     int64_t waitTime = m_AVSync->getWaitTime(); // 获取等待时间
 
     std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender, shared_from_this());
     renderMsg->setObject("render", frame);
-    renderMsg->post(waitTime); // 根据同步状态设置等待时间
+    renderMsg->setInt32("drop",isDrop);
+    renderMsg->post(isDrop ? 0 : waitTime); // 根据同步状态设置等待时间
     return OK;
 }

@@ -70,6 +70,9 @@ private:
     std::mutex mMutexVideo;
     std::condition_variable mCondVideo;
 
+    int64_t mAudioStartPts=0;
+    int64_t mVideoStartPts =0;
+
     //视频帧
     std::deque<std::shared_ptr<VEPacket>> mVideoPacketQueue;
     //音频帧

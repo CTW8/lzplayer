@@ -158,6 +158,7 @@ status_t VEAudioDecoder::onDecode() {
     if(packet->getPacketType() == E_PACKET_TYPE_AUDIO){
         // 从解码器中读取音频帧
         ret = avcodec_send_packet(mAudioCtx, packet->getPacket());
+        ALOGI("VEAudioDecoder::%s send packet pts:%" PRId64 ", dts:%" PRId64,__FUNCTION__ ,packet->getPacket()->pts, packet->getPacket()->dts);
     }else if(packet->getPacketType() == E_PACKET_TYPE_EOF){
         ret = avcodec_send_packet(mAudioCtx, nullptr);
     }
@@ -182,6 +183,7 @@ status_t VEAudioDecoder::onDecode() {
             ret = UNKNOWN_ERROR;
             break;
         }
+        ALOGI("###VEAudioDecoder Audio frame: pts:%" PRId64 ", dts:%" PRId64, frame->getFrame()->pts, frame->getFrame()->pkt_dts);
 
         if(frame->getFrame()->format != (int)AUDIO_TARGET_OUTPUT_FORMAT || frame->getFrame()->sample_rate != AUDIO_TARGET_OUTPUT_SAMPLERATE || frame->getFrame()->ch_layout.nb_channels != AUDIO_TARGET_OUTPUT_CHANNELS){
             if(mSwrCtx == nullptr){
@@ -226,9 +228,13 @@ status_t VEAudioDecoder::onDecode() {
 
             memcpy(audioFrame->getFrame()->data[0],out_data[0],out_samples_per_channel * AUDIO_TARGET_OUTPUT_CHANNELS * av_get_bytes_per_sample(AUDIO_TARGET_OUTPUT_FORMAT));
             audioFrame->getFrame()->pts = frame->getFrame()->pts;
+            audioFrame->getFrame()->pkt_dts = frame->getFrame()->pkt_dts;
             audioFrame->getFrame()->nb_samples = out_samples_per_channel;
             audioFrame->getFrame()->linesize[0] = out_samples_per_channel * AUDIO_TARGET_OUTPUT_CHANNELS * av_get_bytes_per_sample(AUDIO_TARGET_OUTPUT_FORMAT);
 
+            audioFrame->setPts(audioFrame->getFrame()->pts);
+            audioFrame->setDts(audioFrame->getFrame()->pkt_dts);
+            ALOGI("@@@VEAudioDecoder Audio frame: pts:%" PRId64 ", dts:%" PRId64, audioFrame->getFrame()->pts, audioFrame->getFrame()->pkt_dts);
             av_freep(&out_data[0]);
             av_freep(&out_data);
             audioFrame->setFrameType(E_FRAME_TYPE_AUDIO);

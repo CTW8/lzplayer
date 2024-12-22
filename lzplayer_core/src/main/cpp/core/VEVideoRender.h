@@ -38,7 +38,7 @@ private:
     status_t onStart();
     status_t onStop();
     status_t onPause();
-    status_t onReume();
+    status_t onResume();
     status_t onUnInit();
     status_t onAVSync();
     status_t onRender(std::shared_ptr<AMessage> msg);
@@ -54,12 +54,15 @@ private:
         kWhatStop                = 'stop',
         kWhatSync                = 'sync',
         kWhatRender              = 'rend',
-        kWhatUninit              = 'unin'
+        kWhatUninit              = 'unin',
+        kWhatPause               = 'paus',
+        kWhatResume              = 'resm'
     };
 
 private:
     ANativeWindow *mWin = nullptr;
     bool           mIsStarted = false;
+
     std::shared_ptr<VEVideoDecoder> mVDec = nullptr;
     std::shared_ptr<AMessage> mNotify = nullptr;
 

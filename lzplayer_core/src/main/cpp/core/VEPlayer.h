@@ -69,7 +69,7 @@ public:
 
     void setVolume(int volume);
 
-    int setSpeedRate(float speed);
+    int setPlaySpeed(float speed);
 
     /// setPlaybackParams
 

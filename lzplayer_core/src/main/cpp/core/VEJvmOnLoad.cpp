@@ -19,9 +19,12 @@ static JNINativeMethod gVEPlayerMethods[] = {
         {"nativePrepareAsync", "(J)I", (void *)nativePrepareAsync},
         {"nativeStart", "(J)I", (void *)nativeStart},
         {"nativePause", "(J)I", (void *)nativePause},
+        {"nativeResume", "(J)I", (void *)nativeResume},
         {"nativeStop", "(J)I", (void *)nativeStop},
         {"nativeSeekTo", "(JD)I", (void *)nativeSeekTo},
         {"nativeRelease", "(J)I", (void *)nativeRelease},
+        {"setLooping", "(JZ)I", (void *)nativeSetLooping},
+        {"setPlaySpeed", "(JF)I", (void *)nativeSetPlaySpeed},
 };
 
 

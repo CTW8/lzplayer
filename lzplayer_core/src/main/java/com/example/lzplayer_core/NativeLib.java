@@ -74,6 +74,18 @@ public class NativeLib {
         return -1;
     }
 
+    public void setLooping(boolean loop){
+        if(mHandle != 0){
+            setLooping(mHandle,loop);
+        }
+    }
+
+    public void setPlaySpeed(float speed){
+        if(mHandle != 0){
+            setPlaySpeed(mHandle,speed);
+        }
+    }
+
     public int release(){
         if(mHandle != 0){
             return nativeRelease(mHandle);
@@ -91,6 +103,14 @@ public class NativeLib {
     public int prepare(){
         if(mHandle != 0){
             return nativePrepare(mHandle);
+        }
+        return -1;
+    }
+
+    public int resume(){
+        if(mHandle != 0){
+            Log.d(TAG,"resume");
+            return nativeResume(mHandle);
         }
         return -1;
     }
@@ -164,7 +184,11 @@ public class NativeLib {
                     mMediaPlayer.onNativeErrorCallback(msg.arg1,msg.arg2,(String)msg.obj);
                     break;
                 }
+                case VE_PLAYER_NOTIFY_EVENT_ON_PREPARED:{
+                    break;
+                }
                 case VE_PLAYER_NOTIFY_EVENT_ON_EOS:{
+                    mMediaPlayer.onNativeInfoCallback(msg.arg1, msg.arg2, msg.obj);
                     break;
                 }
                 case VE_PLAYER_NOTIFY_EVENT_ON_FIRST_FRAME:{
@@ -189,7 +213,10 @@ public class NativeLib {
     private native int nativePrepareAsync(long handle);
     private native int nativeStart(long handle);
     private native int nativePause(long handle);
+    private native int nativeResume(long handle);
     private native int nativeStop(long handle);
+    private native int setLooping(long handle,boolean loop);
+    private native int setPlaySpeed(long handle,float speed);
     private native int nativeSeekTo(long handle,double timestampMs);
     private native int nativeRelease(long handle);
 }

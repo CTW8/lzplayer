@@ -269,13 +269,13 @@ bool AudioOpenSLESOutput::onPlay() {
             }
             return false;
         }
-        ALOGI("AudioOpenSLESOutput::%s - PTS: %f", __FUNCTION__, frame->getTimestamp());
+        ALOGI("AudioOpenSLESOutput::%s - PTS: %f", __FUNCTION__, frame->getPts());
         SLresult result = (*mBufferQueue)->Enqueue(mBufferQueue, frame->getFrame()->data[0], frame->getFrame()->linesize[0]);
         if (result != SL_RESULT_SUCCESS) {
             LOGE("AudioOpenSLESOutput"," failed: %d", result);
             return false;
         }
-        m_AVSync->updateAudioPts(frame->getTimestamp());
+        m_AVSync->updateAudioPts(frame->getPts());
     }
     mCond.wait(lk);
     LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s exit",__FUNCTION__ );
@@ -285,13 +285,33 @@ bool AudioOpenSLESOutput::onPlay() {
 bool AudioOpenSLESOutput::onPause() {
     LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     if (mPlayerPlay != NULL) {
-        (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PAUSED);
+        SLresult result = (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PAUSED);
+        if (result != SL_RESULT_SUCCESS) {
+            LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput Failed to set pause state");
+            return false;
+        }
     }
-    return false;
+    mIstarted = false;
+    return true;
+}
+
+bool AudioOpenSLESOutput::onResume() {
+    LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
+    if (mPlayerPlay != NULL) {
+        SLresult result = (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PLAYING);
+        if (result != SL_RESULT_SUCCESS) {
+            LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput Failed to set play state");
+            return false;
+        }
+    }
+    mIstarted = true;
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPlay,shared_from_this());
+    msg->post();
+    return true;
 }
 
 AudioOpenSLESOutput::AudioOpenSLESOutput(std::shared_ptr<AMessage> notify, std::shared_ptr<VEAVsync> avSync)
-:mNotify(notify),m_AVSync(avSync) {
+:mNotify(notify),m_AVSync(avSync), mIstarted(false) {
     LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
 
 }
@@ -309,9 +329,4 @@ void AudioOpenSLESOutput::pause() {
 void AudioOpenSLESOutput::resume() {
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatResume,shared_from_this());
     msg->post();
-}
-
-bool AudioOpenSLESOutput::onResume() {
-
-    return false;
 }

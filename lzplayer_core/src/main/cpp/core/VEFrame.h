@@ -65,11 +65,11 @@ public:
         return *this;
     }
 
-    void setTimestamp(uint64_t pts){
+    void setPts(int64_t pts){
         timestamp = pts;
     }
 
-    uint64_t getTimestamp(){
+    uint64_t getPts(){
         return timestamp;
     }
 
@@ -90,7 +90,7 @@ public:
     }
 
 private:
-    uint64_t timestamp = 0;
+    int64_t timestamp = 0;
     int64_t dts = 0;
     EFrameType eFrameType = E_FRAME_TYPE_UNKNOW;
     AVFrame *mFrame;

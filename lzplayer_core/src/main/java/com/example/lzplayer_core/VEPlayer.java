@@ -45,11 +45,30 @@ public class VEPlayer {
         return -1;
     }
 
+    public int resume(){
+        if(mNativeHandle != null){
+            return  mNativeHandle.resume();
+        }
+        return -1;
+    }
+
     public int seekTo(double timestamp){
         if(mNativeHandle != null){
             return mNativeHandle.seekTo(timestamp);
         }
         return -1;
+    }
+
+    public void setLooping(boolean loop) {
+        if (mNativeHandle != null) {
+             mNativeHandle.setLooping(loop);
+        }
+    }
+
+    public void setPlaySpeed(float speed) {
+        if (mNativeHandle != null) {
+            mNativeHandle.setPlaySpeed(speed);
+        }
     }
 
     public long getDuration(){

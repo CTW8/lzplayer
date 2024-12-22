@@ -186,9 +186,10 @@ status_t VEVideoDecoder::onDecode() {
                                              videoFrame->getFrame()->data[0],videoFrame->getFrame()->data[1],videoFrame->getFrame()->data[2],
                                              frame->getFrame()->width,frame->getFrame()->height);
 
-        videoFrame->setTimestamp(av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE}));
-        videoFrame->setDts(av_rescale_q(frame->getFrame()->pkt_dts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE}));
-        ALOGD("VEVideoDecoder::onDecode video frame pts:%" PRId64,videoFrame->getTimestamp());
+        videoFrame->setPts(frame->getFrame()->pts);
+        videoFrame->setDts(frame->getFrame()->pkt_dts);
+        ALOGD("VEVideoDecoder::onDecode video frame pts:%" PRId64 ", dts:%" PRId64,
+              videoFrame->getPts(), videoFrame->getDts());
         queueFrame(videoFrame);
         ret = OK;
     }

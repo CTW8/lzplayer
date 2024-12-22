@@ -1,5 +1,7 @@
 package com.example.lzplayer;
 
+import static com.example.lzplayer_core.IMediaPlayerListener.VE_PLAYER_NOTIFY_EVENT_ON_EOS;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -15,6 +17,7 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
 import android.widget.SeekBar;
+import android.widget.Toast;
 
 import com.example.lzplayer.databinding.ActivityMainBinding;
 
@@ -33,6 +36,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Button btnPlay;
     private Button btnPause;
     private Button btnSelect;
+    private Button btnResume;
+    private Button btnStop;
     private final int REQUEST_CODE_CHOOSE = 200;
     private SeekBar btnSeekBar;
 
@@ -50,6 +55,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         setContentView(ActivityMainBinding.inflate(getLayoutInflater()).getRoot());
 
         requestPermissions();
+        mPlayer = new VEPlayer();
         initView();
     }
 
@@ -61,7 +67,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private void initView(){
         Log.d(TAG,"initView");
-        mPlayer = new VEPlayer();
 
         glSurfaceView=findViewById(R.id.glVideoView);
         glSurfaceView.getHolder().addCallback(this);
@@ -71,8 +76,33 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btnPlay.setOnClickListener(this);
         btnPause = (Button) findViewById(R.id.btnPause);
         btnPause.setOnClickListener(this);
+        btnResume = (Button) findViewById(R.id.btnResume);
+        btnResume.setOnClickListener(this);
+        btnStop = (Button) findViewById(R.id.btnStop);
+        btnStop.setOnClickListener(this);
+
         btnSeekBar = findViewById(R.id.seek_bar);
         btnSeekBar.setMax(1000);
+
+        btnSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+                Log.d(TAG,"onProgressChanged value:" + i + " b:"+b);
+                if(b) {
+                    mPlayer.seekTo(i * mDuration / 1000);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+
+            }
+        });
 
         btnSelect.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -100,11 +130,17 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                         .forResult(REQUEST_CODE_CHOOSE);
             }
         });
+    }
+
+
+    private void registerPlayerCallback(){
 
         mPlayer.registerListener(new IVEPlayerListener() {
             @Override
             public void onInfo(int type, int msg1, Object obj) {
-
+                if(type == VE_PLAYER_NOTIFY_EVENT_ON_EOS){
+                    Toast.makeText(MainActivity.this,"播放结束",Toast.LENGTH_SHORT).show();
+                }
             }
 
             @Override
@@ -121,32 +157,22 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 btnSeekBar.setProgress(value);
             }
         });
-
-        btnSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
-                Log.d(TAG,"onProgressChanged value:" + i);
-                if(b) {
-                    mPlayer.seekTo(i * mDuration / 1000);
-                }
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-
-            }
-        });
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_CODE_CHOOSE && resultCode == RESULT_OK) {
+//            if(mPlayer != null){
+////                mPlayer.pause();
+//                mPlayer.stop();
+//                mPlayer.release();
+//                mPlayer = null;
+//            }
+
+//            if(mPlayer == null){
+//                mPlayer = new VEPlayer();
+//            }
             filePath=Matisse.obtainPathResult(data).get(0);
             Log.d("Matisse", "Uris: " + Matisse.obtainResult(data)+" size:"+ Matisse.obtainResult(data).size());
             Log.d("Matisse", "Paths: " + Matisse.obtainPathResult(data));
@@ -166,8 +192,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public void onClick(View view) {
         switch (view.getId()){
             case R.id.btnPlay:{
+                registerPlayerCallback();
                 mPlayer.init(filePath);
                 mPlayer.prepare();
+                mPlayer.setLooping(true);
                 mDuration = mPlayer.getDuration();
                 Log.d(TAG,"mDuration:"+mDuration);
                 mPlayer.start();
@@ -175,6 +203,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
             case R.id.btnPause:{
                 mPlayer.pause();
+                break;
+            }
+            case R.id.btnResume:{
+                Log.d(TAG,"R.id.btnResume");
+                mPlayer.resume();
                 break;
             }
             case R.id.btnStop:{

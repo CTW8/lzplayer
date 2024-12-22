@@ -52,17 +52,17 @@ int64_t VEAVsync::getWaitTime() const {
     double diff = m_VideoPts - audioTime;
     ALOGI("VEAVsync::%s - audioTime: %f, m_VideoPts: %f, diff: %f", __FUNCTION__, audioTime, m_VideoPts, diff);
     if (diff > 0) {
-        if (diff <= 0.04) {
+        if (diff <= 40000) {
             return static_cast<int64_t>(diff);
-        } else if (diff <= 0.5) {
+        } else if (diff <= 500000) {
             return static_cast<int64_t>(diff);
         } else {
             return static_cast<int64_t>(1000000 / m_FrameRate);
         }
     } else {
-        if (diff >= -0.04) {
+        if (diff >= -40000) {
             return 0;
-        } else if (diff >= -0.5) {
+        } else if (diff >= -500000) {
             return static_cast<int64_t>(1000000 / m_FrameRate);
         } else {
             return static_cast<int64_t>(1000000 / m_FrameRate);
@@ -71,13 +71,13 @@ int64_t VEAVsync::getWaitTime() const {
 }
 
 bool VEAVsync::shouldDropFrame() const {
-    ALOGI("VEAVsync::%s - Checking if should drop frame", __FUNCTION__);
     std::lock_guard<std::mutex> lock(m_Mutex);
 
     if (!m_MediaClock) return false;
 
     double audioTime = m_MediaClock->getCurrentMediaTime();
-    double diff = (m_VideoPts - audioTime) / m_PlaybackSpeed;
+    double diff = m_VideoPts - audioTime;
+    ALOGI("VEAVsync::%s - audioTime: %f, m_VideoPts: %f, diff: %f", __FUNCTION__, audioTime, m_VideoPts, diff);
 
-    return diff < -0.5;
+    return diff < -500000;
 }
