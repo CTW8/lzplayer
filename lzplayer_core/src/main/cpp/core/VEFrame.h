@@ -81,8 +81,17 @@ public:
         return eFrameType;
     }
 
+    void setDts(int64_t dts){
+        this->dts = dts;
+    }
+
+    int64_t getDts(){
+        return dts;
+    }
+
 private:
     uint64_t timestamp = 0;
+    int64_t dts = 0;
     EFrameType eFrameType = E_FRAME_TYPE_UNKNOW;
     AVFrame *mFrame;
 };

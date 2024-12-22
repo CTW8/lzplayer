@@ -2,9 +2,9 @@
 #define __I_VIDEO_RENDERER__
 
 #include <memory>
-#include "VEFrame.h"
+#include "core/VEFrame.h"
 #include "../thread/AMessage.h"
-#include "../VEFrame.h"
+#include "core/VEFrame.h"
 
 class IVideoRender {
 public:

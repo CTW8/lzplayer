@@ -12,28 +12,11 @@
 #define AUDIO_OUTPUT_FRAMES_SIZE    (1024*4)
 
 void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context) {
-    // 播放下一个音频缓冲区，或者结束播放
+    // 通知onPlay该向opensles送数据
     AudioOpenSLESOutput * pThis = (AudioOpenSLESOutput*)context;
     if(pThis){
-
         std::lock_guard<std::mutex> lk(pThis->mMutex);
-        LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput bufferQueueCallback enter remain size:%d",pThis->mRingBuffer->getAvailableData());
-        if(pThis->mRingBuffer->getAvailableData() >= AUDIO_OUTPUT_FRAMES_SIZE){
-            pThis->mRingBuffer->read(pThis->mFrameBuf,AUDIO_OUTPUT_FRAMES_SIZE);
-            (*pThis->mBufferQueue)->Enqueue(pThis->mBufferQueue, pThis->mFrameBuf, AUDIO_OUTPUT_FRAMES_SIZE);
-//            fwrite(pThis->mFrameBuf,AUDIO_OUTPUT_FRAMES_SIZE,1,pThis->fp);
-            LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput put frame buffer not slence size:%d",pThis->mRingBuffer->getAvailableData());
-        }else{
-            int remain = pThis->mRingBuffer->getAvailableData();
-            pThis->mRingBuffer->read(pThis->mFrameBuf,remain);
-            memset(pThis->mFrameBuf + remain,0,AUDIO_OUTPUT_FRAMES_SIZE - remain);
-            (*pThis->mBufferQueue)->Enqueue(pThis->mBufferQueue, pThis->mFrameBuf, AUDIO_OUTPUT_FRAMES_SIZE);
-            LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput put frame buffer has slence");
-        }
-
-        if(pThis->mRingBuffer->getAvailableData() > 3 * AUDIO_OUTPUT_FRAMES_SIZE){
-            pThis->mCond.notify_one();
-        }
+        pThis->mCond.notify_one();
     }
 }
 
@@ -212,7 +195,6 @@ bool AudioOpenSLESOutput::onInit(int sampleRate, int channel, int format) {
     memset(buf,0,len);
     (*mBufferQueue)->Enqueue(mBufferQueue, buf, len);
 
-    mRingBuffer = new VERingBuffer(10 * 1024 * 4);
     mFrameBuf = (uint8_t*) malloc(AUDIO_OUTPUT_FRAMES_SIZE);
     LOGI("AudioOpenSLESOutput","OpenSL ES audio player initialized successfully");
     return false;
@@ -264,30 +246,38 @@ bool AudioOpenSLESOutput::onUnInit() {
         mEngineObject = NULL;
         mEngineEngine = NULL;
     }
-    if(mRingBuffer){
-        delete mRingBuffer;
-    }
     if(mFrameBuf){
         free(mFrameBuf);
     }
     return false;
 }
-
 bool AudioOpenSLESOutput::onPlay() {
     LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
     std::unique_lock<std::mutex> lk(mMutex);
     std::shared_ptr<VEFrame> frame = nullptr;
     mAudioDecoder->readFrame(frame);
     if(frame != nullptr){
-        if(mRingBuffer->getAvailableSpace() < frame->getFrame()->linesize[0]){
-            mCond.wait(lk);
-        }
+        if(frame->getFrameType() == E_FRAME_TYPE_EOF){
+            ALOGI("AudioOpenSLESOutput::%s - End of Stream (EOS) detected", __FUNCTION__);
+            std::shared_ptr<AMessage> eosMsg = mNotify->dup();
+            eosMsg->setInt32("type",kWhatEOS);
+            eosMsg->post();
 
-        if(mRingBuffer->getAvailableSpace() >= frame->getFrame()->linesize[0]){
-            mRingBuffer->write(frame->getFrame()->data[0],frame->getFrame()->linesize[0]);
+            // 停止OpenSLES播放
+            if (mPlayerPlay != NULL) {
+                (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_STOPPED);
+            }
+            return false;
         }
+        ALOGI("AudioOpenSLESOutput::%s - PTS: %f", __FUNCTION__, frame->getTimestamp());
+        SLresult result = (*mBufferQueue)->Enqueue(mBufferQueue, frame->getFrame()->data[0], frame->getFrame()->linesize[0]);
+        if (result != SL_RESULT_SUCCESS) {
+            LOGE("AudioOpenSLESOutput"," failed: %d", result);
+            return false;
+        }
+        m_AVSync->updateAudioPts(frame->getTimestamp());
     }
-
+    mCond.wait(lk);
     LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s exit",__FUNCTION__ );
     return true;
 }
@@ -300,7 +290,8 @@ bool AudioOpenSLESOutput::onPause() {
     return false;
 }
 
-AudioOpenSLESOutput::AudioOpenSLESOutput() {
+AudioOpenSLESOutput::AudioOpenSLESOutput(std::shared_ptr<AMessage> notify, std::shared_ptr<VEAVsync> avSync)
+:mNotify(notify),m_AVSync(avSync) {
     LOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter",__FUNCTION__ );
 
 }

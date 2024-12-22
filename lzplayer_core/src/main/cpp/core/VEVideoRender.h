@@ -28,7 +28,7 @@ public:
     status_t stop();
     status_t unInit();
     enum {
-        kWhatEOS            = 'eosf',
+        kWhatEOS            = 'veos',
         kWhatProgress       = 'prog'
     };
 

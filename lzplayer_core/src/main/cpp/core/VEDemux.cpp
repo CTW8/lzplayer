@@ -6,8 +6,8 @@ extern "C"{
     #include"libavutil/dict.h"
 }
 
-#define AUDIO_QUEUE_SIZE    50
-#define VIDEO_QUEUE_SIZE    10
+#define AUDIO_QUEUE_SIZE    100
+#define VIDEO_QUEUE_SIZE    100
 
 VEDemux::VEDemux()
 {
@@ -244,7 +244,6 @@ status_t VEDemux::onStart() {
     msg->post();
     return 0;
 }
-
 status_t VEDemux::onRead() {
     ALOGI("VEDemux::%s",__FUNCTION__ );
     std::shared_ptr<VEPacket> packet = std::make_shared<VEPacket>();
@@ -268,6 +267,10 @@ status_t VEDemux::onRead() {
         ALOGI("Error occurred: %s", av_err2str(ret));
         return -1;
     }
+
+    // 将AVPacket中的pts和dts换算后赋值给VEPacket
+    packet->setPts(av_rescale_q(packet->getPacket()->pts, mFormatContext->streams[packet->getPacket()->stream_index]->time_base, AV_TIME_BASE_Q));
+    packet->setDts(av_rescale_q(packet->getPacket()->dts, mFormatContext->streams[packet->getPacket()->stream_index]->time_base, AV_TIME_BASE_Q));
 
     if(packet->getPacket()->stream_index == mAudio_index){
         packet->setPacketType(E_PACKET_TYPE_AUDIO);

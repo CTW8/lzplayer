@@ -169,7 +169,7 @@ status_t VEVideoDecoder::onDecode() {
             ret = OK;
             break;
         }else if(ret == AVERROR_EOF){
-            frame->setFrameType(E_FRAME_TYPE_VIDEO);
+            frame->setFrameType(E_FRAME_TYPE_EOF);
             queueFrame(frame);
             ret = UNKNOWN_ERROR;
             break;
@@ -187,6 +187,7 @@ status_t VEVideoDecoder::onDecode() {
                                              frame->getFrame()->width,frame->getFrame()->height);
 
         videoFrame->setTimestamp(av_rescale_q(frame->getFrame()->pts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE}));
+        videoFrame->setDts(av_rescale_q(frame->getFrame()->pkt_dts,mMediaInfo->mVideoTimeBase,{1,AV_TIME_BASE}));
         ALOGD("VEVideoDecoder::onDecode video frame pts:%" PRId64,videoFrame->getTimestamp());
         queueFrame(videoFrame);
         ret = OK;

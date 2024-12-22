@@ -10,8 +10,9 @@
 #include "thread/AMessage.h"
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
-#include "VEAudioDecoder.h"
-#include "VERingBuffer.h"
+#include "core/VEAudioDecoder.h"
+#include "core/VERingBuffer.h"
+#include "core/VEAVsync.h"
 
 
 void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
@@ -19,7 +20,7 @@ void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
 class AudioOpenSLESOutput: public AHandler{
     friend void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
 public:
-    AudioOpenSLESOutput();
+    AudioOpenSLESOutput(std::shared_ptr<AMessage> notify, std::shared_ptr<VEAVsync> avSync);
     ~AudioOpenSLESOutput();
 
     status_t init(std::shared_ptr<VEAudioDecoder> decoder,int samplerate,int channel,int format);
@@ -30,6 +31,11 @@ public:
     void unInit();
 
     friend void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
+
+    enum{
+        kWhatEOS                = 'aeos',
+        kWhatError              = 'aerr'
+    };
 
 private:
     bool onInit(int sampleRate,int channel,int format);
@@ -60,6 +66,8 @@ private:
     SLPlayItf mPlayerPlay = NULL;
     SLAndroidSimpleBufferQueueItf mBufferQueue = NULL;
 
+    std::shared_ptr<VEAVsync> m_AVSync;
+    std::shared_ptr<AMessage> mNotify = nullptr;
 
     std::mutex  mMutex;
     std::condition_variable mCond;

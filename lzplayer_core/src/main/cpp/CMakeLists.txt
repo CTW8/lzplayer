@@ -28,6 +28,7 @@ target_link_directories(lzplayer_core PUBLIC "${LIB_THIRD_PATH}/${CMAKE_ANDROID_
 
 target_include_directories(lzplayer_core PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/core
         ${CMAKE_CURRENT_LIST_DIR}/include
         ${CMAKE_CURRENT_LIST_DIR}/include/libyuv
         ${CMAKE_CURRENT_LIST_DIR}/include/ffmpeg

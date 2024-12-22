@@ -44,9 +44,27 @@ public:
         return ePacketType;
     }
 
+    void setPts(int64_t pts){
+        this->pts = pts;
+    }
+
+    int64_t getPts(){
+        return pts;
+    }
+
+    void setDts(int64_t dts){
+        this->dts = dts;
+    }
+
+    int64_t getDts(){
+        return dts;
+    }
+
 private:
     EPacketType ePacketType = E_PACKET_TYPE_UNKNOW;
     AVPacket * mPacket;
+    int64_t pts;
+    int64_t dts;
 };
 
 #endif

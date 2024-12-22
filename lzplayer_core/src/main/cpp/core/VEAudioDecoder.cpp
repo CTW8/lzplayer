@@ -173,7 +173,7 @@ status_t VEAudioDecoder::onDecode() {
             ret = OK;
             break;
         }else if(ret == AVERROR_EOF) {
-            frame->setFrameType(E_FRAME_TYPE_AUDIO);
+            frame->setFrameType(E_FRAME_TYPE_EOF);
             queueFrame(frame);
             ret = UNKNOWN_ERROR;
             break;
@@ -231,8 +231,10 @@ status_t VEAudioDecoder::onDecode() {
 
             av_freep(&out_data[0]);
             av_freep(&out_data);
+            audioFrame->setFrameType(E_FRAME_TYPE_AUDIO);
             queueFrame(audioFrame);
         }else{
+            frame->setFrameType(E_FRAME_TYPE_AUDIO);
             queueFrame(frame);
         }
         ret = OK;

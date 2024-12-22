@@ -107,7 +107,7 @@ int64_t VEPlayerDirver::getDuration() {
 }
 
 int VEPlayerDirver::setLooping(bool looping) {
-    mPlayer->setLooping();
+    mPlayer->setLooping(looping);
     return 0;
 }
 

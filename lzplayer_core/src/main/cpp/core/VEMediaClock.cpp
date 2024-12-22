@@ -1,5 +1,6 @@
 #include "VEMediaClock.h"
 using namespace std::chrono;
+///时间单位都是微秒
 
 VEMediaClock::VEMediaClock()
         : m_AudioTimestamp(0), m_VideoTimestamp(0), m_BaseSystemTime(0), m_AudioSystemTime(0), m_PlaybackSpeed(1.0) {}
@@ -25,7 +26,7 @@ double VEMediaClock::getCurrentMediaTime() const {
     }
 
     int64_t currentSystemTime = getCurrentSystemTime();
-    double elapsedTime = (currentSystemTime - m_BaseSystemTime) / 1000000.0;
+    double elapsedTime = (currentSystemTime - m_BaseSystemTime);
     return elapsedTime * m_PlaybackSpeed + m_AudioTimestamp;
 }
 

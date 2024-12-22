@@ -29,6 +29,7 @@ public:
 private:
     void onRenderNotify(std::shared_ptr<AMessage> msg);
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+    void onEOS();
 
 public:
     /// setDataSource
@@ -60,7 +61,7 @@ public:
     /// reset
     int reset();
 
-    void setLooping();
+    void setLooping(bool enable);
 
     long getCurrentPosition();
 
@@ -118,6 +119,8 @@ private:
 
     bool mVideoEOS = false;
     bool mAudioEOS = false;
+
+    bool mEnableLoop = false;
 
     ANativeWindow *mWindow = nullptr;
     int mViewWidth = 0;

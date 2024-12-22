@@ -65,7 +65,7 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         case kWhatRender:{
             if(onRender(msg) == OK){
                 std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatSync,shared_from_this());
-                renderMsg->post(1000000/30);
+                renderMsg->post();
             }
             break;
         }
@@ -119,14 +119,14 @@ status_t VEVideoRender::onInit(ANativeWindow * win) {
     // 获取默认的 EGL 显示设备
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (eglDisplay == EGL_NO_DISPLAY) {
-        ALOGE("VEVideoRender eglGetDisplay failed");
+        ALOGE("VEVideoRender::%s eglGetDisplay failed", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
 
     // 初始化 EGL 显示设备
     EGLint major, minor;
     if (!eglInitialize(eglDisplay, &major, &minor)) {
-        ALOGE("VEVideoRender eglInitialize failed");
+        ALOGE("VEVideoRender::%s eglInitialize failed", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
 
@@ -139,7 +139,7 @@ status_t VEVideoRender::onInit(ANativeWindow * win) {
             EGL_NONE
     };
     if (!eglChooseConfig(eglDisplay, configAttribs, &config, 1, &numConfigs)) {
-        ALOGE("VEVideoRender eglChooseConfig failed");
+        ALOGE("VEVideoRender::%s eglChooseConfig failed", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
 
@@ -150,7 +150,7 @@ status_t VEVideoRender::onInit(ANativeWindow * win) {
     };
     eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttribs);
     if (eglContext == EGL_NO_CONTEXT) {
-        ALOGE("VEVideoRender eglCreateContext failed");
+        ALOGE("VEVideoRender::%s eglCreateContext failed", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
 
@@ -159,13 +159,13 @@ status_t VEVideoRender::onInit(ANativeWindow * win) {
 
     // 将 EGL 上下文与当前线程关联
     if (!eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
-        ALOGE("VEVideoRender eglMakeCurrent failed");
+        ALOGE("VEVideoRender::%s eglMakeCurrent failed", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
 
     mProgram = createProgram(vertexShaderSource,fragmentShaderSource);
     createTexture();
-    ALOGD("VEVideoRender mViewWidth:%d,mViewHeight:%d",mViewWidth,mViewHeight);
+    ALOGD("VEVideoRender::%s mViewWidth:%d,mViewHeight:%d", __FUNCTION__, mViewWidth, mViewHeight);
     glViewport(0,0,mViewWidth,mViewHeight);
     glClearColor(0.5f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -233,7 +233,7 @@ status_t VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
     glUniform1i(uTextureLoc, 1);
     glUniform1i(vTextureLoc, 2);
 
-    ALOGD("### mFrameWidth:%d,mFrameHeight:%d mViewWidth:%d,mViewHeight:%d pts:%" PRId64,mFrameWidth,mFrameHeight,mViewWidth,mViewHeight,frame->getTimestamp());
+    ALOGD("VEVideoRender::%s ### mFrameWidth:%d,mFrameHeight:%d mViewWidth:%d,mViewHeight:%d pts:%" PRId64, __FUNCTION__, mFrameWidth, mFrameHeight, mViewWidth, mViewHeight, frame->getTimestamp());
 //    {
 //        fwrite(frame->getFrame()->data[0],mFrameWidth* mFrameHeight,1,fp);
 //        fwrite(frame->getFrame()->data[1],mFrameWidth* mFrameHeight/4,1,fp);
@@ -284,8 +284,10 @@ status_t VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
 
     if(mNotify){
         std::shared_ptr<AMessage> msg = mNotify->dup();
-        msg->setInt32("what",kWhatProgress);
+        msg->setInt32("type",kWhatProgress);
         msg->setInt64("progress",static_cast<int64_t>(frame->getTimestamp()));
+        msg->post();
+        ALOGI("VEVideoRender::%s - Notifying progress: %" PRId64 "  what:%d", __FUNCTION__, frame->getTimestamp(),msg->what());
     }
     ALOGI("VEVideoRender::%s exit timestamp:%" PRId64,__FUNCTION__ ,frame->getTimestamp());
     return OK;
@@ -305,7 +307,7 @@ GLuint VEVideoRender::loadShader(GLenum type, const char *shaderSrc) {
         if (infoLen > 1) {
             char* infoLog = (char*)malloc(infoLen);
             glGetShaderInfoLog(shader, infoLen, NULL, infoLog);
-            printf("Error compiling shader:\n%s\n", infoLog);
+            ALOGE("VEVideoRender::%s Error compiling shader:\n%s\n", __FUNCTION__, infoLog);
             free(infoLog);
         }
         glDeleteShader(shader);
@@ -330,13 +332,13 @@ GLuint VEVideoRender::createProgram(const char *vertexSource, const char *fragme
     }
     glAttachShader(program, vertexShader);
     if (GLenum error = glGetError() != GL_NO_ERROR) {
-        ALOGE("Error attaching vertex shader: 0x%x", error);
+        ALOGE("VEVideoRender::%s Error attaching vertex shader: 0x%x", __FUNCTION__, error);
         glDeleteProgram(program);
         return 0;
     }
     glAttachShader(program, fragmentShader);
     if (GLenum error = glGetError() != GL_NO_ERROR) {
-        ALOGE("Error attaching fragment shader: 0x%x", error);
+        ALOGE("VEVideoRender::%s Error attaching fragment shader: 0x%x", __FUNCTION__, error);
         glDeleteProgram(program);
         return 0;
     }
@@ -350,7 +352,7 @@ GLuint VEVideoRender::createProgram(const char *vertexSource, const char *fragme
         if (infoLen > 1) {
             char* infoLog = (char*)malloc(infoLen);
             glGetProgramInfoLog(program, infoLen, NULL, infoLog);
-            printf("Error linking program:\n%s\n", infoLog);
+            ALOGE("VEVideoRender::%s Error linking program:\n%s\n", __FUNCTION__, infoLog);
             free(infoLog);
         }
         glDeleteProgram(program);
@@ -402,14 +404,21 @@ status_t VEVideoRender::onAVSync() {
     mVDec->readFrame(frame);
 
     if(frame == nullptr){
-        ALOGE("VEVideoRender::onRender read frame is null!!!");
+        ALOGE("VEVideoRender::%s onRender read frame is null!!!", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    if(frame->getFrameType() == E_FRAME_TYPE_EOF){
+        std::shared_ptr<AMessage> eosMsg = mNotify->dup();
+        eosMsg->setInt32("type",kWhatEOS);
+        eosMsg->post();
         return UNKNOWN_ERROR;
     }
 
     m_AVSync->updateVideoPts(frame->getTimestamp());
 
     if (m_AVSync->shouldDropFrame()) {
-        ALOGI("Dropping frame due to sync issues");
+        ALOGI("VEVideoRender::%s Dropping frame due to sync issues", __FUNCTION__);
         return OK; // 丢帧
     }
 

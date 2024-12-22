@@ -2,7 +2,7 @@
 #define __I_AUDIO_RENDERER__
 
 #include <memory>
-#include "VEFrame.h"
+#include "core/VEFrame.h"
 
 // 定义音频配置结构体
 struct AudioConfig {

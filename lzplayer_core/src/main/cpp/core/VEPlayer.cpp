@@ -68,7 +68,7 @@ int VEPlayer::prepare()
     mAudioOutputLooper->setName("audio_render");
     mAudioOutputLooper->start(false);
 
-    mAudioOutput = std::make_shared<AudioOpenSLESOutput>();
+    mAudioOutput = std::make_shared<AudioOpenSLESOutput>(renderNotify,mAVSync);
     mAudioOutputLooper->registerHandler(mAudioOutput);
     mAudioOutput->init(mAudioDecoder,44100,2,1);
 
@@ -149,6 +149,7 @@ int VEPlayer::reset()
 void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     switch (msg->what()) {
         case kWhatRenderEvent:{
+            ALOGI("VEPlayer::onMessageReceived - kWhatRenderEvent received");
             onRenderNotify(msg);
             break;
         }
@@ -184,8 +185,9 @@ int VEPlayer::setDisplayOut(ANativeWindow *win,int viewWidth,int viewHeight)
     return 0;
 }
 
-void VEPlayer::setLooping() {
+void VEPlayer::setLooping(bool enable) {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
+    mEnableLoop = enable;
 }
 
 long VEPlayer::getCurrentPosition() {
@@ -219,15 +221,22 @@ int VEPlayer::setSpeedRate(float speed) {
 
 void VEPlayer::onRenderNotify(std::shared_ptr<AMessage> msg) {
     int32_t what=0;
-    msg->findInt32("what",&what);
+    msg->findInt32("type",&what);
     switch (what) {
         case VEVideoRender::kWhatEOS:{
             ALOGI("VEPlayer::%s msg->kWhatEOS",__FUNCTION__ );
             mVideoEOS = true;
+            onEOS();
+            break;
+        }
+        case AudioOpenSLESOutput::kWhatEOS:{
+            mAudioEOS = true;
+            onEOS();
             break;
         }
         case VEVideoRender::kWhatProgress:{
             int64_t value;
+            ALOGI("VEPlayer::%s progress: %" PRId64, __FUNCTION__, value);
             msg->findInt64("progress",&value);
             notifyProgress(value);
             break;
@@ -237,3 +246,17 @@ void VEPlayer::onRenderNotify(std::shared_ptr<AMessage> msg) {
         }
     }
 }
+
+
+void VEPlayer::onEOS() {
+    if(mVideoEOS && mAudioEOS){
+        if(!mEnableLoop){
+            notifyInfo(VE_PLAYER_NOTIFY_EVENT_ON_EOS,1,0.f, nullptr, nullptr);
+        }else{
+            mVideoEOS = false;
+            mAudioEOS = false;
+            seek(0);
+        }
+    }
+}
+
