@@ -39,8 +39,9 @@ status_t VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet){
 
     if(isAudio){
         std::unique_lock<std::mutex> lock(mMutexAudio);
-        ALOGD("mAudioPacketQueue size:%zu",mAudioPacketQueue.size());
+        ALOGD("VEDemux::read mAudioPacketQueue size:%zu",mAudioPacketQueue.size());
         if(mAudioPacketQueue.size() == 0){
+            ALOGD("VEDemux::read audio queue wait!!");
             mCondAudio.wait(lock);
         }
 
@@ -55,6 +56,7 @@ status_t VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet){
     }else{
         std::unique_lock<std::mutex> lock(mMutexVideo);
         if(mVideoPacketQueue.size() == 0){
+            ALOGD("VEDemux::read video queue wait!!");
             mCondVideo.wait(lock);
         }
 
@@ -142,7 +144,7 @@ void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             double pos = 0;
             msg->findDouble("posMs",&pos);
             if(onSeek(pos) == 0){
-                ALOGI("Seek done.");
+                ALOGI("VEDemux::onMessageReceived Seek done.");
             }
             break;
         }
@@ -250,14 +252,14 @@ status_t VEDemux::onRead() {
     ALOGI("VEDemux::%s",__FUNCTION__ );
     std::shared_ptr<VEPacket> packet = std::make_shared<VEPacket>();
     if(!packet){
-        ALOGD("Could not allocate AVPacket");
+        ALOGD("VEDemux::onRead Could not allocate AVPacket");
         return NO_ERROR;
     }
 
     int ret = av_read_frame(mFormatContext, packet->getPacket());
     if (ret == AVERROR_EOF) {
         // 已经到达文件末尾
-        ALOGI("End of Stream (EOS) reached.");
+        ALOGI("VEDemux::onRead End of Stream (EOS) reached.");
         packet->setPacketType(E_PACKET_TYPE_EOF);
         putPacket(packet,true);
         std::shared_ptr<VEPacket> videoPacket = std::make_shared<VEPacket>();
@@ -266,7 +268,7 @@ status_t VEDemux::onRead() {
         return -1;
     } else if (ret < 0) {
         // 处理其他错误
-        ALOGI("Error occurred: %s", av_err2str(ret));
+        ALOGI("VEDemux::onRead Error occurred: %s", av_err2str(ret));
         return -1;
     }
 
@@ -283,7 +285,7 @@ status_t VEDemux::onRead() {
         packet->setDts(dts);
         packet->getPacket()->pts = packet->getPts();
         packet->getPacket()->dts = packet->getDts();
-        ALOGD("Audio packet pts (original): %" PRId64 ", converted: %" PRId64 " | dts (original): %" PRId64 ", converted: %" PRId64, packet->getPacket()->pts, packet->getPts(), packet->getPacket()->dts, packet->getDts());
+        ALOGD("VEDemux::onRead Audio packet pts (original): %" PRId64 ", converted: %" PRId64 " | dts (original): %" PRId64 ", converted: %" PRId64, packet->getPacket()->pts, packet->getPts(), packet->getPacket()->dts, packet->getDts());
         putPacket(packet,true);
     }else if (packet->getPacket()->stream_index == mVideo_index){
         packet->setPacketType(E_PACKET_TYPE_VIDEO);
@@ -295,24 +297,24 @@ status_t VEDemux::onRead() {
         packet->setDts(dts);
         packet->getPacket()->pts = packet->getPts();
         packet->getPacket()->dts = packet->getDts();
-        ALOGD("Video packet pts (original): %" PRId64 ", converted: %" PRId64 " | dts (original): %" PRId64 ", converted: %" PRId64, packet->getPacket()->pts, packet->getPts(), packet->getPacket()->dts, packet->getDts());
+        ALOGD("VEDemux::onRead Video packet pts (original): %" PRId64 ", converted: %" PRId64 " | dts (original): %" PRId64 ", converted: %" PRId64, packet->getPacket()->pts, packet->getPts(), packet->getPacket()->dts, packet->getDts());
         putPacket(packet,false);
     }else{
-        ALOGD("may be not use");
+        ALOGD("VEDemux::onRead may be not use");
     }
     return 0;
 }
 
 status_t VEDemux::onSeek(double posMs) {
     if (!mFormatContext) {
-        ALOGE( "Error: File not opened.\n");
+        ALOGE("VEDemux::onSeek Error: File not opened.\n");
         return -1;
     }
     auto pos = static_cast<int64_t >(posMs * 1000);
     int64_t seekTarget = av_rescale_q(pos, AV_TIME_BASE_Q, mFormatContext->streams[0]->time_base);
 
     if (av_seek_frame(mFormatContext, -1, seekTarget, AVSEEK_FLAG_BACKWARD) < 0) {
-        ALOGE( "Error: Couldn't seek.\n");
+        ALOGE("VEDemux::onSeek Error: Couldn't seek.\n");
         return -1;
     }
 

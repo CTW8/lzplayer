@@ -128,7 +128,16 @@ int VEPlayerDirver::seekTo(double timestampMs) {
         ALOGE("VEPlayerDirver::%s Invalid state for seekTo: %d", __FUNCTION__, currentState);
         return -1; // Error: Invalid state
     }
-    return mPlayer->seek(timestampMs);
+
+    int result = mPlayer->seek(timestampMs);
+    if (result == 0) {
+        if (currentState == MEDIA_PLAYER_STARTED) {
+            mPlayer->start();
+        } else if (currentState == MEDIA_PLAYER_PAUSED) {
+            mPlayer->pause();
+        }
+    }
+    return result;
 }
 
 void VEPlayerDirver::notifyListener(int msg, int ext1, double ext2, const void *obj) {

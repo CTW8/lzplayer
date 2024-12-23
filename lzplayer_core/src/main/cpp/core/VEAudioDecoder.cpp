@@ -32,6 +32,7 @@ int VEAudioDecoder::init(std::shared_ptr<VEDemux> demux)
 
 int VEAudioDecoder::flush()
 {
+    ALOGI("VEVideoDecoder::flush enter");
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatFlush,shared_from_this());
     msg->post();
     return 0;

@@ -103,6 +103,7 @@ int VEPlayer::pause()
 {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     //控制各个线程执行状态
+    mDemux->pause();
     mVideoRender->pause();
     mAudioOutput->pause();
     return 0;
@@ -112,6 +113,7 @@ int VEPlayer::resume()
 {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     //控制各个线程执行状态
+    mDemux->resume();
     mVideoRender->resume();
     mAudioOutput->resume();
     return 0;
@@ -129,11 +131,12 @@ int VEPlayer::release()
 
 int VEPlayer::seek(double timestampMs)
 {
-    ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
-    ///发送seek命令
+    ALOGI("VEPlayer::%s enter", __FUNCTION__);
+    // 发送seek命令
     mDemux->seek(timestampMs);
     mVideoDecoder->flush();
     mAudioDecoder->flush();
+    ALOGI("VEPlayer::%s exit", __FUNCTION__);
     return 0;
 }
 

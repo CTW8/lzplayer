@@ -175,7 +175,7 @@ jint nativeStop(JNIEnv *env, jobject obj, jlong handle) {
 
 // 跳转
 jint nativeSeekTo(JNIEnv *env, jobject obj, jlong handle, jdouble timestamp) {
-    ALOGD("nativeSeekTo called with handle: %ld, timestamp: %ld", handle, timestamp);
+    ALOGD("nativeSeekTo called with handle: %ld, timestamp: %f", handle, timestamp);
     VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
     CHECK_NULL();
     return vePlayer->seekTo(timestamp);

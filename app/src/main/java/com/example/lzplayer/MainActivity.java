@@ -40,6 +40,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Button btnStop;
     private final int REQUEST_CODE_CHOOSE = 200;
     private SeekBar btnSeekBar;
+    private boolean isOnSeek = false;
 
     private String filePath;
 
@@ -95,12 +96,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {
-
+                Log.d(TAG,"onStartTrackingTouch enter");
+                isOnSeek = true;
             }
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
-
+                Log.d(TAG,"onStopTrackingTouch enter");
+                isOnSeek = false;
             }
         });
 
@@ -153,8 +156,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 double pre = progressMs/mDuration;
                 int value = (int)(pre*1000);
                 Log.d(TAG,"progressMs :" +progressMs + "  pre:"+ progressMs/mDuration + " value:"+value);
-
-                btnSeekBar.setProgress(value);
+                if(!isOnSeek) {
+                    btnSeekBar.setProgress(value);
+                }
             }
         });
     }
