@@ -36,7 +36,6 @@ target_include_directories(lzplayer_core PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/interface
         ${CMAKE_CURRENT_LIST_DIR}/platform
         ${CMAKE_CURRENT_LIST_DIR}/thread
-        ${CMAKE_CURRENT_LIST_DIR}/libyuv/include
         )
 
 target_link_libraries( # Specifies the target library.

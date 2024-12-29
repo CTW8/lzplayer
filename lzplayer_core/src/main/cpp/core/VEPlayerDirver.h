@@ -18,19 +18,19 @@ public:
     VEPlayerDirver();
     ~VEPlayerDirver();
 
-    int setDataSource(std::string path);
-    int setSurface(ANativeWindow * win,int width,int height);
-    int prepare();
-    int prepareAsync();
-    int start();
-    int stop();
-    int pause();
-    int resume();
+    VEResult setDataSource(std::string path);
+    VEResult setSurface(ANativeWindow * win,int width,int height);
+    VEResult prepare();
+    VEResult prepareAsync();
+    VEResult start();
+    VEResult stop();
+    VEResult pause();
+    VEResult resume();
     int64_t getDuration();
-    int setLooping(bool looping);
-    int setSpeedRate(float speed);
-    int setListener(std::shared_ptr<MediaPlayerListener> listener);
-    int seekTo(double timestampMs);
+    VEResult setLooping(bool looping);
+    VEResult setSpeedRate(float speed);
+    VEResult setListener(std::shared_ptr<MediaPlayerListener> listener);
+    VEResult seekTo(double timestampMs);
 
 private:
     enum media_player_states {

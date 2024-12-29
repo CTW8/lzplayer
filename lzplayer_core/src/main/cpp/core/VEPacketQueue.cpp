@@ -1,46 +1,61 @@
 #include"VEPacketQueue.h"
 
-VEPacketQueue::VEPacketQueue()
+VEPacketQueue::VEPacketQueue(int maxSize) : mMaxSize(maxSize)
 {
 }
 
 VEPacketQueue::~VEPacketQueue()
 {
+    clear(); // 确保析构时清空队列
 }
 
-int VEPacketQueue::put(VEPacket *pack)
+bool VEPacketQueue::put(std::shared_ptr<VEPacket> pack)
 {
-    ///如果queue size大于指定值，先wait
-    if(mPacketQueue.size()>20){
-        pthread_cond_wait(&mCond,&mMutex);
-    }
-    ///有signal过来，有空间了，继续put
     pthread_mutex_lock(&mMutex);
-    mPacketQueue.push(pack);
-    pthread_cond_signal(&mCond);
-    pthread_mutex_unlock(&mMutex);
-    return 0;
-}
-
-VEPacket *VEPacketQueue::get()
-{
-    
-    ///如果没有数据了，发完signal后wait
-    if(mPacketQueue.empty()){
-        pthread_mutex_lock(&mMutex);
-        pthread_cond_wait(&mCond,&mMutex);
+    if(mPacketQueue.size() >= mMaxSize){
         pthread_mutex_unlock(&mMutex);
+        return false; // 队列已满，返回false
     }
-    ///如果有signal过来则，继续获取
+    mPacketQueue.push(pack);
+    pthread_mutex_unlock(&mMutex);
+    return true; // 成功放入队列
+}
+
+std::shared_ptr<VEPacket> VEPacketQueue::get()
+{
     pthread_mutex_lock(&mMutex);
-    pthread_cond_signal(&mCond);
-    VEPacket *tmp = (VEPacket *)mPacketQueue.front();
+    if(mPacketQueue.empty()){
+        pthread_mutex_unlock(&mMutex);
+        return nullptr; // 队列为空，返回nullptr
+    }
+    std::shared_ptr<VEPacket> tmp = mPacketQueue.front();
     mPacketQueue.pop();
     pthread_mutex_unlock(&mMutex);
-    return tmp;
+    return tmp; // 成功获取数据
 }
 
-int VEPacketQueue::size()
+int VEPacketQueue::getRemainingSize()
 {
-    return mPacketQueue.size();
+    pthread_mutex_lock(&mMutex);
+    int remainingSize = mMaxSize - mPacketQueue.size();
+    pthread_mutex_unlock(&mMutex);
+    return remainingSize; // 返回队列剩余空间
+}
+
+int VEPacketQueue::getDataSize()
+{
+    pthread_mutex_lock(&mMutex);
+    int dataSize = mPacketQueue.size();
+    pthread_mutex_unlock(&mMutex);
+    return dataSize; // 返回队列中数据的大小
+}
+
+void VEPacketQueue::clear()
+{
+    pthread_mutex_lock(&mMutex);
+    while (!mPacketQueue.empty()) {
+        mPacketQueue.front().reset();
+        mPacketQueue.pop();
+    }
+    pthread_mutex_unlock(&mMutex);
 }

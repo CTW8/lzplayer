@@ -57,13 +57,13 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             break;
         }
         case kWhatSync:{
-            if(onAVSync() != OK){
+            if(onAVSync() != VE_OK){
                 ///todo
             }
             break;
         }
         case kWhatRender:{
-            if(onRender(msg) == OK){
+            if(onRender(msg) == VE_OK){
                 std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatSync,shared_from_this());
                 renderMsg->post();
             }
@@ -99,7 +99,7 @@ VEVideoRender::~VEVideoRender() {
     stop();
 }
 
-status_t VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps) {
+VEResult VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps) {
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit,shared_from_this());
     msg->setPointer("win",win);
     msg->setInt32("width",width);
@@ -110,22 +110,22 @@ status_t VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWin
     return 0;
 }
 
-status_t VEVideoRender::start() {
+VEResult VEVideoRender::start() {
     std::make_shared<AMessage>(kWhatStart,shared_from_this())->post();
     return 0;
 }
 
-status_t VEVideoRender::stop() {
+VEResult VEVideoRender::stop() {
     std::make_shared<AMessage>(kWhatStop,shared_from_this())->post();
     return 0;
 }
 
-status_t VEVideoRender::unInit() {
+VEResult VEVideoRender::unInit() {
     std::make_shared<AMessage>(kWhatUninit,shared_from_this())->post();
     return 0;
 }
 
-status_t VEVideoRender::onInit(ANativeWindow * win) {
+VEResult VEVideoRender::onInit(ANativeWindow * win) {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     JNIEnv *env = AttachCurrentThreadEnv();
     // 获取默认的 EGL 显示设备
@@ -182,28 +182,28 @@ status_t VEVideoRender::onInit(ANativeWindow * win) {
     glClearColor(0.5f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    return OK;
+    return VE_OK;
 }
 
-status_t VEVideoRender::onStart() {
+VEResult VEVideoRender::onStart() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     mIsStarted = true;
     std::make_shared<AMessage>(kWhatSync,shared_from_this())->post();
-    return OK;
+    return VE_OK;
 }
 
-status_t VEVideoRender::onStop() {
+VEResult VEVideoRender::onStop() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     mIsStarted = false;
-    return OK;
+    return VE_OK;
 }
 
-status_t VEVideoRender::onUnInit() {
+VEResult VEVideoRender::onUnInit() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
-    return OK;
+    return VE_OK;
 }
 
-status_t VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
+VEResult VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
     ALOGI("VEVideoRender::%s enter",__FUNCTION__ );
     if(!mIsStarted){
         return UNKNOWN_ERROR;
@@ -213,7 +213,7 @@ status_t VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
     msg->findInt32("drop",&isDrop);
 
     if(isDrop){
-        return OK;
+        return VE_OK;
     }
 
     std::shared_ptr<VEFrame> frame = nullptr;
@@ -312,7 +312,7 @@ status_t VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
               frame->getPts(), msg->what());
     }
     ALOGI("VEVideoRender::%s exit timestamp:%" PRId64,__FUNCTION__ , frame->getPts());
-    return OK;
+    return VE_OK;
 }
 
 
@@ -398,27 +398,27 @@ bool VEVideoRender::createTexture() {
     return 0;
 }
 
-status_t VEVideoRender::pause() {
+VEResult VEVideoRender::pause() {
     std::make_shared<AMessage>(kWhatPause,shared_from_this())->post();
     return 0;
 }
 
-status_t VEVideoRender::resume() {
+VEResult VEVideoRender::resume() {
     std::make_shared<AMessage>(kWhatResume,shared_from_this())->post();
     return 0;
 }
 
-status_t VEVideoRender::onPause() {
+VEResult VEVideoRender::onPause() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     return 0;
 }
 
-status_t VEVideoRender::onResume() {
+VEResult VEVideoRender::onResume() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     return 0;
 }
 
-status_t VEVideoRender::onAVSync() {
+VEResult VEVideoRender::onAVSync() {
     ALOGI("VEVideoRender::%s enter",__FUNCTION__ );
     if(!mIsStarted){
         return UNKNOWN_ERROR;
@@ -426,7 +426,12 @@ status_t VEVideoRender::onAVSync() {
 
     bool isDrop = false;
     std::shared_ptr<VEFrame> frame = nullptr;
-    mVDec->readFrame(frame);
+    VEResult ret = mVDec->readFrame(frame);
+    if(ret == VE_NOT_ENOUGH_DATA){
+        ALOGI("VEVideoRender::%s needMoreFrame!!!",__FUNCTION__ );
+        mVDec->needMoreFrame(std::make_shared<AMessage>(kWhatSync,shared_from_this()));
+        return VE_NOT_ENOUGH_DATA;
+    }
 
     if(frame == nullptr){
         ALOGE("VEVideoRender::%s onRender read frame is null!!!", __FUNCTION__);
@@ -448,10 +453,10 @@ status_t VEVideoRender::onAVSync() {
     }
 
     int64_t waitTime = m_AVSync->getWaitTime(); // 获取等待时间
-
+    ALOGD("VEVideoRender::%s waitTime:%" PRId64,__FUNCTION__ ,waitTime);
     std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender, shared_from_this());
     renderMsg->setObject("render", frame);
     renderMsg->setInt32("drop",isDrop);
     renderMsg->post(isDrop ? 0 : waitTime); // 根据同步状态设置等待时间
-    return OK;
+    return VE_OK;
 }

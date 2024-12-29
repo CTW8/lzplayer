@@ -10,7 +10,7 @@
 #include "VEFrame.h"
 #include "VEPacketQueue.h"
 #include "VEFrameQueue.h"
-#include "VEResult.h"
+#include "VEError.h"
 #include "jni.h"
 #include "thread/AHandler.h"
 #include "VEVideoRender.h"
@@ -33,33 +33,33 @@ private:
 
 public:
     /// setDataSource
-    int setDataSource(std::string path);
+    VEResult setDataSource(std::string path);
 
-    int setDisplayOut(ANativeWindow* win,int viewWidth,int viewHeight);
+    VEResult setDisplayOut(ANativeWindow* win,int viewWidth,int viewHeight);
 
     /// prepare
-    int prepare();
+    VEResult prepare();
 
     /// start
-    int start();
+    VEResult start();
 
     /// stop
-    int stop();
+    VEResult stop();
 
     /// pause
-    int pause();
+    VEResult pause();
 
     /// resume
-    int resume();
+    VEResult resume();
 
     /// release
-    int release();
+    VEResult release();
 
     /// seekTo
-    int seek(double timestampMs);
+    VEResult seek(double timestampMs);
 
     /// reset
-    int reset();
+    VEResult reset();
 
     void setLooping(bool enable);
 
@@ -69,7 +69,7 @@ public:
 
     void setVolume(int volume);
 
-    int setPlaySpeed(float speed);
+    VEResult setPlaySpeed(float speed);
 
     /// setPlaybackParams
 

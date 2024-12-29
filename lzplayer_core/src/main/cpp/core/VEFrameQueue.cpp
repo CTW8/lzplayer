@@ -1,47 +1,44 @@
-#include"VEFrameQueue.h"
+#include "VEFrameQueue.h"
 
-VEFrameQueue::VEFrameQueue()
-{
+VEFrameQueue::VEFrameQueue(int maxSize) : mMaxSize(maxSize) {}
+
+VEFrameQueue::~VEFrameQueue() {
+    clear();
 }
 
-VEFrameQueue::~VEFrameQueue()
-{
-}
-
-int VEFrameQueue::put(VEFrame *pack)
-{
-    ///判断是否size到达阈值，到达后wait
-    if(mFrameQueue.size()>4){
-        pthread_mutex_lock(&mMutex);
-        pthread_cond_wait(&mCond,&mMutex);
-        pthread_mutex_unlock(&mMutex);
+bool VEFrameQueue::put(std::shared_ptr<VEFrame> frame) {
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (mFrameQueue.size() >= mMaxSize) {
+        return false; // 队列已满，返回false
     }
-    ///放入队列，并发送信号
-    pthread_mutex_lock(&mMutex);
-    mFrameQueue.push(pack);
-    pthread_cond_signal(&mCond);
-    pthread_mutex_unlock(&mMutex);
-    return 0;
+    mFrameQueue.push(frame);
+    return true; // 成功放入队列
 }
 
-VEFrame *VEFrameQueue::get()
-{
-    ///判断是否队列为空，如果是空的则wait
-    if(mFrameQueue.empty()){
-        pthread_mutex_lock(&mMutex);
-        pthread_cond_wait(&mCond,&mMutex);
-        pthread_mutex_unlock(&mMutex);
+std::shared_ptr<VEFrame> VEFrameQueue::get() {
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (mFrameQueue.empty()) {
+        return nullptr; // 队列为空，返回nullptr
     }
-    ///有数据则获取，并发送信号，通知有空间可以存放，
-    pthread_mutex_lock(&mMutex);
-    VEFrame *tmp = mFrameQueue.front();
+    std::shared_ptr<VEFrame> frame = mFrameQueue.front();
     mFrameQueue.pop();
-    pthread_cond_signal(&mCond);
-    pthread_mutex_unlock(&mMutex);
-    return tmp;
+    return frame; // 成功获取数据
 }
 
-int VEFrameQueue::size()
-{
-    return 0;
+int VEFrameQueue::getRemainingSize() {
+    std::lock_guard<std::mutex> lock(mMutex);
+    return mMaxSize - mFrameQueue.size();
+}
+
+int VEFrameQueue::getDataSize() {
+    std::lock_guard<std::mutex> lock(mMutex);
+    return mFrameQueue.size();
+}
+
+void VEFrameQueue::clear() {
+    std::lock_guard<std::mutex> lock(mMutex);
+    while (!mFrameQueue.empty()) {
+        mFrameQueue.front().reset();
+        mFrameQueue.pop();
+    }
 }

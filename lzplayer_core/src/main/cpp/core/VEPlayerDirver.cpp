@@ -26,7 +26,7 @@ VEPlayerDirver::VEPlayerDirver()
 
 VEPlayerDirver::~VEPlayerDirver() {}
 
-int VEPlayerDirver::setDataSource(std::string path) {
+VEResult VEPlayerDirver::setDataSource(std::string path) {
     if (currentState != MEDIA_PLAYER_IDLE) {
         return -1; // Error: Invalid state
     }
@@ -37,7 +37,7 @@ int VEPlayerDirver::setDataSource(std::string path) {
     return -1;
 }
 
-int VEPlayerDirver::setSurface(ANativeWindow *win,int width,int height) {
+VEResult VEPlayerDirver::setSurface(ANativeWindow *win,int width,int height) {
 //    if (currentState != MEDIA_PLAYER_INITIALIZED && currentState != MEDIA_PLAYER_PREPARED) {
 //        return -1; // Error: Invalid state
 //    }
@@ -47,7 +47,7 @@ int VEPlayerDirver::setSurface(ANativeWindow *win,int width,int height) {
     return -1;
 }
 
-int VEPlayerDirver::prepare() {
+VEResult VEPlayerDirver::prepare() {
     if (currentState != MEDIA_PLAYER_INITIALIZED) {
         return -1; // Error: Invalid state
     }
@@ -58,7 +58,7 @@ int VEPlayerDirver::prepare() {
     return -1;
 }
 
-int VEPlayerDirver::start() {
+VEResult VEPlayerDirver::start() {
     if (currentState != MEDIA_PLAYER_PREPARED && currentState != MEDIA_PLAYER_PAUSED) {
         return -1; // Error: Invalid state
     }
@@ -69,7 +69,7 @@ int VEPlayerDirver::start() {
     return -1;
 }
 
-int VEPlayerDirver::stop() {
+VEResult VEPlayerDirver::stop() {
     if (currentState != MEDIA_PLAYER_STARTED && currentState != MEDIA_PLAYER_PAUSED) {
         return -1; // Error: Invalid state
     }
@@ -80,7 +80,7 @@ int VEPlayerDirver::stop() {
     return -1;
 }
 
-int VEPlayerDirver::pause() {
+VEResult VEPlayerDirver::pause() {
     if (currentState != MEDIA_PLAYER_STARTED) {
         return -1; // Error: Invalid state
     }
@@ -91,7 +91,7 @@ int VEPlayerDirver::pause() {
     return -1;
 }
 
-int VEPlayerDirver::resume() {
+VEResult VEPlayerDirver::resume() {
     if (currentState != MEDIA_PLAYER_PAUSED) {
         return -1; // Error: Invalid state
     }
@@ -106,23 +106,23 @@ int64_t VEPlayerDirver::getDuration() {
     return mPlayer->getDuration();
 }
 
-int VEPlayerDirver::setLooping(bool looping) {
+VEResult VEPlayerDirver::setLooping(bool looping) {
     mPlayer->setLooping(looping);
     return 0;
 }
 
-int VEPlayerDirver::setSpeedRate(float speed) {
+VEResult VEPlayerDirver::setSpeedRate(float speed) {
     // Assume VEPlayer has a method to set speed rate, this is a placeholder
     mPlayer->setPlaySpeed(speed);
     return 0;
 }
 
-int VEPlayerDirver::setListener(std::shared_ptr<MediaPlayerListener> listener) {
+VEResult VEPlayerDirver::setListener(std::shared_ptr<MediaPlayerListener> listener) {
     mListener = listener;
     return 0;
 }
 
-int VEPlayerDirver::seekTo(double timestampMs) {
+VEResult VEPlayerDirver::seekTo(double timestampMs) {
     ALOGI("VEPlayerDirver::%s timestampMs:%f, currentState:%d", __FUNCTION__, timestampMs, currentState);
     if (currentState != MEDIA_PLAYER_STARTED && currentState != MEDIA_PLAYER_PAUSED) {
         ALOGE("VEPlayerDirver::%s Invalid state for seekTo: %d", __FUNCTION__, currentState);
@@ -146,6 +146,6 @@ void VEPlayerDirver::notifyListener(int msg, int ext1, double ext2, const void *
     }
 }
 
-int VEPlayerDirver::prepareAsync() {
+VEResult VEPlayerDirver::prepareAsync() {
     return 0;
 }

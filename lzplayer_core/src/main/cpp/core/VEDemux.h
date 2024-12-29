@@ -3,11 +3,12 @@
 
 #include<string>
 #include<memory>
-#include<deque>
 #include"VEMediaDef.h"
 #include"VEPacket.h"
+#include "VEPacketQueue.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
+#include "VEError.h"
 extern "C"
 {
     #include "libavformat/avformat.h"
@@ -23,21 +24,22 @@ public:
     VEDemux();
     ~VEDemux();
 
-    status_t open(std::string file);
+    VEResult open(std::string file);
     void start();
     void stop();
     void pause();
     void resume();
-    status_t read(bool isAudio,std::shared_ptr<VEPacket> &packet);
-    status_t seek(double posMs);
-    status_t close();
+    void needMorePacket(std::shared_ptr<AMessage> msg,int type);
+    VEResult read(bool isAudio,std::shared_ptr<VEPacket> &packet);
+    VEResult seek(double posMs);
+    VEResult close();
     std::shared_ptr<VEMediaInfo> getFileInfo();
 
 private:
-    status_t onOpen(std::string path);
-    status_t onStart();
-    status_t onRead();
-    status_t onSeek(double posMs);
+    VEResult onOpen(std::string path);
+    VEResult onStart();
+    VEResult onRead();
+    VEResult onSeek(double posMs);
     void putPacket(std::shared_ptr<VEPacket> packet,bool isAudio);
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
@@ -64,6 +66,12 @@ private:
     bool mIsStart = false;
     bool mIsPause = false;
 
+    bool mNeedAudioMore = false;
+    bool mNeedVideoMore = false;
+
+    std::shared_ptr<AMessage> mAudioNotify = nullptr;
+    std::shared_ptr<AMessage> mVideoNotify = nullptr;
+
     std::mutex mMutexAudio;
     std::condition_variable mCondAudio;
 
@@ -74,9 +82,9 @@ private:
     int64_t mVideoStartPts =0;
 
     //视频帧
-    std::deque<std::shared_ptr<VEPacket>> mVideoPacketQueue;
+    std::shared_ptr<VEPacketQueue> mVideoPacketQueue = nullptr;
     //音频帧
-    std::deque<std::shared_ptr<VEPacket>> mAudioPacketQueue;
+    std::shared_ptr<VEPacketQueue> mAudioPacketQueue = nullptr;
     AVFormatContext* mFormatContext=nullptr;
 
 

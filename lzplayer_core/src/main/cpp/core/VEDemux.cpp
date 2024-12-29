@@ -1,5 +1,7 @@
 #include "VEDemux.h"
 #include "VEPacket.h"
+#include "VEError.h"
+
 extern "C"{
     #include"libavcodec/avcodec.h"
     #include"libavformat/avformat.h"
@@ -9,8 +11,7 @@ extern "C"{
 #define AUDIO_QUEUE_SIZE    100
 #define VIDEO_QUEUE_SIZE    100
 
-VEDemux::VEDemux()
-{
+VEDemux::VEDemux(){
     mAudioCodecParams = nullptr;
     mVideoCodecParams = nullptr;
     mFormatContext = nullptr;
@@ -18,12 +19,11 @@ VEDemux::VEDemux()
     mVideoStartPts = -1;
 }
 
-VEDemux::~VEDemux()
-{
-
+VEDemux::~VEDemux() {
+    close();
 }
 
-status_t VEDemux::open(std::string file)
+VEResult VEDemux::open(std::string file)
 {
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatOpen,shared_from_this());
     msg->setString("filePath",file);
@@ -35,45 +35,29 @@ status_t VEDemux::open(std::string file)
     return ret;
 }
 
-status_t VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet){
-
+VEResult VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet){
+    ALOGD("VEDemux::read audio queue size: %d, video queue size: %d", mAudioPacketQueue->getDataSize(), mVideoPacketQueue->getDataSize());
     if(isAudio){
-        std::unique_lock<std::mutex> lock(mMutexAudio);
-        ALOGD("VEDemux::read mAudioPacketQueue size:%zu",mAudioPacketQueue.size());
-        if(mAudioPacketQueue.size() == 0){
+        ALOGD("VEDemux::read mAudioPacketQueue size:%d",mAudioPacketQueue->getDataSize());
+        if(mAudioPacketQueue->getDataSize() == 0){
             ALOGD("VEDemux::read audio queue wait!!");
-            mCondAudio.wait(lock);
+            return VE_NOT_ENOUGH_DATA;
         }
 
-        if(mAudioPacketQueue.size() >= AUDIO_QUEUE_SIZE){
-            packet = mAudioPacketQueue.front();
-            mAudioPacketQueue.pop_front();
-            mCondAudio.notify_one();
-        }else{
-            packet = mAudioPacketQueue.front();
-            mAudioPacketQueue.pop_front();
-        }
+        packet = mAudioPacketQueue->get();
     }else{
-        std::unique_lock<std::mutex> lock(mMutexVideo);
-        if(mVideoPacketQueue.size() == 0){
+        ALOGD("VEDemux::read mVideoPacketQueue size:%d",mVideoPacketQueue->getDataSize());
+        if(mVideoPacketQueue->getDataSize() == 0){
             ALOGD("VEDemux::read video queue wait!!");
-            mCondVideo.wait(lock);
+            return VE_NOT_ENOUGH_DATA;
         }
 
-        if(mVideoPacketQueue.size() >= VIDEO_QUEUE_SIZE){
-            packet = mVideoPacketQueue.front();
-            mVideoPacketQueue.pop_front();
-            mCondVideo.notify_one();
-        }else{
-            packet = mVideoPacketQueue.front();
-            mVideoPacketQueue.pop_front();
-        }
-
+        packet = mVideoPacketQueue->get();
     }
-    return OK;
+    return VE_OK;
 }
 
-status_t VEDemux::close()
+VEResult VEDemux::close()
 {
     if (mFormatContext) {
         avformat_close_input(&mFormatContext);
@@ -120,7 +104,7 @@ void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             msg->findString("filePath",path);
             std::shared_ptr<AReplyToken> replyToken;
             msg->senderAwaitsResponse(replyToken);
-            status_t ret = onOpen(path);
+            VEResult ret = onOpen(path);
 
             std::shared_ptr<AMessage> replyMsg = std::make_shared<AMessage>();
             replyMsg->setInt32("ret",ret);
@@ -143,7 +127,7 @@ void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         case kWhatSeek:{
             double pos = 0;
             msg->findDouble("posMs",&pos);
-            if(onSeek(pos) == 0){
+            if(onSeek(pos) == VE_OK){
                 ALOGI("VEDemux::onMessageReceived Seek done.");
             }
             break;
@@ -185,7 +169,7 @@ void VEDemux::resume() {
     msg->post();
 }
 
-status_t VEDemux::seek(double posMs)
+VEResult VEDemux::seek(double posMs)
 {
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek,shared_from_this());
     msg->setDouble("posMs",posMs);
@@ -193,7 +177,7 @@ status_t VEDemux::seek(double posMs)
     return 0;
 }
 
-status_t VEDemux::onOpen(std::string path) {
+VEResult VEDemux::onOpen(std::string path) {
     ALOGI("VEDemux::%s",__FUNCTION__ );
     ///打开文件
     if(path.empty()){
@@ -239,17 +223,33 @@ status_t VEDemux::onOpen(std::string path) {
             mFps = stream->r_frame_rate.num/stream->r_frame_rate.den;
         }
     }
+
+    mAudioPacketQueue = std::make_shared<VEPacketQueue>(AUDIO_QUEUE_SIZE);
+    mVideoPacketQueue = std::make_shared<VEPacketQueue>(VIDEO_QUEUE_SIZE);
     return 0;
 }
 
-status_t VEDemux::onStart() {
+VEResult VEDemux::onStart() {
     ALOGI("VEDemux::%s",__FUNCTION__ );
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead,shared_from_this());
     msg->post();
     return 0;
 }
-status_t VEDemux::onRead() {
+VEResult VEDemux::onRead() {
     ALOGI("VEDemux::%s",__FUNCTION__ );
+
+    if (mAudioPacketQueue->getDataSize() >= AUDIO_QUEUE_SIZE) {
+        ALOGD("VEDemux::onRead Audio queue is full, stopping read.");
+        mIsStart = false;
+        return VE_NO_MEMORY;
+    }
+
+    if (mVideoPacketQueue->getDataSize() >= VIDEO_QUEUE_SIZE) {
+        ALOGD("VEDemux::onRead Video queue is full, stopping read.");
+        mIsStart = false;
+        return VE_NO_MEMORY;
+    }
+
     std::shared_ptr<VEPacket> packet = std::make_shared<VEPacket>();
     if(!packet){
         ALOGD("VEDemux::onRead Could not allocate AVPacket");
@@ -305,56 +305,86 @@ status_t VEDemux::onRead() {
     return 0;
 }
 
-status_t VEDemux::onSeek(double posMs) {
+VEResult VEDemux::onSeek(double posMs) {
     if (!mFormatContext) {
         ALOGE("VEDemux::onSeek Error: File not opened.\n");
+        return VE_INVALID_PARAMS;
+    }
+
+    ALOGD("VEDemux::onSeek posMs:%f", posMs);
+
+    // 将毫秒转换为目标时间戳
+    int64_t targetPts = static_cast<int64_t>(posMs * 1000);
+
+    // 目标流的时间基
+    AVRational timeBase = mFormatContext->streams[mVideo_index]->time_base;
+
+    // 目标时间戳转换到流时间基
+    int64_t seekTarget = av_rescale_q(targetPts, AV_TIME_BASE_Q, timeBase);
+
+    // 使用 avformat_seek_file 执行 Seek
+    int ret = avformat_seek_file(mFormatContext, mVideo_index, INT64_MIN, seekTarget, INT64_MAX, AVSEEK_FLAG_BACKWARD);
+    if (ret < 0) {
+        ALOGE("VEDemux::onSeek Error: Couldn't seek using avformat_seek_file.\n");
         return -1;
     }
-    auto pos = static_cast<int64_t >(posMs * 1000);
-    int64_t seekTarget = av_rescale_q(pos, AV_TIME_BASE_Q, mFormatContext->streams[0]->time_base);
 
-    if (av_seek_frame(mFormatContext, -1, seekTarget, AVSEEK_FLAG_BACKWARD) < 0) {
-        ALOGE("VEDemux::onSeek Error: Couldn't seek.\n");
-        return -1;
-    }
+    mAudioPacketQueue->clear();
+    mVideoPacketQueue->clear();
 
-    // 清空音频和视频队列
-    {
-        std::unique_lock<std::mutex> lk(mMutexAudio);
-        mAudioPacketQueue.clear();
-        mCondAudio.notify_all();
-    }
-    {
-        std::unique_lock<std::mutex> lk(mMutexVideo);
-        mVideoPacketQueue.clear();
-        mCondVideo.notify_all();
-    }
-
-    return 0;
+    ALOGD("VEDemux::onSeek Successful to posMs: %f", posMs);
+    return VE_OK;
 }
 
 void VEDemux::putPacket(std::shared_ptr<VEPacket> packet, bool isAudio) {
     if(!isAudio){
-        std::unique_lock<std::mutex> lk(mMutexVideo);
-        if(mVideoPacketQueue.size() >= VIDEO_QUEUE_SIZE){
-            mCondVideo.wait(lk);
-        }
-        if(mVideoPacketQueue.size() == 0){
-            mVideoPacketQueue.push_back(packet);
-            mCondVideo.notify_one();
-        }else{
-            mVideoPacketQueue.push_back(packet);
+        if(!mVideoPacketQueue->put(packet)){
+            ALOGD("VEDemux::putPacket Video queue is full, stopping read.");
+            mIsStart = false;
+        } else {
+            ALOGD("VEDemux::putPacket Video queue mNeedVideoMore:%d",mNeedVideoMore);
+            std::lock_guard<std::mutex> lk(mMutexVideo);
+
+            if(mNeedVideoMore) {
+                mNeedVideoMore = false;
+                if (mVideoNotify) {
+                    ALOGD("VEDemux::putPacket Video queue post notify");
+                    mVideoNotify->post();
+                }
+            }
         }
     }else{
-        std::unique_lock<std::mutex> lk(mMutexAudio);
-        if(mAudioPacketQueue.size() >= AUDIO_QUEUE_SIZE){
-            mCondAudio.wait(lk);
+        if(!mAudioPacketQueue->put(packet)){
+            ALOGD("VEDemux::putPacket Audio queue is full, stopping read.");
+            mIsStart = false;
+        } else {
+            ALOGD("VEDemux::putPacket Audio queue mNeedAudioMore:%d",mNeedAudioMore);
+            std::lock_guard<std::mutex> lk(mMutexAudio);
+            if(mNeedAudioMore) {
+                mNeedAudioMore = false;
+                if (mAudioNotify) {
+                    ALOGD("VEDemux::putPacket Video queue post notify");
+                    mAudioNotify->post();
+                }
+            }
         }
-        if(mAudioPacketQueue.size() == 0){
-            mAudioPacketQueue.push_back(packet);
-            mCondAudio.notify_one();
-        }else{
-            mAudioPacketQueue.push_back(packet);
-        }
+    }
+}
+
+void VEDemux::needMorePacket(std::shared_ptr<AMessage> msg, int type) {
+    if(type == 1){
+        mAudioNotify = msg;
+        mNeedAudioMore = true;
+        ALOGI("VEDemux::needMorePacket - Need more packets for type audio.");
+    }else{
+        mVideoNotify = msg;
+        mNeedVideoMore = true;
+        ALOGI("VEDemux::needMorePacket - Need more packets for type: video.");
+    }
+
+    if(mIsStart == false){
+        mIsStart = true;
+        ALOGI("VEDemux::needMorePacket - Starting to read packets.");
+        std::make_shared<AMessage>(kWhatRead,shared_from_this())->post();
     }
 }

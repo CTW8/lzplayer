@@ -24,6 +24,11 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        debug {
+            // 添加调试版本的符号表生成配置
+            debuggable true
+            minifyEnabled false
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -33,6 +38,7 @@ android {
     buildFeatures {
         viewBinding true
     }
+    ndkVersion '25.1.8937393'
 }
 
 dependencies {

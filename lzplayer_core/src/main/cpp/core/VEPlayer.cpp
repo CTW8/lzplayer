@@ -3,7 +3,7 @@
 #include <utility>
 
 
-int VEPlayer::setDataSource(std::string path)
+VEResult VEPlayer::setDataSource(std::string path)
 {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     if(path.empty()){
@@ -26,7 +26,7 @@ int VEPlayer::setDataSource(std::string path)
     return 0;
 }
 
-int VEPlayer::prepare()
+VEResult VEPlayer::prepare()
 {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     ///创建audio dec thread
@@ -75,7 +75,7 @@ int VEPlayer::prepare()
     return 0;
 }
 
-int VEPlayer::start()
+VEResult VEPlayer::start()
 {
     ///控制各个线程开始运行
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
@@ -87,7 +87,7 @@ int VEPlayer::start()
     return 0;
 }
 
-int VEPlayer::stop()
+VEResult VEPlayer::stop()
 {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     //控制各个线程执行状态
@@ -99,7 +99,7 @@ int VEPlayer::stop()
     return 0;
 }
 
-int VEPlayer::pause()
+VEResult VEPlayer::pause()
 {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     //控制各个线程执行状态
@@ -109,7 +109,7 @@ int VEPlayer::pause()
     return 0;
 }
 
-int VEPlayer::resume()
+VEResult VEPlayer::resume()
 {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     //控制各个线程执行状态
@@ -119,7 +119,7 @@ int VEPlayer::resume()
     return 0;
 }
 
-int VEPlayer::release()
+VEResult VEPlayer::release()
 {
     ////释放播放器
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
@@ -129,9 +129,9 @@ int VEPlayer::release()
     return 0;
 }
 
-int VEPlayer::seek(double timestampMs)
+VEResult VEPlayer::seek(double timestampMs)
 {
-    ALOGI("VEPlayer::%s enter", __FUNCTION__);
+    ALOGI("VEPlayer::%s timestampMs:%f", __FUNCTION__,timestampMs);
     // 发送seek命令
     mDemux->seek(timestampMs);
     mVideoDecoder->flush();
@@ -140,7 +140,7 @@ int VEPlayer::seek(double timestampMs)
     return 0;
 }
 
-int VEPlayer::reset()
+VEResult VEPlayer::reset()
 {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     mDemux->seek(0);
@@ -179,7 +179,7 @@ VEPlayer::~VEPlayer() {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
 }
 
-int VEPlayer::setDisplayOut(ANativeWindow *win,int viewWidth,int viewHeight)
+VEResult VEPlayer::setDisplayOut(ANativeWindow *win,int viewWidth,int viewHeight)
 {
     ALOGI("VEPlayer::%s  enter",__FUNCTION__ );
     mWindow = win;
@@ -218,7 +218,7 @@ void VEPlayer::setOnProgressListener(funOnProgressCallback callback) {
     onProgressCallback = std::move(callback);
 }
 
-int VEPlayer::setPlaySpeed(float speed) {
+VEResult VEPlayer::setPlaySpeed(float speed) {
 
     return 0;
 }

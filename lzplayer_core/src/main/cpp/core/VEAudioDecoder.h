@@ -1,11 +1,16 @@
 #ifndef __VE_AUDIO_DECODER__
 #define __VE_AUDIO_DECODER__
 
-#include<string>
-#include<memory>
-
-extern "C"
-{
+#include <string>
+#include <memory>
+#include "VEMediaDef.h"
+#include "VEPacket.h"
+#include "VEFrame.h"
+#include "VEFrameQueue.h"
+#include "VEDemux.h"
+#include "thread/AHandler.h"
+#include "thread/AMessage.h"
+extern "C" {
     #include "libavformat/avformat.h"
     #include "libavcodec/avcodec.h"
     #include "libavutil/avutil.h"
@@ -14,54 +19,55 @@ extern "C"
     #include "libavutil/opt.h"
 }
 
-#include"VEMediaDef.h"
-#include"VEPacket.h"
-#include"VEFrame.h"
-#include "VEDemux.h"
-#include "thread/AHandler.h"
-#include "thread/AMessage.h"
-
-class VEAudioDecoder:public AHandler{
+class VEAudioDecoder : public AHandler {
 public:
     VEAudioDecoder();
     ~VEAudioDecoder();
 
-public:
-    ///init
-    int init(std::shared_ptr<VEDemux> demux);
+    VEResult init(std::shared_ptr<VEDemux> demux);
     void start();
+    void pause();
+    void resume();
     void stop();
-    int flush();
-    int readFrame(std::shared_ptr<VEFrame> &frame);
-    int uninit();
+    VEResult flush();
+    void needMoreFrame(std::shared_ptr<AMessage> msg);
+    VEResult readFrame(std::shared_ptr<VEFrame> &frame);
+    VEResult uninit();
 
 private:
-    status_t onInit(std::shared_ptr<AMessage> msg);
-    status_t onStart();
-    status_t onFlush();
-    status_t onDecode();
-    status_t onStop();
-    status_t onUnInit();
+    VEResult onInit(std::shared_ptr<AMessage> msg);
+    VEResult onStart();
+    VEResult onFlush();
+    VEResult onPause();
+    VEResult onResume();
+    VEResult onDecode();
+    VEResult onStop();
+    VEResult onUnInit();
     void queueFrame(std::shared_ptr<VEFrame> frame);
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
-    enum {
-        kWhatInit                = 'init',
-        kWhatStart               = 'star',
-        kWhatStop                = 'stop',
-        kWhatFlush               = 'flus',
-        kWhatDecode              = 'deco',
-        kWhatUninit              = 'unin'
-    };
-private:
-    /* data */
-    AVCodecContext * mAudioCtx=nullptr;
-    VEMediaInfo * mMediaInfo=nullptr;
-    std::mutex mMutex;
-    std::condition_variable mCond;
-    std::deque<std::shared_ptr<VEFrame>> mFrameQueue;
-    std::shared_ptr<VEDemux> mDemux = nullptr;
-    bool mIsStarted = false;
 
+    enum {
+        kWhatInit = 'init',
+        kWhatStart = 'star',
+        kWhatStop = 'stop',
+        kWhatPause = 'paus',
+        kWhatResume = 'resu',
+        kWhatFlush = 'flus',
+        kWhatDecode = 'deco',
+        kWhatUninit = 'unin'
+    };
+
+private:
+    AVCodecContext *mAudioCtx = nullptr;
+    VEMediaInfo *mMediaInfo = nullptr;
+    std::shared_ptr<VEFrameQueue> mFrameQueue= nullptr;
+    std::shared_ptr<VEDemux> mDemux = nullptr;
+
+    std::mutex mMutex;
+    bool mIsStarted = false;
+    bool mNeedMoreData = false;
+
+    std::shared_ptr<AMessage> mNotifyRender = nullptr;
     SwrContext *mSwrCtx = nullptr;
     FILE *fp = nullptr;
 };

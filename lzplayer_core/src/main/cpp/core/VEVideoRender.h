@@ -21,12 +21,12 @@ public:
     VEVideoRender(std::shared_ptr<AMessage> notify, std::shared_ptr<VEAVsync> avSync);
     ~VEVideoRender();
 
-    status_t init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps);
-    status_t start();
-    status_t pause();
-    status_t resume();
-    status_t stop();
-    status_t unInit();
+    VEResult init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps);
+    VEResult start();
+    VEResult pause();
+    VEResult resume();
+    VEResult stop();
+    VEResult unInit();
     enum {
         kWhatEOS            = 'veos',
         kWhatProgress       = 'prog'
@@ -34,14 +34,14 @@ public:
 
 private:
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
-    status_t onInit(ANativeWindow * win);
-    status_t onStart();
-    status_t onStop();
-    status_t onPause();
-    status_t onResume();
-    status_t onUnInit();
-    status_t onAVSync();
-    status_t onRender(std::shared_ptr<AMessage> msg);
+    VEResult onInit(ANativeWindow * win);
+    VEResult onStart();
+    VEResult onStop();
+    VEResult onPause();
+    VEResult onResume();
+    VEResult onUnInit();
+    VEResult onAVSync();
+    VEResult onRender(std::shared_ptr<AMessage> msg);
 
     GLuint loadShader(GLenum type, const char *shaderSrc);
 
