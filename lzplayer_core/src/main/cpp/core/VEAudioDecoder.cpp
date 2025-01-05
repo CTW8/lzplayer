@@ -294,6 +294,7 @@ void VEAudioDecoder::queueFrame(std::shared_ptr<VEFrame> frame) {
         std::lock_guard<std::mutex> lk(mMutex);
         if(mNeedMoreData){
             mNeedMoreData = false;
+            ALOGD("VEAudioDecoder::queueFrame mNotifyRender opensles");
             mNotifyRender->post();
         }
     }

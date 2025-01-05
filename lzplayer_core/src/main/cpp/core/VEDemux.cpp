@@ -127,9 +127,14 @@ void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         case kWhatSeek:{
             double pos = 0;
             msg->findDouble("posMs",&pos);
-            if(onSeek(pos) == VE_OK){
-                ALOGI("VEDemux::onMessageReceived Seek done.");
-            }
+            std::shared_ptr<AReplyToken> replyToken;
+            msg->senderAwaitsResponse(replyToken);
+
+            int32_t ret = onSeek(pos);
+
+            std::shared_ptr<AMessage> replyMsg = std::make_shared<AMessage>();
+            replyMsg->setInt32("ret",ret);
+            replyMsg->postReply(replyToken);
             break;
         }
         case kWhatResume:{
@@ -140,7 +145,7 @@ void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             if(mIsPause || !mIsStart){
                 break;
             }
-            if(onRead() == 0){
+            if(onRead() == VE_OK){
                 std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead,shared_from_this());
                 msg->post();
             }
@@ -173,8 +178,12 @@ VEResult VEDemux::seek(double posMs)
 {
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek,shared_from_this());
     msg->setDouble("posMs",posMs);
-    msg->post();
-    return 0;
+    std::shared_ptr<AMessage> response;
+    msg->postAndAwaitResponse(&response);
+
+    int32_t  ret =VE_OK;
+    response->findInt32("ret",&ret);
+    return ret;
 }
 
 VEResult VEDemux::onOpen(std::string path) {
@@ -182,21 +191,21 @@ VEResult VEDemux::onOpen(std::string path) {
     ///打开文件
     if(path.empty()){
         printf("## %s  %d open file failed!!!",__FUNCTION__,__LINE__);
-        return -1;
+        return VE_UNKNOWN_ERROR;
     }
 
     mFilePath = path;
 
     if (avformat_open_input(&mFormatContext, mFilePath.c_str(), nullptr, nullptr) != 0) {
         fprintf(stderr, "Error: Couldn't open input file.\n");
-        return -1;
+        return VE_UNKNOWN_ERROR;
     }
 
     // 获取流信息
     if (avformat_find_stream_info(mFormatContext, nullptr) < 0) {
         fprintf(stderr, "Error: Couldn't find stream information.\n");
         avformat_close_input(&mFormatContext);
-        return -1;
+        return VE_UNKNOWN_ERROR;
     }
     mDuration = mFormatContext->duration/1000;
     ///获取文件信息
@@ -226,7 +235,7 @@ VEResult VEDemux::onOpen(std::string path) {
 
     mAudioPacketQueue = std::make_shared<VEPacketQueue>(AUDIO_QUEUE_SIZE);
     mVideoPacketQueue = std::make_shared<VEPacketQueue>(VIDEO_QUEUE_SIZE);
-    return 0;
+    return VE_OK;
 }
 
 VEResult VEDemux::onStart() {
@@ -265,11 +274,11 @@ VEResult VEDemux::onRead() {
         std::shared_ptr<VEPacket> videoPacket = std::make_shared<VEPacket>();
         videoPacket->setPacketType(E_PACKET_TYPE_EOF);
         putPacket(videoPacket,false);
-        return -1;
+        return VE_EOS;
     } else if (ret < 0) {
         // 处理其他错误
         ALOGI("VEDemux::onRead Error occurred: %s", av_err2str(ret));
-        return -1;
+        return VE_UNKNOWN_ERROR;
     }
 
     int64_t pts = av_rescale_q(packet->getPacket()->pts, mFormatContext->streams[packet->getPacket()->stream_index]->time_base, AV_TIME_BASE_Q);

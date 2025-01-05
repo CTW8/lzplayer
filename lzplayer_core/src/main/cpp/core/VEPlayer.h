@@ -15,10 +15,15 @@
 #include "thread/AHandler.h"
 #include "VEVideoRender.h"
 #include "AudioOpenSLESOutput.h"
+#include "VEDef.h"
 
-typedef std::function<void(int type,int msg1,double msg2,std::string msg3,void *msg4)> funOnInfoCallback;
-typedef std::function<void(int type,int code,std::string msg)> funOnErrorCallback;
+typedef std::function<void(int code,double arg1,std::string str1,void *obj3)> funOnInfoCallback;
+typedef std::function<void(int code,std::string msg)> funOnErrorCallback;
+typedef std::function<void(void)> funOnCompletionCallback;
 typedef std::function<void(double progress)> funOnProgressCallback;
+typedef std::function<void()> funOnEOSCallback;
+typedef std::function<void()> funOnPreparedCallback;
+typedef std::function<void()> funOnSeekComplateCallback;
 
 class VEPlayer : public AHandler
 {
@@ -40,6 +45,8 @@ public:
     /// prepare
     VEResult prepare();
 
+    VEResult prepareAsync();
+
     /// start
     VEResult start();
 
@@ -48,9 +55,6 @@ public:
 
     /// pause
     VEResult pause();
-
-    /// resume
-    VEResult resume();
 
     /// release
     VEResult release();
@@ -77,9 +81,19 @@ public:
 
     void setOnProgressListener(funOnProgressCallback callback);
 
+    void setOnErrorListener(funOnErrorCallback callback);
+
+    void setOnCompletionListener(funOnCompletionCallback callback);
+
+    void setOnEOSListener(funOnEOSCallback callback);
+
+    void setOnPreparedListener(funOnPreparedCallback callback);
+
+    void setOnSeekComplateListener(funOnSeekComplateCallback callback);
+
     void notifyInfo(int type,int msg1,double msg2,std::string msg3,void *msg4){
         if(onInfoCallback){
-            onInfoCallback(type,msg1,msg2,msg3,msg4);
+            onInfoCallback(msg1,msg2,msg3,msg4);
         }
     }
 
@@ -91,12 +105,34 @@ public:
 
 private:
     enum {
-        kWhatRenderEvent        = 'renE',
-        kWhatVideoDecEvent      = 'vdec',
-        kWhatAudioDecEvent      = 'adec',
-        kWhatDemuxEvent         = 'demx'
+        kWhatSetDataSource              = '=DaS',
+        kWhatPrepare                    = 'prep',
+        kWhatSetVideoSurface            = '=VSu',
+        kWhatStart                      = 'strt',
+        kWhatVideoNotify                = 'vidN',
+        kWhatAudioNotify                = 'audN',
+        kWhatClosedCaptionNotify        = 'capN',
+        kWhatRendererNotify             = 'renN',
+        kWhatReset                      = 'rset',
+        kWhatSeek                       = 'seek',
+        kWhatPause                      = 'paus',
+        kWhatStop                       = 'stop',
+        kWhatRenderEvent                = 'renE',
+        kWhatVideoDecEvent              = 'vdec',
+        kWhatAudioDecEvent              = 'adec',
+        kWhatDemuxEvent                 = 'demx',
+        kWhatRelease                    = 'rele'
     };
 
+    VEResult onSetDataSource(std::shared_ptr<AMessage> msg);
+    VEResult onPrepare(std::shared_ptr<AMessage> msg);
+    VEResult onStart(std::shared_ptr<AMessage> msg);
+    VEResult onStop(std::shared_ptr<AMessage> msg);
+    VEResult onPause(std::shared_ptr<AMessage> msg);
+    VEResult onSeek(std::shared_ptr<AMessage> msg);
+    VEResult onReset(std::shared_ptr<AMessage> msg);
+    VEResult onRelease(std::shared_ptr<AMessage> msg);
+    
     pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
     std::shared_ptr<VEDemux> mDemux = nullptr;
     std::shared_ptr<ALooper> mDemuxLooper = nullptr;
@@ -128,6 +164,11 @@ private:
 
     funOnProgressCallback onProgressCallback;
     funOnInfoCallback onInfoCallback;
+    funOnErrorCallback onErrorCallback;
+    funOnCompletionCallback onCompleteCallback;
+    funOnEOSCallback onEosCallback;
+    funOnPreparedCallback onPreparedCallback;
+    funOnSeekComplateCallback onSeekComplateCallback;
 };
 
 #endif

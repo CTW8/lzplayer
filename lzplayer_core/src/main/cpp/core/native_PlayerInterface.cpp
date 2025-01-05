@@ -5,7 +5,7 @@
 #include <android/native_window_jni.h>
 #include "native_PlayerInterface.h"
 #include "utils/Log.h"
-#include "VEPlayerDirver.h"
+#include "VEPlayerDriver.h"
 #include "ScopedUtfChars.h"
 #include "VEJvmOnLoad.h"
 #include "JNIHelpers.h"
@@ -63,7 +63,21 @@ void JNIMediaPlayerListener::notify(int msg, int ext1, double ext2, const void *
             break;
         }
         case VE_PLAYER_NOTIFY_EVENT_ON_ERROR:{
-            env->CallStaticVoidMethod(mClass, jNativeCallback, mObject,msg, ext1, ext2, NULL);
+
+            if (obj != nullptr) {
+                const std::string& objString = *reinterpret_cast<const std::string*>(obj);
+
+                // 转换为 jstring
+                jstring jStr = env->NewStringUTF(objString.c_str());
+
+                // 调用 Java 方法
+                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2, jStr);
+
+                // 释放 jstring 资源
+                env->DeleteLocalRef(jStr);
+            } else {
+                ALOGE("Null pointer passed for obj");
+            }
             break;
         }
         case VE_PLAYER_NOTIFY_EVENT_ON_INFO:{
@@ -87,7 +101,7 @@ void JNIMediaPlayerListener::notify(int msg, int ext1, double ext2, const void *
 
 jlong createNativeHandle(JNIEnv *env, jclass clazz) {
     ALOGD("%s %d called",__FUNCTION__ ,__LINE__);
-    VEPlayerDirver *player = new VEPlayerDirver();
+    VEPlayerDriver *player = new VEPlayerDriver();
 
 
     jclass clazzNativeLib;
@@ -111,7 +125,7 @@ jlong createNativeHandle(JNIEnv *env, jclass clazz) {
 // 初始化
 jint nativeInit(JNIEnv *env, jobject thiz,jobject weak_this, jlong handle, jstring path) {
     ALOGD("%s %d called",__FUNCTION__ ,__LINE__);
-    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
     std::shared_ptr<JNIMediaPlayerListener> listener = std::make_shared<JNIMediaPlayerListener>(env,thiz,weak_this);
     vePlayer->setListener(listener);
@@ -122,7 +136,7 @@ jint nativeInit(JNIEnv *env, jobject thiz,jobject weak_this, jlong handle, jstri
 // 设置 Surface
 jint nativeSetSurface(JNIEnv *env, jobject obj, jlong handle, jobject surface, jint width, jint height) {
     ALOGD("%s %d called",__FUNCTION__ ,__LINE__);
-    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
 
     ANativeWindow* nativeWindow = ANativeWindow_fromSurface(env, surface);
@@ -133,7 +147,7 @@ jint nativeSetSurface(JNIEnv *env, jobject obj, jlong handle, jobject surface, j
 // 获取时长
 jlong nativeGetDuration(JNIEnv *env, jobject obj, jlong handle) {
     ALOGD("%s %d called",__FUNCTION__ ,__LINE__);
-    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
     ALOGD("nativeGetDuration called with handle: %ld", handle);
 
@@ -143,7 +157,7 @@ jlong nativeGetDuration(JNIEnv *env, jobject obj, jlong handle) {
 // 开始播放
 jint nativeStart(JNIEnv *env, jobject obj, jlong handle) {
     ALOGD("nativeStart called with handle: %ld", handle);
-    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
 
     return vePlayer->start();
@@ -152,7 +166,7 @@ jint nativeStart(JNIEnv *env, jobject obj, jlong handle) {
 // 暂停播放
 jint nativePause(JNIEnv *env, jobject obj, jlong handle) {
     ALOGD("nativePause called with handle: %ld", handle);
-    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
     return vePlayer->pause();
 }
@@ -160,14 +174,14 @@ jint nativePause(JNIEnv *env, jobject obj, jlong handle) {
 // 暂停播放
 jint nativeResume(JNIEnv *env, jobject obj, jlong handle) {
     ALOGD("nativeResume called with handle: %ld", handle);
-    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
-    return vePlayer->resume();
+    return vePlayer->start();
 }
 
 // 停止播放
 jint nativeStop(JNIEnv *env, jobject obj, jlong handle) {
-    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
     ALOGD("nativeStop called with handle: %ld", handle);
     return vePlayer->stop();
@@ -176,7 +190,7 @@ jint nativeStop(JNIEnv *env, jobject obj, jlong handle) {
 // 跳转
 jint nativeSeekTo(JNIEnv *env, jobject obj, jlong handle, jdouble timestamp) {
     ALOGD("nativeSeekTo called with handle: %ld, timestamp: %f", handle, timestamp);
-    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
     return vePlayer->seekTo(timestamp);
 }
@@ -184,7 +198,7 @@ jint nativeSeekTo(JNIEnv *env, jobject obj, jlong handle, jdouble timestamp) {
 // 释放资源
 jint nativeRelease(JNIEnv *env, jobject obj, jlong handle) {
     ALOGD("nativeRelease called with handle: %ld", handle);
-    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
     delete vePlayer;
     return 0;
@@ -193,7 +207,7 @@ jint nativeRelease(JNIEnv *env, jobject obj, jlong handle) {
 jint nativePrepare(JNIEnv *env, jobject obj, jlong handle)
 {
     ALOGD("nativePrepare called with handle: %ld", handle);
-    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
 
     return vePlayer->prepare();
@@ -201,21 +215,21 @@ jint nativePrepare(JNIEnv *env, jobject obj, jlong handle)
 jint nativePrepareAsync(JNIEnv *env, jobject obj, jlong handle)
 {
     ALOGD("nativePrepareAsync called with handle: %ld", handle);
-    VEPlayerDirver * vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
 
     return vePlayer->prepareAsync();
 }
 jint nativeSetLooping(JNIEnv *env, jobject obj, jlong handle, jboolean loop) {
     ALOGD("nativeSetLooping called with handle: %ld, loop: %d", handle, loop);
-    VEPlayerDirver *vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
     return vePlayer->setLooping(loop);
 }
 
 jint nativeSetPlaySpeed(JNIEnv *env, jobject obj, jlong handle, jfloat speed) {
     ALOGD("nativeSetPlaySpeed called with handle: %ld, speed: %f", handle, speed);
-    VEPlayerDirver *vePlayer = reinterpret_cast<VEPlayerDirver*>(handle);
+    VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
     CHECK_NULL();
     return vePlayer->setSpeedRate(speed);
 }

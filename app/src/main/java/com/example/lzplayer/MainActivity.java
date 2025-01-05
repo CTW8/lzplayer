@@ -215,7 +215,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 break;
             }
             case R.id.btnStop:{
-                mPlayer.stop();
+//                mPlayer.stop();
+                mPlayer.seekTo(800 * mDuration / 1000);
                 break;
             }
             default:

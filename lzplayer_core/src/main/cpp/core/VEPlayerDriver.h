@@ -2,8 +2,8 @@
 // Created by 李振 on 2024/7/25.
 //
 
-#ifndef LZPLAYER_VEPLAYERDIRVER_H
-#define LZPLAYER_VEPLAYERDIRVER_H
+#ifndef LZPLAYER_VEPLAYERDRIVER_H
+#define LZPLAYER_VEPLAYERDRIVER_H
 
 #include "VEPlayer.h"
 #include <android/native_window_jni.h>
@@ -13,24 +13,26 @@ public:
     virtual void notify(int msg, int ext1, double ext2, const void *obj) = 0;
 };
 
-class VEPlayerDirver {
+class VEPlayerDriver {
 public:
-    VEPlayerDirver();
-    ~VEPlayerDirver();
+    VEPlayerDriver();
+    ~VEPlayerDriver();
 
     VEResult setDataSource(std::string path);
     VEResult setSurface(ANativeWindow * win,int width,int height);
+
     VEResult prepare();
     VEResult prepareAsync();
     VEResult start();
     VEResult stop();
     VEResult pause();
-    VEResult resume();
-    int64_t getDuration();
+    VEResult seekTo(double timestampMs);
+    VEResult reset();
+
+    int64_t  getDuration();
     VEResult setLooping(bool looping);
     VEResult setSpeedRate(float speed);
     VEResult setListener(std::shared_ptr<MediaPlayerListener> listener);
-    VEResult seekTo(double timestampMs);
 
 private:
     enum media_player_states {
@@ -50,8 +52,13 @@ private:
     std::shared_ptr<VEPlayer> mPlayer;
     std::shared_ptr<MediaPlayerListener> mListener;
 
+    bool mIsSeeking = false;
+
+    std::mutex mMutex;
+    std::condition_variable mCond;
+
     void notifyListener(int msg, int ext1, double ext2, const void *obj);
 };
 
 
-#endif //LZPLAYER_VEPLAYERDIRVER_H
+#endif //LZPLAYER_VEPLAYERDRIVER_H

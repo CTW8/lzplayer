@@ -90,6 +90,7 @@ void AudioOpenSLESOutput::onMessageReceived(const std::shared_ptr<AMessage> &msg
             if(onPlay() == VE_OK){
                 std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPlay,shared_from_this());
                 msg->post();
+                ALOGI("AudioOpenSLESOutput::%s kWhatPlay send kWhatPlay",__FUNCTION__ );
             }
             break;
         }
@@ -214,7 +215,7 @@ bool AudioOpenSLESOutput::onStart() {
             return false;
         }
     }
-
+    ALOGD("AudioOpenSLESOutput::%s send kWhatPlay message",__FUNCTION__ );
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPlay,shared_from_this());
     msg->post();
     return true;
@@ -263,7 +264,7 @@ bool AudioOpenSLESOutput::onPlay() {
     ALOGI("AudioOpenSLESOutput::%s enter#1",__FUNCTION__ );
     if(ret == VE_NOT_ENOUGH_DATA){
         ALOGI("AudioOpenSLESOutput::%s - needMoreFrame",__FUNCTION__);
-        mAudioDecoder->needMoreFrame(std::make_shared<AMessage>(kWhatPlay,shared_from_this()));
+        mAudioDecoder->needMoreFrame(std::make_shared<AMessage>(kWhatStart,shared_from_this()));
         return VE_NOT_ENOUGH_DATA;
     }
     ALOGI("AudioOpenSLESOutput","AudioOpenSLESOutput::%s enter#2",__FUNCTION__ );
@@ -276,8 +277,9 @@ bool AudioOpenSLESOutput::onPlay() {
 
             // 停止OpenSLES播放
             if (mPlayerPlay != NULL) {
-                (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_STOPPED);
+                (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PAUSED);
             }
+
             return VE_EOS;
         }
         ALOGI("AudioOpenSLESOutput::%s - PTS: %f  size:%d", __FUNCTION__, frame->getPts(),frame->getFrame()->linesize[0]);

@@ -25,6 +25,37 @@ VEVideoDecoder::~VEVideoDecoder() {
     ALOGI("VEVideoDecoder::~VEVideoDecoder enter");
 }
 
+VEResult VEVideoDecoder::init(std::shared_ptr<VEDemux> demux) {
+    ALOGI("VEVideoDecoder::init enter");
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
+    msg->setObject("demux", demux);
+    msg->post();
+    return 0;
+}
+
+void VEVideoDecoder::start() {
+    ALOGI("VEVideoDecoder::start enter");
+    mIsStarted = true;
+    std::make_shared<AMessage>(kWhatStart, shared_from_this())->post();
+}
+
+void VEVideoDecoder::stop() {
+    ALOGI("VEVideoDecoder::stop enter");
+    std::make_shared<AMessage>(kWhatStop, shared_from_this())->post();
+}
+
+void VEVideoDecoder::pause(){
+    std::make_shared<AMessage>(kWhatPause,shared_from_this())->post();
+}
+
+VEResult VEVideoDecoder::flush() {
+    ALOGI("VEVideoDecoder::flush enter");
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatFlush, shared_from_this());
+//    msg->setInt32("needNotify",needNotify);
+    msg->post();
+    return 0;
+}
+
 void VEVideoDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     ALOGI("VEVideoDecoder::onMessageReceived enter");
     switch (msg->what()) {
@@ -38,10 +69,6 @@ void VEVideoDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         }
         case kWhatFlush: {
             onFlush();
-            break;
-        }
-        case kWhatResume: {
-            onResume();
             break;
         }
         case kWhatPause: {
@@ -76,7 +103,6 @@ VEResult VEVideoDecoder::onInit(std::shared_ptr<AMessage> msg) {
 
     mFrameQueue = std::make_shared<VEFrameQueue>(FRAME_QUEUE_MAX_SIZE);
 
-
     mDemux = std::static_pointer_cast<VEDemux>(tmp);
 
     mMediaInfo = mDemux->getFileInfo();
@@ -91,11 +117,13 @@ VEResult VEVideoDecoder::onInit(std::shared_ptr<AMessage> msg) {
         ALOGE("VEVideoDecoder::onInit Could not allocate video codec context\n");
         return VE_UNKNOWN_ERROR;
     }
+
     if (avcodec_parameters_to_context(mVideoCtx, mMediaInfo->mVideoCodecParams) < 0) {
         ALOGE("VEVideoDecoder::onInit Could not copy codec parameters to codec context");
         avcodec_free_context(&mVideoCtx);
         return VE_UNKNOWN_ERROR;
     }
+
     if (avcodec_open2(mVideoCtx, video_codec, NULL) < 0) {
         fprintf(stderr, "VEVideoDecoder::onInit Could not open video codec\n");
         avcodec_free_context(&mVideoCtx);
@@ -214,34 +242,6 @@ VEResult VEVideoDecoder::onUninit() {
     return false;
 }
 
-VEResult VEVideoDecoder::init(std::shared_ptr<VEDemux> demux) {
-    ALOGI("VEVideoDecoder::init enter");
-    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
-    msg->setObject("demux", demux);
-    msg->post();
-    return 0;
-}
-
-void VEVideoDecoder::start() {
-    ALOGI("VEVideoDecoder::start enter");
-    mIsStarted = true;
-    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
-    msg->post();
-}
-
-void VEVideoDecoder::stop() {
-    ALOGI("VEVideoDecoder::stop enter");
-    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStop, shared_from_this());
-    msg->post();
-}
-
-VEResult VEVideoDecoder::flush() {
-    ALOGI("VEVideoDecoder::flush enter");
-    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatFlush, shared_from_this());
-    msg->post();
-    return 0;
-}
-
 VEResult VEVideoDecoder::readFrame(std::shared_ptr<VEFrame> &frame) {
     ALOGI("VEVideoDecoder::readFrame enter");
     if (mFrameQueue->getDataSize() == 0) {
@@ -256,8 +256,7 @@ VEResult VEVideoDecoder::readFrame(std::shared_ptr<VEFrame> &frame) {
 
 VEResult VEVideoDecoder::uninit() {
     ALOGI("VEVideoDecoder::uninit enter");
-    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatUninit, shared_from_this());
-    msg->post();
+    std::make_shared<AMessage>(kWhatUninit, shared_from_this())->post();
     return 0;
 }
 
@@ -273,13 +272,6 @@ void VEVideoDecoder::queueFrame(std::shared_ptr<VEFrame> videoFrame) {
             mNotifyMore->post();
         }
     }
-}
-
-VEResult VEVideoDecoder::onResume() {
-    mIsStarted = true;
-    std::shared_ptr<AMessage> readMsg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
-    readMsg->post();
-    return 0;
 }
 
 VEResult VEVideoDecoder::onPause() {

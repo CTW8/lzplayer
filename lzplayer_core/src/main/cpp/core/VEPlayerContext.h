@@ -1,15 +1,16 @@
 #ifndef __VE_PLAYER_CONTEXT__
 #define __VE_PLAYER_CONTEXT__
-
+#include <memory>
+#include "AMessage.h"
 class VEPlayerContext
 {
 
 public:
-    VEPlayerContext(/* args */);
+    VEPlayerContext(std::shared_ptr<AMessage> msg);
     ~VEPlayerContext();
 
 private:
-
+    std::shared_ptr<AMessage> mPlayerNotify = nullptr;
 };
 
 #endif
