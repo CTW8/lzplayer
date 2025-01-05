@@ -76,10 +76,6 @@ void VEAudioDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             onPause();
             break;
         }
-        case kWhatResume: {
-            onResume();
-            break;
-        }
         case kWhatDecode: {
             if (!mIsStarted) {
                 break;
@@ -305,17 +301,8 @@ VEResult VEAudioDecoder::onPause() {
     return 0;
 }
 
-VEResult VEAudioDecoder::onResume() {
-    std::make_shared<AMessage>(kWhatResume, shared_from_this())->post();
-    return 0;
-}
-
 void VEAudioDecoder::pause() {
     std::make_shared<AMessage>(kWhatPause, shared_from_this())->post();
-}
-
-void VEAudioDecoder::resume() {
-    std::make_shared<AMessage>(kWhatResume, shared_from_this())->post();
 }
 
 void VEAudioDecoder::needMoreFrame(std::shared_ptr<AMessage> msg) {

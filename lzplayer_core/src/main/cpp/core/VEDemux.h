@@ -28,7 +28,6 @@ public:
     void start();
     void stop();
     void pause();
-    void resume();
     void needMorePacket(std::shared_ptr<AMessage> msg,int type);
     VEResult read(bool isAudio,std::shared_ptr<VEPacket> &packet);
     VEResult seek(double posMs);
@@ -64,7 +63,6 @@ private:
     int mVideo_index=-1;
 
     bool mIsStart = false;
-    bool mIsPause = false;
 
     bool mNeedAudioMore = false;
     bool mNeedVideoMore = false;

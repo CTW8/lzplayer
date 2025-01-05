@@ -27,7 +27,6 @@ public:
     VEResult init(std::shared_ptr<VEDemux> demux);
     void start();
     void pause();
-    void resume();
     void stop();
     VEResult flush();
     void needMoreFrame(std::shared_ptr<AMessage> msg);
@@ -39,7 +38,6 @@ private:
     VEResult onStart();
     VEResult onFlush();
     VEResult onPause();
-    VEResult onResume();
     VEResult onDecode();
     VEResult onStop();
     VEResult onUnInit();

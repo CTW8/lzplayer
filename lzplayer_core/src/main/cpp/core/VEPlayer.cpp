@@ -353,12 +353,13 @@ void VEPlayer::onRenderNotify(std::shared_ptr<AMessage> msg) {
     msg->findInt32("type",&what);
     switch (what) {
         case VEVideoRender::kWhatEOS:{
-            ALOGI("VEPlayer::%s msg->kWhatEOS",__FUNCTION__ );
+            ALOGI("VEPlayer::%s msg->kWhatEOS video",__FUNCTION__ );
             mVideoEOS = true;
             onEOS();
             break;
         }
         case AudioOpenSLESOutput::kWhatEOS:{
+            ALOGI("VEPlayer::%s msg->kWhatEOS audio",__FUNCTION__ );
             mAudioEOS = true;
             onEOS();
             break;
@@ -371,14 +372,17 @@ void VEPlayer::onRenderNotify(std::shared_ptr<AMessage> msg) {
             break;
         }
         default:{
+            ALOGI("VEPlayer::%s default",__FUNCTION__ );
             break;
         }
     }
 }
 
 void VEPlayer::onEOS() {
+    ALOGD("VEPlayer::%s enter",__FUNCTION__ );
     if (mVideoEOS && mAudioEOS) {
         if (!mEnableLoop) {
+            ALOGI("VEPlayer::%s play complate", __FUNCTION__);
             onCompleteCallback();
             mVideoEOS = false;
             mAudioEOS = false;
@@ -388,7 +392,6 @@ void VEPlayer::onEOS() {
             mVideoEOS = false;
             mAudioEOS = false;
             seek(0);
-            start();
             ALOGI("VEPlayer::%s Starting loop", __FUNCTION__);
         }
     }

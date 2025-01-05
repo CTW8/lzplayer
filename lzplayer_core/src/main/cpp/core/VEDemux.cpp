@@ -121,7 +121,7 @@ void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             break;
         }
         case kWhatPause:{
-            mIsPause = true;
+            mIsStart = false;
             break;
         }
         case kWhatSeek:{
@@ -137,14 +137,12 @@ void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             replyMsg->postReply(replyToken);
             break;
         }
-        case kWhatResume:{
-            mIsPause = false;
-            break;
-        }
         case kWhatRead:{
-            if(mIsPause || !mIsStart){
+            if(!mIsStart){
+                ALOGD("VEDemux::%s kWhatRead mIsPause || !mIsStart not run!!!",__FUNCTION__ );
                 break;
             }
+            ALOGD("VEDemux::%s kWhatRead mIsPause || !mIsStart not run!!!",__FUNCTION__ );
             if(onRead() == VE_OK){
                 std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead,shared_from_this());
                 msg->post();
@@ -166,11 +164,6 @@ void VEDemux::stop() {
 
 void VEDemux::pause() {
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPause,shared_from_this());
-    msg->post();
-}
-
-void VEDemux::resume() {
-    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatResume,shared_from_this());
     msg->post();
 }
 

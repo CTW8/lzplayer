@@ -439,6 +439,7 @@ VEResult VEVideoRender::onAVSync() {
     }
 
     if(frame->getFrameType() == E_FRAME_TYPE_EOF){
+        ALOGD("VEVideoRender::onAVSync E_FRAME_TYPE_EOF");
         std::shared_ptr<AMessage> eosMsg = mNotify->dup();
         eosMsg->setInt32("type",kWhatEOS);
         eosMsg->post();
