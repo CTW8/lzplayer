@@ -1,26 +1,44 @@
 #ifndef __VE_PACKET_QUEUE__
 #define __VE_PACKET_QUEUE__
-#include<pthread.h>
-#include"VEPacket.h"
-#include<iostream>
+
+#include <mutex>
 #include <queue>
+#include <memory>
+#include "VEPacket.h"
 
 class VEPacketQueue
 {
 public:
-    VEPacketQueue(int maxSize); // 增加构造函数参数，设置队列大小
-    ~VEPacketQueue();
+    explicit VEPacketQueue(int maxSize); // 显式构造函数
+    ~VEPacketQueue() = default;
 
-    bool put(std::shared_ptr<VEPacket> pack); // 修改返回类型为bool，表示是否成功放入队列
+    // 删除拷贝构造函数和拷贝赋值操作符
+    VEPacketQueue(const VEPacketQueue&) = delete;
+    VEPacketQueue& operator=(const VEPacketQueue&) = delete;
+
+    // 允许移动构造函数和移动赋值操作符
+    VEPacketQueue(VEPacketQueue&&) noexcept = default;
+    VEPacketQueue& operator=(VEPacketQueue&&) noexcept = default;
+
+    // 放入队列，返回是否成功
+    bool put(const std::shared_ptr<VEPacket>& pack);
+
+    // 获取队列中的一个包，若队列为空则返回 nullptr
     std::shared_ptr<VEPacket> get();
-    int getRemainingSize(); // 增加检查队列剩余空间的接口
-    int getDataSize(); // 增加检查队列有多少数据的接口
-    void clear(); // 提供清空队列的接口
+
+    // 获取队列剩余空间
+    int getRemainingSize() const;
+
+    // 获取队列中数据的大小
+    int getDataSize() const;
+
+    // 清空队列
+    void clear();
 
 private:
     std::queue<std::shared_ptr<VEPacket>> mPacketQueue;
-    pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
+    mutable std::mutex mMutex; // 可在 const 函数中锁定
     int mMaxSize; // 队列最大大小
 };
 
-#endif
+#endif // __VE_PACKET_QUEUE__

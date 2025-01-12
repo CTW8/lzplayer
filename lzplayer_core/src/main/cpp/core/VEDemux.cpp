@@ -12,19 +12,24 @@ extern "C"{
 #define VIDEO_QUEUE_SIZE    100
 
 VEDemux::VEDemux(){
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     mAudioCodecParams = nullptr;
     mVideoCodecParams = nullptr;
     mFormatContext = nullptr;
     mAudioStartPts = -1;
     mVideoStartPts = -1;
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
 }
 
 VEDemux::~VEDemux() {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     close();
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
 }
 
 VEResult VEDemux::open(std::string file)
 {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatOpen,shared_from_this());
     msg->setString("filePath",file);
 
@@ -32,15 +37,18 @@ VEResult VEDemux::open(std::string file)
     msg->postAndAwaitResponse(&respone);
     int32_t ret;
     respone->findInt32("ret",&ret);
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
     return ret;
 }
 
 VEResult VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet){
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     ALOGD("VEDemux::read audio queue size: %d, video queue size: %d", mAudioPacketQueue->getDataSize(), mVideoPacketQueue->getDataSize());
     if(isAudio){
         ALOGD("VEDemux::read mAudioPacketQueue size:%d",mAudioPacketQueue->getDataSize());
         if(mAudioPacketQueue->getDataSize() == 0){
             ALOGD("VEDemux::read audio queue wait!!");
+            ALOGI("VEDemux::%s exit",__FUNCTION__);
             return VE_NOT_ENOUGH_DATA;
         }
 
@@ -49,16 +57,19 @@ VEResult VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet){
         ALOGD("VEDemux::read mVideoPacketQueue size:%d",mVideoPacketQueue->getDataSize());
         if(mVideoPacketQueue->getDataSize() == 0){
             ALOGD("VEDemux::read video queue wait!!");
+            ALOGI("VEDemux::%s exit",__FUNCTION__);
             return VE_NOT_ENOUGH_DATA;
         }
 
         packet = mVideoPacketQueue->get();
     }
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
     return VE_OK;
 }
 
 VEResult VEDemux::close()
 {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     if (mFormatContext) {
         avformat_close_input(&mFormatContext);
         mFormatContext = nullptr;
@@ -72,11 +83,13 @@ VEResult VEDemux::close()
         avcodec_parameters_free(&mVideoCodecParams);
         mVideoCodecParams = nullptr;
     }
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
     return 0;
 }
 
 std::shared_ptr<VEMediaInfo> VEDemux::getFileInfo()
 {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     std::shared_ptr<VEMediaInfo> tmp = std::make_shared<VEMediaInfo>();
 
     tmp->channels = mChannel;
@@ -94,10 +107,12 @@ std::shared_ptr<VEMediaInfo> VEDemux::getFileInfo()
     tmp->mAudioTimeBase = mAudioTimeBase;
     tmp->mVideoTimeBase = mVideoTimeBase;
     tmp->mVStartTime = mVStartTime;
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
     return tmp;
 }
 
 void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     switch (msg->what()) {
         case kWhatOpen:{
             std::string path;
@@ -139,10 +154,10 @@ void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         }
         case kWhatRead:{
             if(!mIsStart){
-                ALOGD("VEDemux::%s kWhatRead mIsPause || !mIsStart not run!!!",__FUNCTION__ );
+                ALOGD("VEDemux::%s kWhatRead !mIsStart not run!!!",__FUNCTION__ );
                 break;
             }
-            ALOGD("VEDemux::%s kWhatRead mIsPause || !mIsStart not run!!!",__FUNCTION__ );
+            ALOGD("VEDemux::%s kWhatRead run",__FUNCTION__ );
             if(onRead() == VE_OK){
                 std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead,shared_from_this());
                 msg->post();
@@ -150,25 +165,33 @@ void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             break;
         }
     }
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
 }
 
 void VEDemux::start() {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart,shared_from_this());
     msg->post();
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
 }
 
 void VEDemux::stop() {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStop,shared_from_this());
     msg->post();
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
 }
 
 void VEDemux::pause() {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPause,shared_from_this());
     msg->post();
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
 }
 
 VEResult VEDemux::seek(double posMs)
 {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek,shared_from_this());
     msg->setDouble("posMs",posMs);
     std::shared_ptr<AMessage> response;
@@ -176,14 +199,16 @@ VEResult VEDemux::seek(double posMs)
 
     int32_t  ret =VE_OK;
     response->findInt32("ret",&ret);
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
     return ret;
 }
 
 VEResult VEDemux::onOpen(std::string path) {
-    ALOGI("VEDemux::%s",__FUNCTION__ );
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     ///打开文件
     if(path.empty()){
         printf("## %s  %d open file failed!!!",__FUNCTION__,__LINE__);
+        ALOGI("VEDemux::%s exit",__FUNCTION__);
         return VE_UNKNOWN_ERROR;
     }
 
@@ -191,6 +216,7 @@ VEResult VEDemux::onOpen(std::string path) {
 
     if (avformat_open_input(&mFormatContext, mFilePath.c_str(), nullptr, nullptr) != 0) {
         fprintf(stderr, "Error: Couldn't open input file.\n");
+        ALOGI("VEDemux::%s exit",__FUNCTION__);
         return VE_UNKNOWN_ERROR;
     }
 
@@ -198,6 +224,7 @@ VEResult VEDemux::onOpen(std::string path) {
     if (avformat_find_stream_info(mFormatContext, nullptr) < 0) {
         fprintf(stderr, "Error: Couldn't find stream information.\n");
         avformat_close_input(&mFormatContext);
+        ALOGI("VEDemux::%s exit",__FUNCTION__);
         return VE_UNKNOWN_ERROR;
     }
     mDuration = mFormatContext->duration/1000;
@@ -228,33 +255,40 @@ VEResult VEDemux::onOpen(std::string path) {
 
     mAudioPacketQueue = std::make_shared<VEPacketQueue>(AUDIO_QUEUE_SIZE);
     mVideoPacketQueue = std::make_shared<VEPacketQueue>(VIDEO_QUEUE_SIZE);
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
     return VE_OK;
 }
 
 VEResult VEDemux::onStart() {
-    ALOGI("VEDemux::%s",__FUNCTION__ );
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
+    mIsEOS = false;
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead,shared_from_this());
     msg->post();
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
     return 0;
 }
+
 VEResult VEDemux::onRead() {
-    ALOGI("VEDemux::%s",__FUNCTION__ );
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
 
     if (mAudioPacketQueue->getDataSize() >= AUDIO_QUEUE_SIZE) {
         ALOGD("VEDemux::onRead Audio queue is full, stopping read.");
         mIsStart = false;
+        ALOGI("VEDemux::%s exit",__FUNCTION__);
         return VE_NO_MEMORY;
     }
 
     if (mVideoPacketQueue->getDataSize() >= VIDEO_QUEUE_SIZE) {
         ALOGD("VEDemux::onRead Video queue is full, stopping read.");
         mIsStart = false;
+        ALOGI("VEDemux::%s exit",__FUNCTION__);
         return VE_NO_MEMORY;
     }
 
     std::shared_ptr<VEPacket> packet = std::make_shared<VEPacket>();
     if(!packet){
         ALOGD("VEDemux::onRead Could not allocate AVPacket");
+        ALOGI("VEDemux::%s exit",__FUNCTION__);
         return NO_ERROR;
     }
 
@@ -264,13 +298,17 @@ VEResult VEDemux::onRead() {
         ALOGI("VEDemux::onRead End of Stream (EOS) reached.");
         packet->setPacketType(E_PACKET_TYPE_EOF);
         putPacket(packet,true);
+
         std::shared_ptr<VEPacket> videoPacket = std::make_shared<VEPacket>();
         videoPacket->setPacketType(E_PACKET_TYPE_EOF);
         putPacket(videoPacket,false);
+        mIsEOS = true;
+        ALOGI("VEDemux::%s exit",__FUNCTION__);
         return VE_EOS;
     } else if (ret < 0) {
         // 处理其他错误
         ALOGI("VEDemux::onRead Error occurred: %s", av_err2str(ret));
+        ALOGI("VEDemux::%s exit",__FUNCTION__);
         return VE_UNKNOWN_ERROR;
     }
 
@@ -304,12 +342,15 @@ VEResult VEDemux::onRead() {
     }else{
         ALOGD("VEDemux::onRead may be not use");
     }
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
     return 0;
 }
 
 VEResult VEDemux::onSeek(double posMs) {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     if (!mFormatContext) {
         ALOGE("VEDemux::onSeek Error: File not opened.\n");
+        ALOGI("VEDemux::%s exit",__FUNCTION__);
         return VE_INVALID_PARAMS;
     }
 
@@ -328,6 +369,7 @@ VEResult VEDemux::onSeek(double posMs) {
     int ret = avformat_seek_file(mFormatContext, mVideo_index, INT64_MIN, seekTarget, INT64_MAX, AVSEEK_FLAG_BACKWARD);
     if (ret < 0) {
         ALOGE("VEDemux::onSeek Error: Couldn't seek using avformat_seek_file.\n");
+        ALOGI("VEDemux::%s exit",__FUNCTION__);
         return -1;
     }
 
@@ -335,10 +377,12 @@ VEResult VEDemux::onSeek(double posMs) {
     mVideoPacketQueue->clear();
 
     ALOGD("VEDemux::onSeek Successful to posMs: %f", posMs);
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
     return VE_OK;
 }
 
 void VEDemux::putPacket(std::shared_ptr<VEPacket> packet, bool isAudio) {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     if(!isAudio){
         if(!mVideoPacketQueue->put(packet)){
             ALOGD("VEDemux::putPacket Video queue is full, stopping read.");
@@ -371,9 +415,11 @@ void VEDemux::putPacket(std::shared_ptr<VEPacket> packet, bool isAudio) {
             }
         }
     }
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
 }
 
 void VEDemux::needMorePacket(std::shared_ptr<AMessage> msg, int type) {
+    ALOGI("VEDemux::%s enter",__FUNCTION__);
     if(type == 1){
         mAudioNotify = msg;
         mNeedAudioMore = true;
@@ -389,4 +435,5 @@ void VEDemux::needMorePacket(std::shared_ptr<AMessage> msg, int type) {
         ALOGI("VEDemux::needMorePacket - Starting to read packets.");
         std::make_shared<AMessage>(kWhatRead,shared_from_this())->post();
     }
+    ALOGI("VEDemux::%s exit",__FUNCTION__);
 }

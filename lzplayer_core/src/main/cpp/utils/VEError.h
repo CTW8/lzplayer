@@ -32,6 +32,7 @@ enum {
     VE_UNEXPECTED_NULL     = (VE_UNKNOWN_ERROR + 17),
     VE_INVALID_PARAMS      = (VE_UNKNOWN_ERROR + 18),
     VE_EOS                 = (VE_UNKNOWN_ERROR + 19),
+    VE_ERROR_EAGAIN        = (VE_UNKNOWN_ERROR + 20),
 };
 
 typedef int32_t VEResult;

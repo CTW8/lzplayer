@@ -79,6 +79,8 @@ private:
     int64_t mAudioStartPts=0;
     int64_t mVideoStartPts =0;
 
+    bool mIsEOS = false;
+
     //视频帧
     std::shared_ptr<VEPacketQueue> mVideoPacketQueue = nullptr;
     //音频帧

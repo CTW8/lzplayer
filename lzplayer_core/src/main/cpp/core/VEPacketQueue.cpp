@@ -1,61 +1,48 @@
-#include"VEPacketQueue.h"
+#include "VEPacketQueue.h"
 
 VEPacketQueue::VEPacketQueue(int maxSize) : mMaxSize(maxSize)
 {
+    // 构造函数初始化列表已初始化 mMaxSize
 }
 
-VEPacketQueue::~VEPacketQueue()
+bool VEPacketQueue::put(const std::shared_ptr<VEPacket>& pack)
 {
-    clear(); // 确保析构时清空队列
-}
-
-bool VEPacketQueue::put(std::shared_ptr<VEPacket> pack)
-{
-    pthread_mutex_lock(&mMutex);
-    if(mPacketQueue.size() >= mMaxSize){
-        pthread_mutex_unlock(&mMutex);
-        return false; // 队列已满，返回false
+    std::lock_guard<std::mutex> lock(mMutex); // RAII 锁
+    if (mPacketQueue.size() >= static_cast<size_t>(mMaxSize)) {
+        // 队列已满
+        return false;
     }
     mPacketQueue.push(pack);
-    pthread_mutex_unlock(&mMutex);
     return true; // 成功放入队列
 }
 
 std::shared_ptr<VEPacket> VEPacketQueue::get()
 {
-    pthread_mutex_lock(&mMutex);
-    if(mPacketQueue.empty()){
-        pthread_mutex_unlock(&mMutex);
-        return nullptr; // 队列为空，返回nullptr
+    std::lock_guard<std::mutex> lock(mMutex); // RAII 锁
+    if (mPacketQueue.empty()) {
+        // 队列为空
+        return nullptr;
     }
-    std::shared_ptr<VEPacket> tmp = mPacketQueue.front();
+    auto packet = mPacketQueue.front();
     mPacketQueue.pop();
-    pthread_mutex_unlock(&mMutex);
-    return tmp; // 成功获取数据
+    return packet; // 成功获取数据
 }
 
-int VEPacketQueue::getRemainingSize()
+int VEPacketQueue::getRemainingSize() const
 {
-    pthread_mutex_lock(&mMutex);
-    int remainingSize = mMaxSize - mPacketQueue.size();
-    pthread_mutex_unlock(&mMutex);
-    return remainingSize; // 返回队列剩余空间
+    std::lock_guard<std::mutex> lock(mMutex); // RAII 锁
+    return mMaxSize - static_cast<int>(mPacketQueue.size());
 }
 
-int VEPacketQueue::getDataSize()
+int VEPacketQueue::getDataSize() const
 {
-    pthread_mutex_lock(&mMutex);
-    int dataSize = mPacketQueue.size();
-    pthread_mutex_unlock(&mMutex);
-    return dataSize; // 返回队列中数据的大小
+    std::lock_guard<std::mutex> lock(mMutex); // RAII 锁
+    return static_cast<int>(mPacketQueue.size());
 }
 
 void VEPacketQueue::clear()
 {
-    pthread_mutex_lock(&mMutex);
-    while (!mPacketQueue.empty()) {
-        mPacketQueue.front().reset();
-        mPacketQueue.pop();
-    }
-    pthread_mutex_unlock(&mMutex);
+    std::lock_guard<std::mutex> lock(mMutex); // RAII 锁
+    std::queue<std::shared_ptr<VEPacket>> emptyQueue;
+    std::swap(mPacketQueue, emptyQueue); // 快速清空队列
 }

@@ -2,6 +2,7 @@
 #define __VE_VIDEO_DECODER__
 
 #include <memory>
+#include <mutex>
 #include "VEMediaDef.h"
 #include "VEPacket.h"
 #include "VEFrame.h"
@@ -9,19 +10,24 @@
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "VEDemux.h"
+
 extern "C" {
-    #include "libavformat/avformat.h"
-    #include "libavcodec/avcodec.h"
-    #include "libavutil/avutil.h"
-    #include "libavutil/timestamp.h"
+#include "libavformat/avformat.h"
+#include "libavcodec/avcodec.h"
+#include "libavutil/avutil.h"
+#include "libavutil/timestamp.h"
 }
 
-class VEVideoDecoder : public AHandler {
+
+class VEVideoDecoder
+        : public AHandler
+{
 public:
     VEVideoDecoder();
     ~VEVideoDecoder();
 
     VEResult init(std::shared_ptr<VEDemux> demux);
+
     void start();
     void pause();
     void stop();
@@ -30,9 +36,11 @@ public:
     void needMoreFrame(std::shared_ptr<AMessage> msg);
     VEResult uninit();
 
-private:
-    void queueFrame(std::shared_ptr<VEFrame> frame);
+protected:
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+
+private:
+    // 消息处理函数
     VEResult onInit(std::shared_ptr<AMessage> msg);
     VEResult onStart();
     VEResult onPause();
@@ -40,16 +48,21 @@ private:
     VEResult onFlush();
     VEResult onDecode();
     VEResult onUninit();
+    VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
+
+    // 帧入队列
+    void queueFrame(std::shared_ptr<VEFrame> frame);
 
     enum {
-        kWhatInit = 'init',
-        kWhatStart = 'star',
-        kWhatStop = 'stop',
-        kWhatPause = 'paus',
-        kWhatResume = 'resu',
-        kWhatFlush = 'flus',
+        kWhatInit   = 'init',
+        kWhatStart  = 'star',
+        kWhatStop   = 'stop',
+        kWhatPause  = 'paus',
+        kWhatResume = 'resu',  // 若需要resume可保留
+        kWhatFlush  = 'flus',
         kWhatDecode = 'deco',
-        kWhatUninit = 'unin'
+        kWhatUninit = 'unin',
+        kWhatNeedMore = 'need'
     };
 
 private:
@@ -58,15 +71,11 @@ private:
     std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
     std::shared_ptr<VEDemux> mDemux = nullptr;
 
-    std::mutex mMutex;
-    std::condition_variable mCond;
-
+    std::mutex mMutex;               // 保护共享变量
     bool mIsStarted = false;
     bool mNeedMoreData = false;
 
     std::shared_ptr<AMessage> mNotifyMore = nullptr;
-
-    FILE *fp = nullptr;
 };
 
-#endif
+#endif // __VE_VIDEO_DECODER__

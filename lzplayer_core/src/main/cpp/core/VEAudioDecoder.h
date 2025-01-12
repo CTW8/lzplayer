@@ -36,11 +36,12 @@ public:
 private:
     VEResult onInit(std::shared_ptr<AMessage> msg);
     VEResult onStart();
-    VEResult onFlush();
     VEResult onPause();
-    VEResult onDecode();
     VEResult onStop();
-    VEResult onUnInit();
+    VEResult onFlush();
+    VEResult onDecode();
+    VEResult onUninit();
+    VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
     void queueFrame(std::shared_ptr<VEFrame> frame);
     void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
@@ -52,22 +53,22 @@ private:
         kWhatResume = 'resu',
         kWhatFlush = 'flus',
         kWhatDecode = 'deco',
-        kWhatUninit = 'unin'
+        kWhatUninit = 'unin',
+        kWhatNeedMore = 'need'
     };
 
 private:
     AVCodecContext *mAudioCtx = nullptr;
     VEMediaInfo *mMediaInfo = nullptr;
-    std::shared_ptr<VEFrameQueue> mFrameQueue= nullptr;
+    std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
     std::shared_ptr<VEDemux> mDemux = nullptr;
 
     std::mutex mMutex;
     bool mIsStarted = false;
     bool mNeedMoreData = false;
 
-    std::shared_ptr<AMessage> mNotifyRender = nullptr;
+    std::shared_ptr<AMessage> mNotifyMore = nullptr;
     SwrContext *mSwrCtx = nullptr;
-    FILE *fp = nullptr;
 };
 
 #endif

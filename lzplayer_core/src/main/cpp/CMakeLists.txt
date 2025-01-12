@@ -32,6 +32,7 @@ target_include_directories(lzplayer_core PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/include
         ${CMAKE_CURRENT_LIST_DIR}/include/libyuv
         ${CMAKE_CURRENT_LIST_DIR}/include/ffmpeg
+        ${CMAKE_CURRENT_LIST_DIR}/include/sonic
         ${CMAKE_CURRENT_LIST_DIR}/utils
         ${CMAKE_CURRENT_LIST_DIR}/interface
         ${CMAKE_CURRENT_LIST_DIR}/platform
@@ -54,6 +55,7 @@ target_link_libraries( # Specifies the target library.
         GLESv3
         EGL
         yuv
+        sonic
         ${log-lib})
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIE -mfpu=neon -D__ARM_NEON__")

@@ -437,6 +437,7 @@ VEResult VEVideoRender::onAVSync() {
         ALOGE("VEVideoRender::%s onRender read frame is null!!!", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
+    ALOGD("VEVideoRender::onAVSync frame type: %d", frame->getFrameType());
 
     if(frame->getFrameType() == E_FRAME_TYPE_EOF){
         ALOGD("VEVideoRender::onAVSync E_FRAME_TYPE_EOF");
