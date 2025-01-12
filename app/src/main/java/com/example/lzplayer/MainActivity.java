@@ -21,8 +21,6 @@ import android.widget.SeekBar;
 import android.widget.Toast;
 
 import com.example.lzplayer.databinding.ActivityMainBinding;
-
-
 import com.example.lzplayer_core.IVEPlayerListener;
 import com.example.lzplayer_core.VEPlayer;
 import com.zhihu.matisse.Matisse;
@@ -31,7 +29,7 @@ import com.zhihu.matisse.engine.impl.GlideEngine;
 
 import pub.devrel.easypermissions.EasyPermissions;
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener,SurfaceHolder.Callback {
+public class MainActivity extends AppCompatActivity implements View.OnClickListener, SurfaceHolder.Callback {
     private final String TAG = "VEPlayer";
     private SurfaceView glSurfaceView;
     private Button btnPlay;
@@ -47,17 +45,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private Surface mSurface;
     private VEPlayer mPlayer;
-    private long mDuration=1;
+    private long mDuration = 1;
 
     private static final int RC_FILE_PERM = 123;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // 设置全屏
-//        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-//                WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        // 保持屏幕常亮
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(ActivityMainBinding.inflate(getLayoutInflater()).getRoot());
@@ -67,26 +61,26 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         initView();
     }
 
-    private void requestPermissions(){
-        if(!EasyPermissions.hasPermissions(this,Manifest.permission.READ_EXTERNAL_STORAGE)){
-            EasyPermissions.requestPermissions(this,"申请文件读取权限",RC_FILE_PERM, Manifest.permission.READ_EXTERNAL_STORAGE);
+    private void requestPermissions() {
+        if (!EasyPermissions.hasPermissions(this, Manifest.permission.READ_EXTERNAL_STORAGE)) {
+            EasyPermissions.requestPermissions(this, "申请文件读取权限", RC_FILE_PERM, Manifest.permission.READ_EXTERNAL_STORAGE);
         }
     }
 
-    private void initView(){
-        Log.d(TAG,"initView");
+    private void initView() {
+        Log.d(TAG, "initView");
 
-        glSurfaceView=findViewById(R.id.glVideoView);
+        glSurfaceView = findViewById(R.id.glVideoView);
         glSurfaceView.getHolder().addCallback(this);
 
-        btnSelect = (Button) findViewById(R.id.btnSelectFile);
-        btnPlay = (Button) findViewById(R.id.btnPlay);
+        btnSelect = findViewById(R.id.btnSelectFile);
+        btnPlay = findViewById(R.id.btnPlay);
         btnPlay.setOnClickListener(this);
-        btnPause = (Button) findViewById(R.id.btnPause);
+        btnPause = findViewById(R.id.btnPause);
         btnPause.setOnClickListener(this);
-        btnResume = (Button) findViewById(R.id.btnResume);
+        btnResume = findViewById(R.id.btnResume);
         btnResume.setOnClickListener(this);
-        btnStop = (Button) findViewById(R.id.btnStop);
+        btnStop = findViewById(R.id.btnStop);
         btnStop.setOnClickListener(this);
 
         btnSeekBar = findViewById(R.id.seek_bar);
@@ -95,75 +89,66 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btnSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
-                Log.d(TAG,"onProgressChanged value:" + i + " b:"+b);
-                if(b) {
+                Log.d(TAG, "onProgressChanged value:" + i + " b:" + b);
+                if (b) {
                     mPlayer.seekTo(i * mDuration / 1000);
                 }
             }
 
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {
-                Log.d(TAG,"onStartTrackingTouch enter");
+                Log.d(TAG, "onStartTrackingTouch enter");
                 isOnSeek = true;
             }
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
-                Log.d(TAG,"onStopTrackingTouch enter");
+                Log.d(TAG, "onStopTrackingTouch enter");
                 isOnSeek = false;
             }
         });
 
-        btnSelect.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Matisse.from(MainActivity.this)
-                        .choose(MimeType.ofVideo(), false)
-                        .countable(true)
-                        .maxSelectable(1)
-//                        .addFilter(new GifSizeFilter(320, 320, 5 * Filter.K * Filter.K))
-                        .gridExpectedSize(
-                                getResources().getDimensionPixelSize(R.dimen.grid_expected_size))
-                        .restrictOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
-                        .thumbnailScale(0.85f)
-                        .imageEngine(new GlideEngine())
-                        .setOnSelectedListener((uriList, pathList) -> {
-                            Log.e("onSelected", "onSelected: pathList=" + pathList);
-                        })
-                        .showSingleMediaType(true)
-                        .originalEnable(true)
-                        .maxOriginalSize(10)
-                        .autoHideToolbarOnSingleTap(true)
-                        .setOnCheckedListener(isChecked -> {
-                            Log.e("isChecked", "onCheck: isChecked=" + isChecked);
-                        })
-                        .forResult(REQUEST_CODE_CHOOSE);
-            }
-        });
+        btnSelect.setOnClickListener(view -> Matisse.from(MainActivity.this)
+                .choose(MimeType.ofVideo(), false)
+                .countable(true)
+                .maxSelectable(1)
+                .gridExpectedSize(getResources().getDimensionPixelSize(R.dimen.grid_expected_size))
+                .restrictOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
+                .thumbnailScale(0.85f)
+                .imageEngine(new GlideEngine())
+                .setOnSelectedListener((uriList, pathList) -> {
+                    Log.e("onSelected", "onSelected: pathList=" + pathList);
+                })
+                .showSingleMediaType(true)
+                .originalEnable(true)
+                .maxOriginalSize(10)
+                .autoHideToolbarOnSingleTap(true)
+                .setOnCheckedListener(isChecked -> {
+                    Log.e("isChecked", "onCheck: isChecked=" + isChecked);
+                })
+                .forResult(REQUEST_CODE_CHOOSE));
     }
 
-
-    private void registerPlayerCallback(){
-
+    private void registerPlayerCallback() {
         mPlayer.registerListener(new IVEPlayerListener() {
             @Override
             public void onInfo(int type, int msg1, Object obj) {
-                if(type == VE_PLAYER_NOTIFY_EVENT_ON_EOS){
-                    Toast.makeText(MainActivity.this,"播放结束",Toast.LENGTH_SHORT).show();
+                if (type == VE_PLAYER_NOTIFY_EVENT_ON_EOS) {
+                    Toast.makeText(MainActivity.this, "播放结束", Toast.LENGTH_SHORT).show();
                 }
             }
 
             @Override
             public void onError(int type, int msg1, int msg2, String msg3) {
-
+                // Handle error
             }
 
             @Override
             public void onProgress(double progressMs) {
-                double pre = progressMs/mDuration;
-                int value = (int)(pre*1000);
-                Log.d(TAG,"progressMs :" +progressMs + "  pre:"+ progressMs/mDuration + " value:"+value);
-                if(!isOnSeek) {
+                double pre = progressMs / mDuration;
+                int value = (int) (pre * 1000);
+                Log.d(TAG, "progressMs :" + progressMs + "  pre:" + progressMs / mDuration + " value:" + value);
+                if (!isOnSeek) {
                     btnSeekBar.setProgress(value);
                 }
             }
@@ -174,56 +159,47 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_CODE_CHOOSE && resultCode == RESULT_OK) {
-//            if(mPlayer != null){
-////                mPlayer.pause();
-//                mPlayer.stop();
-//                mPlayer.release();
-//                mPlayer = null;
-//            }
-
-//            if(mPlayer == null){
-//                mPlayer = new VEPlayer();
-//            }
-            filePath=Matisse.obtainPathResult(data).get(0);
-            Log.d("Matisse", "Uris: " + Matisse.obtainResult(data)+" size:"+ Matisse.obtainResult(data).size());
+            filePath = Matisse.obtainPathResult(data).get(0);
+            Log.d("Matisse", "Uris: " + Matisse.obtainResult(data) + " size:" + Matisse.obtainResult(data).size());
             Log.d("Matisse", "Paths: " + Matisse.obtainPathResult(data));
-            Log.e("Matisse", "Use the selected photos with original: "+String.valueOf(Matisse.obtainOriginalState(data)));
+            Log.e("Matisse", "Use the selected photos with original: " + String.valueOf(Matisse.obtainOriginalState(data)));
         }
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        // Forward results to EasyPermissions
         EasyPermissions.onRequestPermissionsResult(requestCode, permissions, grantResults, this);
     }
 
     @Override
     public void onClick(View view) {
-        switch (view.getId()){
-            case R.id.btnPlay:{
-                registerPlayerCallback();
-                mPlayer.init(filePath);
-                mPlayer.prepare();
-                mPlayer.setLooping(true);
-                mDuration = mPlayer.getDuration();
-                Log.d(TAG,"mDuration:"+mDuration);
-                mPlayer.start();
+        switch (view.getId()) {
+            case R.id.btnPlay: {
+                if (filePath != null) {
+                    registerPlayerCallback();
+                    mPlayer.init(filePath);
+                    mPlayer.prepare();
+                    mPlayer.setLooping(true);
+                    mDuration = mPlayer.getDuration();
+                    Log.d(TAG, "mDuration:" + mDuration);
+                    mPlayer.start();
+                } else {
+                    Toast.makeText(this, "请选择一个视频文件", Toast.LENGTH_SHORT).show();
+                }
                 break;
             }
-            case R.id.btnPause:{
+            case R.id.btnPause: {
                 mPlayer.pause();
                 break;
             }
-            case R.id.btnResume:{
-                Log.d(TAG,"R.id.btnResume");
+            case R.id.btnResume: {
+                Log.d(TAG, "R.id.btnResume");
                 mPlayer.resume();
                 break;
             }
-            case R.id.btnStop:{
-//                mPlayer.stop();
-                mPlayer.seekTo(800 * mDuration / 1000);
+            case R.id.btnStop: {
+                mPlayer.stop();
                 break;
             }
             default:
@@ -231,23 +207,33 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
-        Log.d(TAG,"###Jack surfaceCreated");
-
+        Log.d(TAG, "###Jack surfaceCreated");
     }
 
     @Override
     public void surfaceChanged(@NonNull SurfaceHolder surfaceHolder, int i, int i1, int i2) {
-        Log.d(TAG,"###Jack surfaceChanged");
+        Log.d(TAG, "###Jack surfaceChanged");
         mSurface = surfaceHolder.getSurface();
-        mPlayer.setSurface(mSurface,i1,i2);
+        mPlayer.setSurface(mSurface, i1, i2);
     }
 
     @Override
     public void surfaceDestroyed(@NonNull SurfaceHolder surfaceHolder) {
-        Log.d(TAG,"###Jack surfaceDestroyed");
+        Log.d(TAG, "###Jack surfaceDestroyed");
+        if (mPlayer != null) {
+            mPlayer.pause();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mPlayer != null) {
+            mPlayer.stop();
+            mPlayer.release();
+        }
     }
 
     @Override

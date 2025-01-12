@@ -27,6 +27,8 @@ public:
     VEResult resume();
     VEResult stop();
     VEResult unInit();
+    VEResult setSurface(ANativeWindow *win, int width, int height);
+
     enum {
         kWhatEOS            = 'veos',
         kWhatProgress       = 'prog'
@@ -42,6 +44,7 @@ private:
     VEResult onUnInit();
     VEResult onAVSync();
     VEResult onRender(std::shared_ptr<AMessage> msg);
+    VEResult onSurfaceChanged(std::shared_ptr<AMessage> msg);
 
     GLuint loadShader(GLenum type, const char *shaderSrc);
 
@@ -56,7 +59,8 @@ private:
         kWhatRender              = 'rend',
         kWhatUninit              = 'unin',
         kWhatPause               = 'paus',
-        kWhatResume              = 'resm'
+        kWhatResume              = 'resm',
+        kWhatSurfaceChanged      = 'surf'
     };
 
 private:
@@ -69,9 +73,10 @@ private:
     GLuint          mTextures[3]{};
     GLuint          mProgram{};
     GLuint  mVAO{},mVBO{};
-    EGLDisplay eglDisplay{};
-    EGLSurface eglSurface{};
-    EGLContext eglContext{};
+    EGLDisplay eglDisplay = EGL_NO_DISPLAY;
+    EGLSurface eglSurface = EGL_NO_SURFACE;
+    EGLContext eglContext = EGL_NO_CONTEXT;
+    EGLConfig eglConfig = nullptr;
 
     int mViewWidth = 0;
     int mViewHeight = 0;

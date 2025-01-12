@@ -58,7 +58,7 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         }
         case kWhatSync:{
             if(onAVSync() != VE_OK){
-                ///todo
+                ALOGE("VEVideoRender::onAVSync failed");
             }
             break;
         }
@@ -86,7 +86,12 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             std::make_shared<AMessage>(kWhatSync,shared_from_this())->post();
             break;
         }
+        case kWhatSurfaceChanged:{
+            onSurfaceChanged(msg);
+            break;
+        }
         default:{
+            ALOGW("VEVideoRender::onMessageReceived unknown message");
             break;
         }
     }
@@ -143,14 +148,13 @@ VEResult VEVideoRender::onInit(ANativeWindow * win) {
     }
 
     // 配置 EGL 表面属性
-    EGLConfig config;
     EGLint numConfigs;
     EGLint configAttribs[] = {
             EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
             EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
             EGL_NONE
     };
-    if (!eglChooseConfig(eglDisplay, configAttribs, &config, 1, &numConfigs)) {
+    if (!eglChooseConfig(eglDisplay, configAttribs, &eglConfig, 1, &numConfigs)) {
         ALOGE("VEVideoRender::%s eglChooseConfig failed", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
@@ -160,14 +164,14 @@ VEResult VEVideoRender::onInit(ANativeWindow * win) {
             EGL_CONTEXT_CLIENT_VERSION, 3, // OpenGL ES 3.0
             EGL_NONE
     };
-    eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttribs);
+    eglContext = eglCreateContext(eglDisplay, eglConfig, EGL_NO_CONTEXT, contextAttribs);
     if (eglContext == EGL_NO_CONTEXT) {
         ALOGE("VEVideoRender::%s eglCreateContext failed", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
 
     // 创建 EGL 表面
-    eglSurface = eglCreateWindowSurface(eglDisplay, config, win, NULL);
+    eglSurface = eglCreateWindowSurface(eglDisplay, eglConfig, win, NULL);
 
     // 将 EGL 上下文与当前线程关联
     if (!eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
@@ -179,7 +183,7 @@ VEResult VEVideoRender::onInit(ANativeWindow * win) {
     createTexture();
     ALOGD("VEVideoRender::%s mViewWidth:%d,mViewHeight:%d", __FUNCTION__, mViewWidth, mViewHeight);
     glViewport(0,0,mViewWidth,mViewHeight);
-    glClearColor(0.5f, 0.0f, 0.0f, 1.0f);
+    glClearColor(0.f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
     return VE_OK;
@@ -460,5 +464,55 @@ VEResult VEVideoRender::onAVSync() {
     renderMsg->setObject("render", frame);
     renderMsg->setInt32("drop",isDrop);
     renderMsg->post(isDrop ? 0 : waitTime); // 根据同步状态设置等待时间
+    return VE_OK;
+}
+
+VEResult VEVideoRender::setSurface(ANativeWindow *win, int width, int height) {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSurfaceChanged,shared_from_this());
+
+    msg->setPointer("win",win);
+    msg->setInt32("width",width);
+    msg->setInt32("height",height);
+    msg->post();
+    return 0;
+}
+
+VEResult VEVideoRender::onSurfaceChanged(std::shared_ptr<AMessage> msg) {
+    ALOGI("VEVideoRender::onSurfaceChanged enter");
+    ANativeWindow *newWin;
+    msg->findPointer("win", (void**)&newWin);
+    int newWidth, newHeight;
+    msg->findInt32("width", &newWidth);
+    msg->findInt32("height", &newHeight);
+
+    if (eglDisplay == EGL_NO_DISPLAY) {
+        ALOGE("VEVideoRender::onSurfaceChanged EGL display is not initialized");
+        return UNKNOWN_ERROR;
+    }
+
+    // 释放旧的EGL Surface
+    if (eglSurface != EGL_NO_SURFACE) {
+        eglDestroySurface(eglDisplay, eglSurface);
+    }
+
+    // 创建新的EGL Surface
+    eglSurface = eglCreateWindowSurface(eglDisplay, eglConfig, newWin, NULL);
+    if (eglSurface == EGL_NO_SURFACE) {
+        ALOGE("VEVideoRender::onSurfaceChanged eglCreateWindowSurface failed");
+        return UNKNOWN_ERROR;
+    }
+
+    // 绑定新的EGL Surface
+    if (!eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
+        ALOGE("VEVideoRender::onSurfaceChanged eglMakeCurrent failed");
+        return UNKNOWN_ERROR;
+    }
+
+    // 更新视图大小
+    mViewWidth = newWidth;
+    mViewHeight = newHeight;
+    glViewport(0, 0, mViewWidth, mViewHeight);
+
+    ALOGI("VEVideoRender::onSurfaceChanged exit");
     return VE_OK;
 }

@@ -319,6 +319,7 @@ VEResult VEPlayer::setDisplayOut(ANativeWindow *win,int viewWidth,int viewHeight
     mWindow = win;
     mViewWidth = viewWidth;
     mViewHeight = viewHeight;
+    mVideoRender->setSurface(mWindow,mViewWidth,mViewHeight);
     ALOGI("VEPlayer::%s exit",__FUNCTION__ );
     return 0;
 }
