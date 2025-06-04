@@ -14,6 +14,7 @@ static JNINativeMethod gVEPlayerMethods[] = {
         {"createNativeHandle", "()J", (void *)createNativeHandle},
         {"nativeInit", "(Ljava/lang/Object;JLjava/lang/String;)I", (void *)nativeInit},
         {"nativeSetSurface", "(JLandroid/view/Surface;II)I", (void *)nativeSetSurface},
+        {"nativeReleaseSurface", "(J)I", (void *)nativeReleaseSurface},
         {"nativeGetDuration", "(J)J", (void *)nativeGetDuration},
         {"nativePrepare", "(J)I", (void *)nativePrepare},
         {"nativePrepareAsync", "(J)I", (void *)nativePrepareAsync},

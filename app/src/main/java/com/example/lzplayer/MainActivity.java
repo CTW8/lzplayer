@@ -210,6 +210,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder surfaceHolder) {
         Log.d(TAG, "###Jack surfaceCreated");
+        mSurface = surfaceHolder.getSurface();
+        mPlayer.setSurface(mSurface, surfaceHolder.getSurfaceFrame().width(), surfaceHolder.getSurfaceFrame().height());
     }
 
     @Override
@@ -224,6 +226,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         Log.d(TAG, "###Jack surfaceDestroyed");
         if (mPlayer != null) {
             mPlayer.pause();
+            mPlayer.releaseSurface();
         }
     }
 

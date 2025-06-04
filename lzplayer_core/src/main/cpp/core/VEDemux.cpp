@@ -370,7 +370,7 @@ VEResult VEDemux::onSeek(double posMs) {
     if (ret < 0) {
         ALOGE("VEDemux::onSeek Error: Couldn't seek using avformat_seek_file.\n");
         ALOGI("VEDemux::%s exit",__FUNCTION__);
-        return -1;
+        return VE_UNKNOWN_ERROR;
     }
 
     mAudioPacketQueue->clear();

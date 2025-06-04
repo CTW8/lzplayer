@@ -80,6 +80,15 @@ VEResult VEPlayer::reset()
     return 0;
 }
 
+VEResult VEPlayer::releaseSurface() {
+    ALOGI("VEPlayer::%s enter", __FUNCTION__);
+    if (mVideoRender) {
+        mVideoRender->unInit();
+    }
+    ALOGI("VEPlayer::%s exit", __FUNCTION__);
+    return VE_OK;
+}
+
 void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     ALOGI("VEPlayer::%s enter",__FUNCTION__ );
     switch (msg->what()) {

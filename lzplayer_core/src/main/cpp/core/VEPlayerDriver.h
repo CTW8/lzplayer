@@ -20,6 +20,7 @@ public:
 
     VEResult setDataSource(std::string path);
     VEResult setSurface(ANativeWindow * win,int width,int height);
+    VEResult releaseSurface();
 
     VEResult prepare();
     VEResult prepareAsync();

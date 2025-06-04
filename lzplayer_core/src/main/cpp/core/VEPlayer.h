@@ -42,6 +42,8 @@ public:
 
     VEResult setDisplayOut(ANativeWindow* win,int viewWidth,int viewHeight);
 
+    VEResult releaseSurface();
+
     /// prepare
     VEResult prepare();
 

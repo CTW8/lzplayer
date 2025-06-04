@@ -46,6 +46,13 @@ public class NativeLib {
         return -1;
     }
 
+    public int releaseSurface(){
+        if(mHandle != 0){
+            return nativeReleaseSurface(mHandle);
+        }
+        return -1;
+    }
+
     public int start(){
         if(mHandle != 0){
             return nativeStart(mHandle);
@@ -208,6 +215,7 @@ public class NativeLib {
     private static native long createNativeHandle();
     private native int nativeInit(Object mediaplayerThis,long handle,String path);
     private native int nativeSetSurface(long handle,Surface surface,int width,int height);
+    private native int nativeReleaseSurface(long handle);
     private native long nativeGetDuration(long handle);
     private native int nativePrepare(long handle);
     private native int nativePrepareAsync(long handle);
