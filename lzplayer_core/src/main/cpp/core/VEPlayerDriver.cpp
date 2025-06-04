@@ -70,22 +70,28 @@ VEPlayerDriver::~VEPlayerDriver() {}
 VEResult VEPlayerDriver::setDataSource(std::string path) {
     std::lock_guard<std::mutex> lk(mMutex);
     if (currentState != MEDIA_PLAYER_IDLE) {
-        return -1;
+        return VE_INVALID_OPERATION;
     }
     if (mPlayer->setDataSource(path) == 0) {
         currentState = MEDIA_PLAYER_INITIALIZED;
         return 0;
     }
     currentState = MEDIA_PLAYER_STATE_ERROR;
-    return -1;
+    return VE_UNKNOWN_ERROR;
 }
 
 VEResult VEPlayerDriver::setSurface(ANativeWindow *win, int width, int height) {
     std::lock_guard<std::mutex> lk(mMutex);
     if (mPlayer->setDisplayOut(win, width, height) == 0) {
-        return 0;
+        return VE_OK;
     }
-    return -1;
+    return VE_UNKNOWN_ERROR;
+}
+
+VEResult VEPlayerDriver::releaseSurface() {
+    std::lock_guard<std::mutex> lk(mMutex);
+    mPlayer->releaseSurface();
+    return VE_OK;
 }
 
 VEResult VEPlayerDriver::prepare() {
@@ -106,63 +112,63 @@ VEResult VEPlayerDriver::prepareAsync() {
     std::lock_guard<std::mutex> lk(mMutex);
     if (currentState != MEDIA_PLAYER_STOPPED && currentState != MEDIA_PLAYER_INITIALIZED) {
         ALOGE("Invalid state for prepareAsync: %d", currentState);
-        return -1;
+        return VE_INVALID_OPERATION;
     }
     if (mPlayer->prepareAsync() == 0) {
         currentState = MEDIA_PLAYER_PREPARING;
-        return 0;
+        return VE_OK;
     }
     currentState = MEDIA_PLAYER_STATE_ERROR;
-    return -1;
+    return VE_UNKNOWN_ERROR;
 }
 
 VEResult VEPlayerDriver::start() {
     std::lock_guard<std::mutex> lk(mMutex);
     if (currentState != MEDIA_PLAYER_PREPARED && currentState != MEDIA_PLAYER_PAUSED && currentState != MEDIA_PLAYER_PLAYBACK_COMPLETE) {
-        return -1;
+        return VE_INVALID_OPERATION;
     }
     if (mPlayer->start() == 0) {
         currentState = MEDIA_PLAYER_STARTED;
-        return 0;
+        return VE_OK;
     }
     currentState = MEDIA_PLAYER_STATE_ERROR;
-    return -1;
+    return VE_UNKNOWN_ERROR;
 }
 
 VEResult VEPlayerDriver::stop() {
     std::lock_guard<std::mutex> lk(mMutex);
     if (currentState != MEDIA_PLAYER_PREPARED && currentState != MEDIA_PLAYER_STARTED && currentState != MEDIA_PLAYER_PAUSED && currentState != MEDIA_PLAYER_PLAYBACK_COMPLETE) {
-        return -1;
+        return VE_INVALID_OPERATION;
     }
     if (mPlayer->stop() == 0) {
         currentState = MEDIA_PLAYER_STOPPED;
-        return 0;
+        return VE_OK;
     }
     currentState = MEDIA_PLAYER_STATE_ERROR;
-    return -1;
+    return VE_UNKNOWN_ERROR;
 }
 
 VEResult VEPlayerDriver::pause() {
     std::lock_guard<std::mutex> lk(mMutex);
     if (currentState != MEDIA_PLAYER_STARTED) {
-        return -1;
+        return VE_INVALID_OPERATION;
     }
     if (mPlayer->pause() == 0) {
         currentState = MEDIA_PLAYER_PAUSED;
-        return 0;
+        return VE_OK;
     }
     currentState = MEDIA_PLAYER_STATE_ERROR;
-    return -1;
+    return VE_UNKNOWN_ERROR;
 }
 
 VEResult VEPlayerDriver::reset() {
     std::lock_guard<std::mutex> lk(mMutex);
     if (mPlayer->reset() == 0) {
         currentState = MEDIA_PLAYER_IDLE;
-        return 0;
+        return VE_OK;
     }
     currentState = MEDIA_PLAYER_STATE_ERROR;
-    return -1;
+    return VE_UNKNOWN_ERROR;
 }
 
 int64_t VEPlayerDriver::getDuration() {
@@ -193,7 +199,7 @@ VEResult VEPlayerDriver::seekTo(double timestampMs) {
     ALOGI("VEPlayerDriver::%s timestampMs:%f, currentState:%d", __FUNCTION__, timestampMs, currentState);
     if (currentState != MEDIA_PLAYER_PREPARED && currentState != MEDIA_PLAYER_STARTED && currentState != MEDIA_PLAYER_PAUSED && currentState != MEDIA_PLAYER_PLAYBACK_COMPLETE) {
         ALOGE("VEPlayerDriver::%s Invalid state for seekTo: %d", __FUNCTION__, currentState);
-        return -1;
+        return VE_INVALID_OPERATION;
     }
 
     if(mIsSeeking){

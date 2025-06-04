@@ -15,6 +15,7 @@ extern "C" {
 jlong createNativeHandle(JNIEnv *env, jclass clazz);
 jint nativeInit(JNIEnv *env, jobject thiz,jobject weak_this, jlong handle, jstring path);
 jint nativeSetSurface(JNIEnv *env, jobject obj, jlong handle, jobject surface, jint width, jint height);
+jint nativeReleaseSurface(JNIEnv *env, jobject obj, jlong handle);
 jlong nativeGetDuration(JNIEnv *env, jobject obj, jlong handle);
 jint nativePrepare(JNIEnv *env, jobject obj, jlong handle);
 jint nativePrepareAsync(JNIEnv *env, jobject obj, jlong handle);

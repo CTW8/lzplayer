@@ -31,6 +31,13 @@ public class VEPlayer {
         return -1;
     }
 
+    public int releaseSurface(){
+        if(mNativeHandle != null){
+            return mNativeHandle.releaseSurface();
+        }
+        return -1;
+    }
+
     public int stop(){
         if(mNativeHandle != null){
             return mNativeHandle.stop();

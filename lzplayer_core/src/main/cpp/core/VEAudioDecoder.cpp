@@ -121,32 +121,32 @@ VEResult VEAudioDecoder::onInit(std::shared_ptr<AMessage> msg) {
     mDemux = std::static_pointer_cast<VEDemux>(tmp);
     std::shared_ptr<VEMediaInfo> info = mDemux->getFileInfo();
     if (info == nullptr) {
-        return -1;
+        return VE_UNKNOWN_ERROR;
     }
 
     const AVCodec *codec = avcodec_find_decoder(info->mAudioCodecParams->codec_id);
     if (codec == nullptr) {
-        return -1;
+        return VE_UNKNOWN_ERROR;
     }
 
     mAudioCtx = avcodec_alloc_context3(codec);
     if (mAudioCtx == nullptr) {
-        return -1;
+        return VE_NO_MEMORY;
     }
 
     avcodec_parameters_to_context(mAudioCtx, info->mAudioCodecParams);
 
     if (avcodec_open2(mAudioCtx, codec, nullptr) != 0) {
-        return -1;
+        return VE_UNKNOWN_ERROR;
     }
-    return false;
+    return VE_OK;
 }
 
 VEResult VEAudioDecoder::onFlush() {
     ALOGI("VEAudioDecoder::%s enter", __FUNCTION__);
     avcodec_flush_buffers(mAudioCtx);
     mFrameQueue->clear();
-    return false;
+    return VE_OK;
 }
 
 VEResult VEAudioDecoder::onDecode() {
@@ -191,7 +191,7 @@ VEResult VEAudioDecoder::onDecode() {
                     if (swr_init(mSwrCtx) < 0) {
                         ALOGE("VEAudioDecoder Failed to initialize the resampling context");
                         swr_free(&mSwrCtx);
-                        return -1;
+                        return VE_UNKNOWN_ERROR;
                     }
                 }
 
@@ -212,7 +212,7 @@ VEResult VEAudioDecoder::onDecode() {
 
                 if (out_samples_per_channel < 0) {
                     ALOGE("VEAudioDecoder swr_convert failed\n");
-                    return -1;
+                    return VE_UNKNOWN_ERROR;
                 }
                 std::shared_ptr<VEFrame> audioFrame = std::make_shared<VEFrame>(
                         AUDIO_TARGET_OUTPUT_SAMPLERATE, AUDIO_TARGET_OUTPUT_CHANNELS,
@@ -289,7 +289,7 @@ VEResult VEAudioDecoder::onUninit() {
     }
 
     mMediaInfo = nullptr;
-    return false;
+    return VE_OK;
 }
 
 VEResult VEAudioDecoder::onStart() {
@@ -311,7 +311,7 @@ VEResult VEAudioDecoder::onStop() {
     avcodec_flush_buffers(mAudioCtx);
 
     mFrameQueue->clear();
-    return false;
+    return VE_OK;
 }
 
 void VEAudioDecoder::queueFrame(std::shared_ptr<VEFrame> frame) {

@@ -102,6 +102,7 @@ VEVideoRender::VEVideoRender(std::shared_ptr<AMessage> notify, std::shared_ptr<V
 
 VEVideoRender::~VEVideoRender() {
     stop();
+    onUnInit();
 }
 
 VEResult VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps) {
@@ -203,7 +204,35 @@ VEResult VEVideoRender::onStop() {
 }
 
 VEResult VEVideoRender::onUnInit() {
-    ALOGI("VEVideoRender::%s",__FUNCTION__ );
+    ALOGI("VEVideoRender::%s enter", __FUNCTION__);
+
+    if (eglDisplay != EGL_NO_DISPLAY) {
+        eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    }
+
+    if (mProgram) {
+        glDeleteProgram(mProgram);
+        mProgram = 0;
+    }
+
+    glDeleteTextures(3, mTextures);
+
+    if (eglSurface != EGL_NO_SURFACE) {
+        eglDestroySurface(eglDisplay, eglSurface);
+        eglSurface = EGL_NO_SURFACE;
+    }
+
+    if (eglContext != EGL_NO_CONTEXT) {
+        eglDestroyContext(eglDisplay, eglContext);
+        eglContext = EGL_NO_CONTEXT;
+    }
+
+    if (eglDisplay != EGL_NO_DISPLAY) {
+        eglTerminate(eglDisplay);
+        eglDisplay = EGL_NO_DISPLAY;
+    }
+
+    ALOGI("VEVideoRender::%s exit", __FUNCTION__);
     return VE_OK;
 }
 

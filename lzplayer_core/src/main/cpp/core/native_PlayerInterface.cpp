@@ -144,6 +144,13 @@ jint nativeSetSurface(JNIEnv *env, jobject obj, jlong handle, jobject surface, j
     return vePlayer->setSurface(nativeWindow,width,height);
 }
 
+jint nativeReleaseSurface(JNIEnv *env, jobject obj, jlong handle) {
+    ALOGD("%s called", __FUNCTION__);
+    VEPlayerDriver * vePlayer = reinterpret_cast<VEPlayerDriver*>(handle);
+    CHECK_NULL();
+    return vePlayer->releaseSurface();
+}
+
 // 获取时长
 jlong nativeGetDuration(JNIEnv *env, jobject obj, jlong handle) {
     ALOGD("%s %d called",__FUNCTION__ ,__LINE__);
