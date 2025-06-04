@@ -357,16 +357,22 @@ GLuint VEVideoRender::createProgram(const char *vertexSource, const char *fragme
         return 0;
     }
     glAttachShader(program, vertexShader);
-    if (GLenum error = glGetError() != GL_NO_ERROR) {
-        ALOGE("VEVideoRender::%s Error attaching vertex shader: 0x%x", __FUNCTION__, error);
-        glDeleteProgram(program);
-        return 0;
+    {
+        GLenum error = glGetError();
+        if (error != GL_NO_ERROR) {
+            ALOGE("VEVideoRender::%s Error attaching vertex shader: 0x%x", __FUNCTION__, error);
+            glDeleteProgram(program);
+            return 0;
+        }
     }
     glAttachShader(program, fragmentShader);
-    if (GLenum error = glGetError() != GL_NO_ERROR) {
-        ALOGE("VEVideoRender::%s Error attaching fragment shader: 0x%x", __FUNCTION__, error);
-        glDeleteProgram(program);
-        return 0;
+    {
+        GLenum error = glGetError();
+        if (error != GL_NO_ERROR) {
+            ALOGE("VEVideoRender::%s Error attaching fragment shader: 0x%x", __FUNCTION__, error);
+            glDeleteProgram(program);
+            return 0;
+        }
     }
 
     glLinkProgram(program);
@@ -399,7 +405,7 @@ bool VEVideoRender::createTexture() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
-    return 0;
+    return true;
 }
 
 VEResult VEVideoRender::pause() {
