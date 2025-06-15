@@ -17,6 +17,9 @@ VEResult VEPlayer::prepare()
 {
     ALOGI("VEPlayer::%s enter",__FUNCTION__ );
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare,shared_from_this());
+
+//    std::shared_ptr<AMessage> respon;
+//    msg->postAndAwaitResponse(&respon);
     msg->post();
     ALOGI("VEPlayer::%s exit",__FUNCTION__ );
     return VE_OK;

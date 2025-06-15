@@ -98,9 +98,12 @@ void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
 }
 
 VEVideoRender::VEVideoRender(std::shared_ptr<AMessage> notify, std::shared_ptr<VEAVsync> avSync)
-    : mNotify(notify), m_AVSync(avSync) {}
+    : mNotify(notify), m_AVSync(avSync) {
+    ALOGD("VEVideoRender structure");
+}
 
 VEVideoRender::~VEVideoRender() {
+    ALOGD("~VEVideoRender release");
     stop();
 }
 
@@ -210,14 +213,17 @@ VEResult VEVideoRender::onInit(ANativeWindow * win) {
 }
 
 VEResult VEVideoRender::onStart() {
-    ALOGI("VEVideoRender::%s",__FUNCTION__ );
+    ALOGI("VEVideoRender::%s - Starting video render, mIsStarted=%d",__FUNCTION__, mIsStarted);
     mIsStarted = true;
     try {
-        std::make_shared<AMessage>(kWhatSync, shared_from_this())->post();
+        std::shared_ptr<AMessage> syncMsg = std::make_shared<AMessage>(kWhatSync, shared_from_this());
+        syncMsg->post();
+        ALOGI("VEVideoRender::%s - Posted sync message successfully",__FUNCTION__);
     } catch (const std::bad_weak_ptr& e) {
         ALOGE("VEVideoRender::onStart - Object not managed by shared_ptr yet");
         return UNKNOWN_ERROR;
     }
+    ALOGI("VEVideoRender::%s - Video render started successfully, mIsStarted=%d",__FUNCTION__, mIsStarted);
     return VE_OK;
 }
 
@@ -235,13 +241,32 @@ VEResult VEVideoRender::onUnInit() {
 VEResult VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
     ALOGI("VEVideoRender::%s enter",__FUNCTION__ );
     if(!mIsStarted){
+        ALOGW("VEVideoRender::%s - render not started", __FUNCTION__);
         return UNKNOWN_ERROR;
+    }
+
+    // 检查EGL状态
+    if (eglDisplay == EGL_NO_DISPLAY || eglSurface == EGL_NO_SURFACE || eglContext == EGL_NO_CONTEXT) {
+        ALOGE("VEVideoRender::%s - EGL not properly initialized: display=%p, surface=%p, context=%p", 
+              __FUNCTION__, eglDisplay, eglSurface, eglContext);
+        return UNKNOWN_ERROR;
+    }
+
+    // 确保EGL context当前绑定
+    if (eglGetCurrentContext() != eglContext) {
+        ALOGW("VEVideoRender::%s - EGL context not current, rebinding", __FUNCTION__);
+        if (!eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
+            EGLint error = eglGetError();
+            ALOGE("VEVideoRender::%s - Failed to make EGL context current, error: 0x%x", __FUNCTION__, error);
+            return UNKNOWN_ERROR;
+        }
     }
 
     int32_t isDrop = false;
     msg->findInt32("drop",&isDrop);
 
     if(isDrop){
+        ALOGD("VEVideoRender::%s - dropping frame", __FUNCTION__);
         return VE_OK;
     }
 
@@ -251,22 +276,50 @@ VEResult VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
     msg->findObject("render",&tmp);
 
     frame = std::static_pointer_cast<VEFrame>(tmp);
+    
+    if (frame == nullptr || frame->getFrame() == nullptr) {
+        ALOGE("VEVideoRender::%s - frame or frame data is null", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
 
+    // 清屏
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+    
+    // 检查OpenGL错误
+    GLenum glError = glGetError();
+    if (glError != GL_NO_ERROR) {
+        ALOGE("VEVideoRender::%s - OpenGL error after clear: 0x%x", __FUNCTION__, glError);
+    }
 
+    // 使用shader程序
     glUseProgram(mProgram);
+    glError = glGetError();
+    if (glError != GL_NO_ERROR) {
+        ALOGE("VEVideoRender::%s - OpenGL error after useProgram: 0x%x", __FUNCTION__, glError);
+        return UNKNOWN_ERROR;
+    }
+
+    // 绑定Y纹理
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, mTextures[0]);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, frame->getFrame()->width, frame->getFrame()->height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame->getFrame()->data[0]);
 
+    // 绑定U纹理
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, mTextures[1]);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, frame->getFrame()->width / 2, frame->getFrame()->height / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame->getFrame()->data[1]);
 
+    // 绑定V纹理
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, mTextures[2]);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, frame->getFrame()->width / 2, frame->getFrame()->height / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame->getFrame()->data[2]);
+
+    // 检查纹理操作错误
+    glError = glGetError();
+    if (glError != GL_NO_ERROR) {
+        ALOGE("VEVideoRender::%s - OpenGL error after texture operations: 0x%x", __FUNCTION__, glError);
+    }
 
     mFrameWidth = frame->getFrame()->width;
     mFrameHeight = frame->getFrame()->height;
@@ -278,18 +331,18 @@ VEResult VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
     GLint uTextureLoc = glGetUniformLocation(mProgram, "uTexture");
     GLint vTextureLoc = glGetUniformLocation(mProgram, "vTexture");
 
+    if (positionLoc < 0 || texCoordLoc < 0 || transformLoc < 0 || yTextureLoc < 0 || uTextureLoc < 0 || vTextureLoc < 0) {
+        ALOGE("VEVideoRender::%s - Failed to get shader locations: pos=%d, tex=%d, trans=%d, y=%d, u=%d, v=%d", 
+              __FUNCTION__, positionLoc, texCoordLoc, transformLoc, yTextureLoc, uTextureLoc, vTextureLoc);
+        return UNKNOWN_ERROR;
+    }
+
     glUniform1i(yTextureLoc, 0);
     glUniform1i(uTextureLoc, 1);
     glUniform1i(vTextureLoc, 2);
 
     ALOGD("VEVideoRender::%s ### mFrameWidth:%d,mFrameHeight:%d mViewWidth:%d,mViewHeight:%d pts:%" PRId64, __FUNCTION__, mFrameWidth, mFrameHeight, mViewWidth, mViewHeight,
           frame->getPts());
-//    {
-//        fwrite(frame->getFrame()->data[0],mFrameWidth* mFrameHeight,1,fp);
-//        fwrite(frame->getFrame()->data[1],mFrameWidth* mFrameHeight/4,1,fp);
-//        fwrite(frame->getFrame()->data[2],mFrameWidth* mFrameHeight/4,1,fp);
-//        fflush(fp);
-//    }
 
     float screenAspectRatio = (float)mViewWidth / mViewHeight;
     float imageAspectRatio = (float)mFrameWidth / mFrameHeight;
@@ -315,7 +368,7 @@ VEResult VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
     glm::vec3 scaleVector(1.0f, -1.0f, 1.0f);
 
     // 创建一个表示旋转角度的glm::mat4
-    float angle = 0.0f; // 旋转角度
+    float angle = 0.0f;
     glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
 
     // 使用glm::scale和glm::rotate函数创建一个同时包含缩放和旋转的变换矩阵
@@ -329,8 +382,29 @@ VEResult VEVideoRender::onRender(std::shared_ptr<AMessage> msg) {
     glVertexAttribPointer(texCoordLoc, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices + 2);
     glEnableVertexAttribArray(texCoordLoc);
 
+    // 检查顶点属性设置错误
+    glError = glGetError();
+    if (glError != GL_NO_ERROR) {
+        ALOGE("VEVideoRender::%s - OpenGL error after vertex setup: 0x%x", __FUNCTION__, glError);
+    }
+
+    // 绘制
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    eglSwapBuffers(eglDisplay,eglSurface);
+    glError = glGetError();
+    if (glError != GL_NO_ERROR) {
+        ALOGE("VEVideoRender::%s - OpenGL error after draw: 0x%x", __FUNCTION__, glError);
+    }
+
+    // 交换缓冲区
+    if (!eglSwapBuffers(eglDisplay, eglSurface)) {
+        EGLint eglError = eglGetError();
+        ALOGE("VEVideoRender::%s - eglSwapBuffers failed, error: 0x%x", __FUNCTION__, eglError);
+        return UNKNOWN_ERROR;
+    }
+
+    // 禁用顶点属性数组
+    glDisableVertexAttribArray(positionLoc);
+    glDisableVertexAttribArray(texCoordLoc);
 
     if(mNotify){
         std::shared_ptr<AMessage> msg = mNotify->dup();
@@ -466,12 +540,15 @@ VEResult VEVideoRender::onResume() {
 VEResult VEVideoRender::onAVSync() {
     ALOGI("VEVideoRender::%s enter",__FUNCTION__ );
     if(!mIsStarted){
+        ALOGE("VEVideoRender::%s render not started, mIsStarted=%d", __FUNCTION__, mIsStarted);
         return UNKNOWN_ERROR;
     }
 
     bool isDrop = false;
     std::shared_ptr<VEFrame> frame = nullptr;
     VEResult ret = mVDec->readFrame(frame);
+    ALOGI("VEVideoRender::%s readFrame result: %d", __FUNCTION__, ret);
+    
     if(ret == VE_NOT_ENOUGH_DATA){
         ALOGI("VEVideoRender::%s needMoreFrame!!!",__FUNCTION__ );
         try {
@@ -487,7 +564,7 @@ VEResult VEVideoRender::onAVSync() {
         ALOGE("VEVideoRender::%s onRender read frame is null!!!", __FUNCTION__);
         return UNKNOWN_ERROR;
     }
-    ALOGD("VEVideoRender::onAVSync frame type: %d", frame->getFrameType());
+    ALOGI("VEVideoRender::onAVSync frame type: %d, pts: %" PRId64, frame->getFrameType(), frame->getPts());
 
     if(frame->getFrameType() == E_FRAME_TYPE_EOF){
         ALOGD("VEVideoRender::onAVSync E_FRAME_TYPE_EOF");
@@ -546,34 +623,57 @@ VEResult VEVideoRender::onSurfaceChanged(std::shared_ptr<AMessage> msg) {
     msg->findInt32("width", &newWidth);
     msg->findInt32("height", &newHeight);
 
+    ALOGI("VEVideoRender::onSurfaceChanged - new surface: %p, size: %dx%d", newWin, newWidth, newHeight);
+
     if (eglDisplay == EGL_NO_DISPLAY) {
         ALOGE("VEVideoRender::onSurfaceChanged EGL display is not initialized");
         return UNKNOWN_ERROR;
     }
 
+    // 先解绑当前的EGL Surface
+    if (!eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+        ALOGE("VEVideoRender::onSurfaceChanged Failed to unbind current EGL surface");
+    }
+
     // 释放旧的EGL Surface
     if (eglSurface != EGL_NO_SURFACE) {
-        eglDestroySurface(eglDisplay, eglSurface);
+        if (!eglDestroySurface(eglDisplay, eglSurface)) {
+            ALOGE("VEVideoRender::onSurfaceChanged Failed to destroy old EGL surface");
+        }
+        eglSurface = EGL_NO_SURFACE;
     }
 
     // 创建新的EGL Surface
     eglSurface = eglCreateWindowSurface(eglDisplay, eglConfig, newWin, NULL);
     if (eglSurface == EGL_NO_SURFACE) {
-        ALOGE("VEVideoRender::onSurfaceChanged eglCreateWindowSurface failed");
+        EGLint error = eglGetError();
+        ALOGE("VEVideoRender::onSurfaceChanged eglCreateWindowSurface failed, error: 0x%x", error);
         return UNKNOWN_ERROR;
     }
 
     // 绑定新的EGL Surface
     if (!eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
-        ALOGE("VEVideoRender::onSurfaceChanged eglMakeCurrent failed");
+        EGLint error = eglGetError();
+        ALOGE("VEVideoRender::onSurfaceChanged eglMakeCurrent failed, error: 0x%x", error);
         return UNKNOWN_ERROR;
     }
 
     // 更新视图大小
+    mWin = newWin;
     mViewWidth = newWidth;
     mViewHeight = newHeight;
+    
+    // 重新设置viewport和清屏
     glViewport(0, 0, mViewWidth, mViewHeight);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    
+    // 强制刷新一帧以测试渲染
+    if (!eglSwapBuffers(eglDisplay, eglSurface)) {
+        EGLint error = eglGetError();
+        ALOGE("VEVideoRender::onSurfaceChanged eglSwapBuffers failed, error: 0x%x", error);
+    }
 
-    ALOGI("VEVideoRender::onSurfaceChanged exit");
+    ALOGI("VEVideoRender::onSurfaceChanged exit successfully, viewport: %dx%d", mViewWidth, mViewHeight);
     return VE_OK;
 }

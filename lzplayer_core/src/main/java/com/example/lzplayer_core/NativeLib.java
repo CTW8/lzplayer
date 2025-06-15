@@ -47,9 +47,16 @@ public class NativeLib {
     }
 
     public int start(){
+        Log.e(TAG, "🚀🚀🚀 NativeLib.start() ENTRY - This should always appear! 🚀🚀🚀");
+        Log.d(TAG, "NativeLib.start() called, mHandle: " + mHandle);
         if(mHandle != 0){
-            return nativeStart(mHandle);
+            Log.e(TAG, "🚀🚀🚀 About to call nativeStart with handle: " + mHandle + " 🚀🚀🚀");
+            int result = nativeStart(mHandle);
+            Log.e(TAG, "🚀🚀🚀 nativeStart returned: " + result + " 🚀🚀🚀");
+            Log.d(TAG, "NativeLib.start() result: " + result);
+            return result;
         }
+        Log.e(TAG, "NativeLib.start() failed - mHandle is 0");
         return -1;
     }
 

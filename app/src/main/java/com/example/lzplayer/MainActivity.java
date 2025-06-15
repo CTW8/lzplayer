@@ -133,9 +133,15 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         surfaceView.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                Log.d(TAG, "SurfaceView clicked, visibility: " + surfaceView.getVisibility() + 
+                      ", size: " + surfaceView.getWidth() + "x" + surfaceView.getHeight());
                 toggleControlsVisibility();
             }
         });
+        
+        // Ensure SurfaceView is visible and properly configured
+        surfaceView.setVisibility(View.VISIBLE);
+        surfaceView.getHolder().setKeepScreenOn(true);
         
         // Setup surface
         surfaceHolder = surfaceView.getHolder();
@@ -271,19 +277,34 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private void prepareVideo() {
         if (vePlayer != null && currentState == STATE_INITIALIZED) {
             try {
-                if (surfaceHolder != null && surfaceHolder.getSurface() != null) {
+                // Ensure Surface is set before preparing
+                if (surfaceHolder != null && surfaceHolder.getSurface() != null && surfaceHolder.getSurface().isValid()) {
                     int width = surfaceView.getWidth();
                     int height = surfaceView.getHeight();
+                    Log.d(TAG, "Setting surface before prepare - size: " + width + "x" + height + ", surface valid: " + surfaceHolder.getSurface().isValid());
+                    
                     if (width > 0 && height > 0) {
                         int surfaceResult = vePlayer.setSurface(surfaceHolder.getSurface(), width, height);
-                        Log.d(TAG, "Surface set result: " + surfaceResult + ", size: " + width + "x" + height);
+                        Log.d(TAG, "Surface set result before prepare: " + surfaceResult);
+                        
+                        if (surfaceResult != 0) {
+                            Log.e(TAG, "Failed to set surface before prepare: " + surfaceResult);
+                            updateStatus("Failed to set surface");
+                            return;
+                        }
+                    } else {
+                        Log.w(TAG, "Surface size is 0, postponing prepare");
+                        return;
                     }
+                } else {
+                    Log.w(TAG, "Surface not available or invalid, postponing prepare");
+                    return;
                 }
                 
                 int result = vePlayer.prepareAsync();
                 if (result == 0) {
                     updateStatus("Preparing video...");
-                    Log.d(TAG, "PrepareAsync called successfully");
+                    Log.d(TAG, "PrepareAsync called successfully with surface set");
                 } else {
                     Log.e(TAG, "Failed to prepare video: " + result);
                     currentState = STATE_ERROR;
@@ -300,7 +321,23 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private void startPlayback() {
         if (vePlayer != null && (currentState == STATE_PREPARED || currentState == STATE_PAUSED)) {
             try {
+                // Double-check surface is valid before starting
+                if (surfaceHolder != null && surfaceHolder.getSurface() != null && surfaceHolder.getSurface().isValid()) {
+                    int width = surfaceView.getWidth();
+                    int height = surfaceView.getHeight();
+                    if (width > 0 && height > 0) {
+                        int surfaceResult = vePlayer.setSurface(surfaceHolder.getSurface(), width, height);
+                        Log.d(TAG, "Surface reconfirmed before start: " + surfaceResult + ", size: " + width + "x" + height);
+                    }
+                } else {
+                    Log.e(TAG, "Surface not valid when trying to start playback");
+                    updateStatus("Surface not ready");
+                    return;
+                }
+                
+                Log.d(TAG, "MainActivity: About to call vePlayer.start()");
                 int result = vePlayer.start();
+                Log.d(TAG, "MainActivity: vePlayer.start() returned: " + result);
                 if (result == 0) {
                     currentState = STATE_STARTED;
                     isPlaying = true;
@@ -309,7 +346,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     updateStatus("Playing");
                     startProgressTracking();
                     scheduleHideControls(); // Auto-hide controls when playing
-                    Log.d(TAG, "Playback started");
+                    Log.d(TAG, "Playback started successfully");
                 } else {
                     Log.e(TAG, "Failed to start playback: " + result);
                     updateStatus("Failed to start playback");
@@ -448,11 +485,15 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             mediaSelectLauncher.launch(intent);
             
         } else if (id == R.id.btnPlay) {
+            Log.d(TAG, "MainActivity: Play button clicked, isPaused=" + isPaused + ", currentState=" + currentState);
             if (isPaused) {
+                Log.d(TAG, "MainActivity: Calling resumePlayback()");
                 resumePlayback();
             } else if (currentState == STATE_INITIALIZED) {
+                Log.d(TAG, "MainActivity: Calling prepareVideo()");
                 prepareVideo();
             } else {
+                Log.d(TAG, "MainActivity: Calling startPlayback()");
                 startPlayback();
             }
             
@@ -467,20 +508,59 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     // SurfaceHolder.Callback methods
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
-        Log.d(TAG, "Surface created");
+        Log.d(TAG, "Surface created, surface valid: " + (holder.getSurface() != null && holder.getSurface().isValid()));
+        
+        // 如果播放器已初始化但未准备，则准备播放器
         if (currentState == STATE_INITIALIZED && vePlayer != null) {
-            prepareVideo();
+            // 等待一点时间让Surface完全准备好
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    prepareVideo();
+                }
+            }, 100);
+        }
+        
+        // 如果之前因为Surface销毁而暂停，现在恢复播放
+        if (isPaused && currentState == STATE_PAUSED && vePlayer != null) {
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    Log.d(TAG, "Resuming playback after surface recreation");
+                    try {
+                        // 重新设置Surface
+                        int width = surfaceView.getWidth();
+                        int height = surfaceView.getHeight();
+                        if (width > 0 && height > 0) {
+                            int result = vePlayer.setSurface(holder.getSurface(), width, height);
+                            Log.d(TAG, "Surface reset result after recreation: " + result);
+                            
+                            if (result == 0) {
+                                resumePlayback();
+                            } else {
+                                Log.e(TAG, "Failed to reset surface after recreation: " + result);
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error resuming playback after surface recreation", e);
+                    }
+                }
+            }, 200);
         }
     }
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        Log.d(TAG, "Surface changed: " + width + "x" + height);
-        if (vePlayer != null && width > 0 && height > 0) {
+        Log.d(TAG, "Surface changed: " + width + "x" + height + ", format: " + format + ", surface valid: " + (holder.getSurface() != null && holder.getSurface().isValid()));
+        if (vePlayer != null && width > 0 && height > 0 && holder.getSurface() != null && holder.getSurface().isValid()) {
             try {
-                vePlayer.setSurface(holder.getSurface(), width, height);
+                int result = vePlayer.setSurface(holder.getSurface(), width, height);
+                Log.d(TAG, "Surface reset result: " + result);
+                if (result != 0) {
+                    Log.e(TAG, "Failed to reset surface: " + result);
+                }
             } catch (Exception e) {
-                Log.e(TAG, "Error setting surface", e);
+                Log.e(TAG, "Error setting surface on change", e);
             }
         }
     }
@@ -488,6 +568,19 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
         Log.d(TAG, "Surface destroyed");
+        // 暂停播放以避免在无效Surface上渲染
+        if (isPlaying && vePlayer != null) {
+            try {
+                Log.d(TAG, "Pausing playback due to surface destruction");
+                vePlayer.pause();
+                isPaused = true;
+                isPlaying = false;
+                updateControlButtons();
+                updateStatus("Surface destroyed - paused");
+            } catch (Exception e) {
+                Log.e(TAG, "Error pausing playback on surface destroy", e);
+            }
+        }
     }
 
     // IVEPlayerListener methods
