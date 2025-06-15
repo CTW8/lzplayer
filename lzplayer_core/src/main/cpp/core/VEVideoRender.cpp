@@ -105,29 +105,49 @@ VEVideoRender::~VEVideoRender() {
 }
 
 VEResult VEVideoRender::init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps) {
-    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit,shared_from_this());
-    msg->setPointer("win",win);
-    msg->setInt32("width",width);
-    msg->setInt32("height",height);
-    msg->setInt32("fps",fps);
-    msg->setObject("vdec",decoder);
-    msg->post();
-    return 0;
+    try {
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
+        msg->setPointer("win", win);
+        msg->setInt32("width", width);
+        msg->setInt32("height", height);
+        msg->setInt32("fps", fps);
+        msg->setObject("vdec", decoder);
+        msg->post();
+        return 0;
+    } catch (const std::bad_weak_ptr& e) {
+        ALOGE("VEVideoRender::init - Object not managed by shared_ptr yet");
+        return UNKNOWN_ERROR;
+    }
 }
 
 VEResult VEVideoRender::start() {
-    std::make_shared<AMessage>(kWhatStart,shared_from_this())->post();
-    return 0;
+    try {
+        std::make_shared<AMessage>(kWhatStart, shared_from_this())->post();
+        return 0;
+    } catch (const std::bad_weak_ptr& e) {
+        ALOGE("VEVideoRender::start - Object not managed by shared_ptr yet");
+        return UNKNOWN_ERROR;
+    }
 }
 
 VEResult VEVideoRender::stop() {
-    std::make_shared<AMessage>(kWhatStop,shared_from_this())->post();
-    return 0;
+    try {
+        std::make_shared<AMessage>(kWhatStop, shared_from_this())->post();
+        return 0;
+    } catch (const std::bad_weak_ptr& e) {
+        ALOGE("VEVideoRender::stop - Object not managed by shared_ptr yet");
+        return UNKNOWN_ERROR;
+    }
 }
 
 VEResult VEVideoRender::unInit() {
-    std::make_shared<AMessage>(kWhatUninit,shared_from_this())->post();
-    return 0;
+    try {
+        std::make_shared<AMessage>(kWhatUninit, shared_from_this())->post();
+        return 0;
+    } catch (const std::bad_weak_ptr& e) {
+        ALOGE("VEVideoRender::unInit - Object not managed by shared_ptr yet");
+        return UNKNOWN_ERROR;
+    }
 }
 
 VEResult VEVideoRender::onInit(ANativeWindow * win) {
@@ -192,7 +212,12 @@ VEResult VEVideoRender::onInit(ANativeWindow * win) {
 VEResult VEVideoRender::onStart() {
     ALOGI("VEVideoRender::%s",__FUNCTION__ );
     mIsStarted = true;
-    std::make_shared<AMessage>(kWhatSync,shared_from_this())->post();
+    try {
+        std::make_shared<AMessage>(kWhatSync, shared_from_this())->post();
+    } catch (const std::bad_weak_ptr& e) {
+        ALOGE("VEVideoRender::onStart - Object not managed by shared_ptr yet");
+        return UNKNOWN_ERROR;
+    }
     return VE_OK;
 }
 
@@ -409,13 +434,23 @@ bool VEVideoRender::createTexture() {
 }
 
 VEResult VEVideoRender::pause() {
-    std::make_shared<AMessage>(kWhatPause,shared_from_this())->post();
-    return 0;
+    try {
+        std::make_shared<AMessage>(kWhatPause, shared_from_this())->post();
+        return 0;
+    } catch (const std::bad_weak_ptr& e) {
+        ALOGE("VEVideoRender::pause - Object not managed by shared_ptr yet");
+        return UNKNOWN_ERROR;
+    }
 }
 
 VEResult VEVideoRender::resume() {
-    std::make_shared<AMessage>(kWhatResume,shared_from_this())->post();
-    return 0;
+    try {
+        std::make_shared<AMessage>(kWhatResume, shared_from_this())->post();
+        return 0;
+    } catch (const std::bad_weak_ptr& e) {
+        ALOGE("VEVideoRender::resume - Object not managed by shared_ptr yet");
+        return UNKNOWN_ERROR;
+    }
 }
 
 VEResult VEVideoRender::onPause() {
@@ -439,7 +474,12 @@ VEResult VEVideoRender::onAVSync() {
     VEResult ret = mVDec->readFrame(frame);
     if(ret == VE_NOT_ENOUGH_DATA){
         ALOGI("VEVideoRender::%s needMoreFrame!!!",__FUNCTION__ );
-        mVDec->needMoreFrame(std::make_shared<AMessage>(kWhatSync,shared_from_this()));
+        try {
+            mVDec->needMoreFrame(std::make_shared<AMessage>(kWhatSync, shared_from_this()));
+        } catch (const std::bad_weak_ptr& e) {
+            ALOGE("VEVideoRender::onAVSync - Object not managed by shared_ptr yet");
+            return UNKNOWN_ERROR;
+        }
         return VE_NOT_ENOUGH_DATA;
     }
 
@@ -466,21 +506,36 @@ VEResult VEVideoRender::onAVSync() {
 
     int64_t waitTime = m_AVSync->getWaitTime(); // 获取等待时间
     ALOGD("VEVideoRender::%s waitTime:%" PRId64,__FUNCTION__ ,waitTime);
-    std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender, shared_from_this());
-    renderMsg->setObject("render", frame);
-    renderMsg->setInt32("drop",isDrop);
-    renderMsg->post(isDrop ? 0 : waitTime); // 根据同步状态设置等待时间
+    try {
+        std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender, shared_from_this());
+        renderMsg->setObject("render", frame);
+        renderMsg->setInt32("drop", isDrop);
+        renderMsg->post(isDrop ? 0 : waitTime); // 根据同步状态设置等待时间
+    } catch (const std::bad_weak_ptr& e) {
+        ALOGE("VEVideoRender::onAVSync - Object not managed by shared_ptr yet");
+        return UNKNOWN_ERROR;
+    }
     return VE_OK;
 }
 
 VEResult VEVideoRender::setSurface(ANativeWindow *win, int width, int height) {
-    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSurfaceChanged,shared_from_this());
-
-    msg->setPointer("win",win);
-    msg->setInt32("width",width);
-    msg->setInt32("height",height);
-    msg->post();
-    return 0;
+    // 检查对象是否已经被shared_ptr管理
+    try {
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSurfaceChanged, shared_from_this());
+        msg->setPointer("win", win);
+        msg->setInt32("width", width);
+        msg->setInt32("height", height);
+        msg->post();
+        return 0;
+    } catch (const std::bad_weak_ptr& e) {
+        ALOGE("VEVideoRender::setSurface - Object not managed by shared_ptr yet, storing surface info for later");
+        // 如果shared_from_this失败，说明对象还没有被shared_ptr管理
+        // 直接更新成员变量，等待后续处理
+        mWin = win;
+        mViewWidth = width;
+        mViewHeight = height;
+        return 0;
+    }
 }
 
 VEResult VEVideoRender::onSurfaceChanged(std::shared_ptr<AMessage> msg) {

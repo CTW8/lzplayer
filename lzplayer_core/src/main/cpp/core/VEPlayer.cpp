@@ -224,6 +224,11 @@ VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
     mVideoRender = std::make_shared<VEVideoRender>(renderNotify, mAVSync);
     mVideoRenderLooper->registerHandler(mVideoRender);
     mVideoRender->init(mVideoDecoder, mWindow, mViewWidth, mViewHeight, mMediaInfo->fps);
+    
+    // 如果Surface已经设置，则在VEVideoRender初始化后调用setSurface
+    if (mWindow != nullptr) {
+        mVideoRender->setSurface(mWindow, mViewWidth, mViewHeight);
+    }
 
     mAudioOutputLooper = std::make_shared<ALooper>();
     mAudioOutputLooper->setName("audio_render");
@@ -319,7 +324,12 @@ VEResult VEPlayer::setDisplayOut(ANativeWindow *win,int viewWidth,int viewHeight
     mWindow = win;
     mViewWidth = viewWidth;
     mViewHeight = viewHeight;
-    mVideoRender->setSurface(mWindow,mViewWidth,mViewHeight);
+    
+    // 只有在mVideoRender已经初始化后才调用setSurface
+    if (mVideoRender != nullptr) {
+        mVideoRender->setSurface(mWindow,mViewWidth,mViewHeight);
+    }
+    
     ALOGI("VEPlayer::%s exit",__FUNCTION__ );
     return 0;
 }
