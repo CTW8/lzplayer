@@ -17,6 +17,9 @@ android {
             // 只包含64位ABI
             abiFilters "arm64-v8a"
         }
+        
+        // Add multiDex support
+        multiDexEnabled true
     }
 
     buildTypes {
@@ -49,6 +52,17 @@ android {
         checkReleaseBuilds false
         abortOnError false
     }
+    
+    // Add packaging options to avoid conflicts
+    packagingOptions {
+        pickFirst '**/libc++_shared.so'
+        pickFirst '**/libjsc.so'
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/LICENSE.txt'
+        exclude 'META-INF/NOTICE'
+        exclude 'META-INF/NOTICE.txt'
+    }
 }
 
 dependencies {
@@ -58,6 +72,10 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.10.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    
+    // Add multidex support
+    implementation 'androidx.multidex:multidex:2.0.1'
+    
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'

@@ -174,10 +174,11 @@ public class NativeLib {
 
         @Override
         public void handleMessage(@NonNull Message msg) {
+            Bundle data = msg.getData();
+            double arg2 = data != null ? data.getDouble("arg2", 0.0) : 0.0;
+            
             switch (msg.what){
                 case VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS:{
-                    Bundle data = msg.getData();
-                    double arg2 = data.getDouble("arg2");
                     mMediaPlayer.onNativeProgress(arg2);
                     break;
                 }
@@ -186,7 +187,7 @@ public class NativeLib {
                     if (msg.obj != null) {
                         errorMsg = msg.obj.toString();
                     }
-                    mMediaPlayer.onNativeErrorCallback(msg.arg1,msg.arg2,errorMsg);
+                    mMediaPlayer.onNativeErrorCallback(msg.what, msg.arg1, errorMsg);
                     break;
                 }
                 case VE_PLAYER_NOTIFY_EVENT_ON_PREPARED:{
@@ -194,7 +195,7 @@ public class NativeLib {
                     break;
                 }
                 case VE_PLAYER_NOTIFY_EVENT_ON_EOS:{
-                    mMediaPlayer.onNativeInfoCallback(msg.arg1, msg.arg2, msg.obj);
+                    mMediaPlayer.onNativeInfoCallback(VE_PLAYER_NOTIFY_EVENT_ON_EOS, msg.arg1, msg.obj);
                     break;
                 }
                 case VE_PLAYER_NOTIFY_EVENT_ON_FIRST_FRAME:{
@@ -202,7 +203,7 @@ public class NativeLib {
                     break;
                 }
                 case VE_PLAYER_NOTIFY_EVENT_ON_INFO:{
-                    mMediaPlayer.onNativeInfoCallback(msg.arg1,msg.arg2,msg.obj);
+                    mMediaPlayer.onNativeInfoCallback(msg.what, msg.arg1, msg.obj);
                     break;
                 }
                 default:

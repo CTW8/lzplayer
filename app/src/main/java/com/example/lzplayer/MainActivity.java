@@ -7,7 +7,6 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.Manifest;
 import android.content.Intent;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -28,14 +27,13 @@ import com.example.lzplayer_core.VEPlayer;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import pub.devrel.easypermissions.EasyPermissions;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener, SurfaceHolder.Callback, IVEPlayerListener {
     private static final String TAG = "LZPlayer";
     
-    // Player states as constants instead of enum
+    // Player states as constants
     private static final int STATE_IDLE = 0;
     private static final int STATE_INITIALIZED = 1;
     private static final int STATE_PREPARED = 2;
@@ -45,8 +43,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private static final int STATE_ERROR = 6;
     
     // UI Components
-    private Button btnSelectFile, btnPlay, btnPause, btnStop;
-    private TextView tvSelectedFile, tvStatus, tvDuration;
+    private Button btnSelectFile;
+    private Button btnPlay;
+    private Button btnPause;
+    private Button btnStop;
+    private TextView tvSelectedFile;
+    private TextView tvStatus;
+    private TextView tvDuration;
     private SeekBar seekBar;
     private SurfaceView surfaceView;
     private SurfaceHolder surfaceHolder;
@@ -61,7 +64,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     
     // Progress tracking
     private Handler progressHandler;
-    private Runnable progressRunnable;
     private boolean isUserSeeking = false;
     
     // Permissions
@@ -84,7 +86,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         requestPermissions();
         
         progressHandler = new Handler(Looper.getMainLooper());
-        setupProgressTracking();
     }
 
     private void initViews() {
@@ -111,8 +112,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         surfaceHolder = surfaceView.getHolder();
         surfaceHolder.addCallback(this);
         
-        // Setup seek bar with simple listener
-        seekBar.setOnSeekBarChangeListener(new SimpleSeekBarListener());
+        // Setup seek bar
+        seekBar.setOnSeekBarChangeListener(new SeekBarChangeListener());
     }
 
     private void initPlayer() {
@@ -124,30 +125,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private void initMediaSelector() {
         mediaSelectLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(), 
-            new SimpleActivityResultCallback()
+            new MediaSelectResultCallback()
         );
-    }
-
-    private void setupProgressTracking() {
-        progressRunnable = new SimpleProgressRunnable();
     }
 
     private void selectedFiles(List<String> files) {
         if (files != null && !files.isEmpty()) {
             currentFilePath = files.get(0);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.GINGERBREAD) {
-                if (currentFilePath != null && !currentFilePath.isEmpty()) {
-                    String fileName = currentFilePath.substring(currentFilePath.lastIndexOf("/") + 1);
-                    tvSelectedFile.setText("Selected: " + fileName);
-                    Log.d(TAG, "Selected file: " + currentFilePath);
+            if (currentFilePath != null && !currentFilePath.isEmpty()) {
+                String fileName = currentFilePath.substring(currentFilePath.lastIndexOf("/") + 1);
+                tvSelectedFile.setText("Selected: " + fileName);
+                Log.d(TAG, "Selected file: " + currentFilePath);
 
-                    resetPlayer();
+                resetPlayer();
 
-                    if (initializeVideo(currentFilePath)) {
-                        updateStatus("Video loaded, ready to prepare");
-                    } else {
-                        updateStatus("Failed to load video");
-                    }
+                if (initializeVideo(currentFilePath)) {
+                    updateStatus("Video loaded, ready to prepare");
+                } else {
+                    updateStatus("Failed to load video");
                 }
             }
         }
@@ -321,32 +316,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     private void updateControlButtons() {
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                btnPlay.setEnabled(isPlayerPrepared && !isPlaying);
-                btnPause.setEnabled(isPlaying && !isPaused);
-                btnStop.setEnabled(isPlayerPrepared && (isPlaying || isPaused));
-                
-                if (isPaused) {
-                    btnPlay.setText("Resume");
-                } else {
-                    btnPlay.setText("Play");
-                }
-            }
-        });
+        runOnUiThread(new UpdateButtonsRunnable());
     }
 
     private void updateStatus(final String status) {
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                if (tvStatus != null) {
-                    tvStatus.setText(status);
-                }
-                Log.d(TAG, "Status: " + status);
-            }
-        });
+        runOnUiThread(new UpdateStatusRunnable(status));
     }
 
     private void startProgressTracking() {
@@ -359,11 +333,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     private String formatTime(long timeMs) {
-        long minutes = 0;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.GINGERBREAD) {
-            minutes = TimeUnit.MILLISECONDS.toMinutes(timeMs);
-        }
-        long seconds = TimeUnit.MILLISECONDS.toSeconds(timeMs) % 60;
+        long minutes = timeMs / 60000;
+        long seconds = (timeMs % 60000) / 1000;
         return String.format("%02d:%02d", minutes, seconds);
     }
 
@@ -430,55 +401,20 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     public void onInfo(int type, int msg1, Object obj) {
         Log.d(TAG, "onInfo: type=" + type + ", msg1=" + msg1 + ", obj=" + obj);
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                if (type == 0x102) { // VE_PLAYER_NOTIFY_EVENT_ON_PREPARED
-                    isPlayerPrepared = true;
-                    currentState = STATE_PREPARED;
-                    if (vePlayer != null) {
-                        videoDuration = vePlayer.getDuration();
-                        if (videoDuration > 0) {
-                            seekBar.setEnabled(true);
-                            tvDuration.setText(formatTime(videoDuration));
-                        }
-                    }
-                    updateControlButtons();
-                    updateStatus("Ready to play");
-                    Log.d(TAG, "Player prepared, duration: " + videoDuration + "ms");
-                } else if (type == 0x103) { // VE_PLAYER_NOTIFY_EVENT_ON_EOS
-                    updateStatus("Playback completed");
-                    stopPlayback();
-                }
-            }
-        });
+        runOnUiThread(new OnInfoRunnable(type, msg1, obj));
     }
 
     @Override
     public void onError(int type, int msg1, int msg2, String msg3) {
         final String errorMsg = (msg3 != null && !msg3.isEmpty()) ? msg3 : "Unknown error";
         Log.e(TAG, "onError: type=" + type + ", msg1=" + msg1 + ", msg2=" + msg2 + ", msg3=" + errorMsg);
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                currentState = STATE_ERROR;
-                updateStatus("Error: " + errorMsg);
-                Toast.makeText(MainActivity.this, "Player error: " + errorMsg, Toast.LENGTH_LONG).show();
-            }
-        });
+        runOnUiThread(new OnErrorRunnable(errorMsg));
     }
 
     @Override
     public void onProgress(double progressMs) {
         if (!isUserSeeking && videoDuration > 0 && progressMs >= 0) {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    int progress = (int) ((progressMs / videoDuration) * 100);
-                    seekBar.setProgress(Math.max(0, Math.min(100, progress)));
-                    updateStatus("Playing - " + formatTime((long)progressMs) + " / " + formatTime(videoDuration));
-                }
-            });
+            runOnUiThread(new OnProgressRunnable(progressMs));
         }
     }
 
@@ -524,8 +460,18 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         Log.d(TAG, "onResume");
     }
 
-    // Simple classes to replace anonymous inner classes
-    private class SimpleSeekBarListener implements SeekBar.OnSeekBarChangeListener {
+    // Progress tracking runnable
+    private final Runnable progressRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isPlaying && !isUserSeeking && isPlayerPrepared) {
+                progressHandler.postDelayed(this, 1000);
+            }
+        }
+    };
+
+    // Separate classes to replace inner classes
+    private class SeekBarChangeListener implements SeekBar.OnSeekBarChangeListener {
         @Override
         public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
             if (fromUser && isPlayerPrepared) {
@@ -551,7 +497,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    private class SimpleActivityResultCallback implements androidx.activity.result.ActivityResultCallback<ActivityResult> {
+    private class MediaSelectResultCallback implements androidx.activity.result.ActivityResultCallback<ActivityResult> {
         @Override
         public void onActivityResult(ActivityResult result) {
             if (result.getResultCode() == RESULT_OK && result.getData() != null) {
@@ -564,12 +510,97 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    private class SimpleProgressRunnable implements Runnable {
+    private class UpdateButtonsRunnable implements Runnable {
         @Override
         public void run() {
-            if (isPlaying && !isUserSeeking && isPlayerPrepared) {
-                progressHandler.postDelayed(this, 1000);
+            btnPlay.setEnabled(isPlayerPrepared && !isPlaying);
+            btnPause.setEnabled(isPlaying && !isPaused);
+            btnStop.setEnabled(isPlayerPrepared && (isPlaying || isPaused));
+            
+            if (isPaused) {
+                btnPlay.setText("Resume");
+            } else {
+                btnPlay.setText("Play");
             }
+        }
+    }
+
+    private class UpdateStatusRunnable implements Runnable {
+        private final String status;
+        
+        public UpdateStatusRunnable(String status) {
+            this.status = status;
+        }
+        
+        @Override
+        public void run() {
+            if (tvStatus != null) {
+                tvStatus.setText(status);
+            }
+            Log.d(TAG, "Status: " + status);
+        }
+    }
+
+    private class OnInfoRunnable implements Runnable {
+        private final int type;
+        private final int msg1;
+        private final Object obj;
+        
+        public OnInfoRunnable(int type, int msg1, Object obj) {
+            this.type = type;
+            this.msg1 = msg1;
+            this.obj = obj;
+        }
+        
+        @Override
+        public void run() {
+            if (type == 0x102) { // VE_PLAYER_NOTIFY_EVENT_ON_PREPARED
+                isPlayerPrepared = true;
+                currentState = STATE_PREPARED;
+                if (vePlayer != null) {
+                    videoDuration = vePlayer.getDuration();
+                    if (videoDuration > 0) {
+                        seekBar.setEnabled(true);
+                        tvDuration.setText(formatTime(videoDuration));
+                    }
+                }
+                updateControlButtons();
+                updateStatus("Ready to play");
+                Log.d(TAG, "Player prepared, duration: " + videoDuration + "ms");
+            } else if (type == 0x103) { // VE_PLAYER_NOTIFY_EVENT_ON_EOS
+                updateStatus("Playback completed");
+                stopPlayback();
+            }
+        }
+    }
+
+    private class OnErrorRunnable implements Runnable {
+        private final String errorMsg;
+        
+        public OnErrorRunnable(String errorMsg) {
+            this.errorMsg = errorMsg;
+        }
+        
+        @Override
+        public void run() {
+            currentState = STATE_ERROR;
+            updateStatus("Error: " + errorMsg);
+            Toast.makeText(MainActivity.this, "Player error: " + errorMsg, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private class OnProgressRunnable implements Runnable {
+        private final double progressMs;
+        
+        public OnProgressRunnable(double progressMs) {
+            this.progressMs = progressMs;
+        }
+        
+        @Override
+        public void run() {
+            int progress = (int) ((progressMs / videoDuration) * 100);
+            seekBar.setProgress(Math.max(0, Math.min(100, progress)));
+            updateStatus("Playing - " + formatTime((long)progressMs) + " / " + formatTime(videoDuration));
         }
     }
 }
