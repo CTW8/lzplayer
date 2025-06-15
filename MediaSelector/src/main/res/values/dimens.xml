@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <dimen name="button_corner_radius">8dp</dimen>
+  <dimen name="button_padding">12dp</dimen>
+  
+  <!-- Spacing -->
+  <dimen name="spacing_xs">4dp</dimen>
+  <dimen name="spacing_sm">8dp</dimen>
+  <dimen name="spacing_md">16dp</dimen>
+  <dimen name="spacing_lg">24dp</dimen>
+  <dimen name="spacing_xl">32dp</dimen>
+  
+  <!-- Border radius -->
+  <dimen name="radius_sm">4dp</dimen>
+  <dimen name="radius_md">8dp</dimen>
+  <dimen name="radius_lg">12dp</dimen>
+  <dimen name="radius_xl">16dp</dimen>
+  
+  <!-- Media item -->
+  <dimen name="media_item_spacing">2dp</dimen>
+  <dimen name="media_item_radius">8dp</dimen>
+  <dimen name="media_selection_indicator_size">24dp</dimen>
+  <dimen name="video_play_icon_size">32dp</dimen>
+  
+  <!-- Button -->
+  <dimen name="button_height">48dp</dimen>
+  <dimen name="button_min_width">88dp</dimen>
+  
+  <!-- Tab bar -->
+  <dimen name="tab_height">48dp</dimen>
+  
+  <!-- Elevation -->
+  <dimen name="elevation_card">2dp</dimen>
+  <dimen name="elevation_fab">6dp</dimen>
+  <dimen name="elevation_bottom_sheet">8dp</dimen>
+</resources> 

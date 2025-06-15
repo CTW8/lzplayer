@@ -153,7 +153,8 @@ public class NativeLib {
 
     public void onNativeErrorCallback(int type,int msg1,String msg3){
         if(mListener != null){
-            mListener.onError(type,msg1,0,msg3);
+            String errorMsg = (msg3 != null) ? msg3 : "Unknown error";
+            mListener.onError(type,msg1,0,errorMsg);
         }
     }
 
@@ -181,10 +182,15 @@ public class NativeLib {
                     break;
                 }
                 case VE_PLAYER_NOTIFY_EVENT_ON_ERROR:{
-                    mMediaPlayer.onNativeErrorCallback(msg.arg1,msg.arg2,(String)msg.obj);
+                    String errorMsg = null;
+                    if (msg.obj != null) {
+                        errorMsg = msg.obj.toString();
+                    }
+                    mMediaPlayer.onNativeErrorCallback(msg.arg1,msg.arg2,errorMsg);
                     break;
                 }
                 case VE_PLAYER_NOTIFY_EVENT_ON_PREPARED:{
+                    mMediaPlayer.onNativeInfoCallback(VE_PLAYER_NOTIFY_EVENT_ON_PREPARED, msg.arg1, msg.obj);
                     break;
                 }
                 case VE_PLAYER_NOTIFY_EVENT_ON_EOS:{
@@ -192,15 +198,16 @@ public class NativeLib {
                     break;
                 }
                 case VE_PLAYER_NOTIFY_EVENT_ON_FIRST_FRAME:{
+                    mMediaPlayer.onNativeInfoCallback(VE_PLAYER_NOTIFY_EVENT_ON_FIRST_FRAME, msg.arg1, msg.obj);
                     break;
                 }
                 case VE_PLAYER_NOTIFY_EVENT_ON_INFO:{
                     mMediaPlayer.onNativeInfoCallback(msg.arg1,msg.arg2,msg.obj);
                     break;
                 }
-                default:{
+                default:
+                    Log.w(TAG, "Unknown message type: " + msg.what);
                     break;
-                }
             }
         }
     }
