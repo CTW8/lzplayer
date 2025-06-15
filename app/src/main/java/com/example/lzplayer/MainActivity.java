@@ -16,6 +16,7 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -43,6 +44,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private static final int STATE_ERROR = 6;
     
     // UI Components
+    private LinearLayout controlPanel;
     private Button btnSelectFile;
     private Button btnPlay;
     private Button btnPause;
@@ -66,6 +68,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Handler progressHandler;
     private boolean isUserSeeking = false;
     
+    // UI Control
+    private boolean isControlsVisible = true;
+    private Handler hideControlsHandler;
+    private static final int HIDE_CONTROLS_DELAY = 3000; // 3 seconds
+    
     // Permissions
     private static final int RC_FILE_PERM = 123;
     private ActivityResultLauncher<Intent> mediaSelectLauncher;
@@ -76,8 +83,17 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        
+        // Enable fullscreen mode
+        getWindow().setFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            WindowManager.LayoutParams.FLAG_FULLSCREEN | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        
+        // Hide action bar for fullscreen experience
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().hide();
+        }
+        
         setContentView(R.layout.activity_main);
 
         initViews();
@@ -86,12 +102,17 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         requestPermissions();
         
         progressHandler = new Handler(Looper.getMainLooper());
+        hideControlsHandler = new Handler(Looper.getMainLooper());
+        
+        // Auto-hide controls after delay
+        scheduleHideControls();
     }
 
     private void initViews() {
         Log.d(TAG, "initViews");
         
         // Find views
+        controlPanel = findViewById(R.id.controlPanel);
         btnSelectFile = findViewById(R.id.btnSelectFile);
         btnPlay = findViewById(R.id.btnPlay);
         btnPause = findViewById(R.id.btnPause);
@@ -108,12 +129,75 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btnPause.setOnClickListener(this);
         btnStop.setOnClickListener(this);
         
+        // Setup surface click to toggle controls
+        surfaceView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                toggleControlsVisibility();
+            }
+        });
+        
         // Setup surface
         surfaceHolder = surfaceView.getHolder();
         surfaceHolder.addCallback(this);
         
         // Setup seek bar
         seekBar.setOnSeekBarChangeListener(new SeekBarChangeListener());
+    }
+
+    private void toggleControlsVisibility() {
+        if (isControlsVisible) {
+            hideControls();
+        } else {
+            showControls();
+        }
+    }
+
+    private void showControls() {
+        if (!isControlsVisible) {
+            controlPanel.setVisibility(View.VISIBLE);
+            controlPanel.animate()
+                .alpha(1.0f)
+                .translationY(0)
+                .setDuration(300)
+                .start();
+            isControlsVisible = true;
+        }
+        scheduleHideControls();
+    }
+
+    private void hideControls() {
+        if (isControlsVisible) {
+            controlPanel.animate()
+                .alpha(0.0f)
+                .translationY(controlPanel.getHeight())
+                .setDuration(300)
+                .withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        controlPanel.setVisibility(View.GONE);
+                    }
+                })
+                .start();
+            isControlsVisible = false;
+        }
+        cancelHideControls();
+    }
+
+    private void scheduleHideControls() {
+        cancelHideControls();
+        if (isPlaying) {
+            hideControlsHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    hideControls();
+                }
+            }, HIDE_CONTROLS_DELAY);
+        }
+    }
+
+    private void cancelHideControls() {
+        hideControlsHandler.removeCallbacksAndMessages(null);
     }
 
     private void initPlayer() {
@@ -224,6 +308,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     updateControlButtons();
                     updateStatus("Playing");
                     startProgressTracking();
+                    scheduleHideControls(); // Auto-hide controls when playing
                     Log.d(TAG, "Playback started");
                 } else {
                     Log.e(TAG, "Failed to start playback: " + result);
@@ -249,6 +334,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     updateControlButtons();
                     updateStatus("Paused");
                     stopProgressTracking();
+                    cancelHideControls(); // Keep controls visible when paused
+                    showControls();
                     Log.d(TAG, "Playback paused");
                 } else {
                     Log.e(TAG, "Failed to pause playback: " + result);
@@ -270,6 +357,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     updateControlButtons();
                     updateStatus("Playing");
                     startProgressTracking();
+                    scheduleHideControls(); // Auto-hide controls when resumed
                     Log.d(TAG, "Playback resumed");
                 } else {
                     Log.e(TAG, "Failed to resume playback: " + result);
@@ -292,6 +380,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     updateStatus("Stopped");
                     stopProgressTracking();
                     seekBar.setProgress(0);
+                    cancelHideControls(); // Keep controls visible when stopped
+                    showControls();
                     Log.d(TAG, "Playback stopped");
                 } else {
                     Log.e(TAG, "Failed to stop playback: " + result);
@@ -347,6 +437,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     public void onClick(View view) {
         int id = view.getId();
+        
+        // Show controls when any button is clicked
+        showControls();
         
         if (id == R.id.btnSelectFile) {
             Intent intent = new Intent(MainActivity.this, MediaSelectorActivity.class);
@@ -438,6 +531,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         Log.d(TAG, "onDestroy");
         
         stopProgressTracking();
+        cancelHideControls();
         
         if (vePlayer != null) {
             try {
@@ -484,6 +578,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         @Override
         public void onStartTrackingTouch(SeekBar seekBar) {
             isUserSeeking = true;
+            showControls(); // Show controls when user starts seeking
         }
 
         @Override
@@ -494,6 +589,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 Log.d(TAG, "Seeking to: " + seekTime + "ms");
             }
             isUserSeeking = false;
+            // Schedule hide controls after seeking
+            if (isPlaying) {
+                scheduleHideControls();
+            }
         }
     }
 

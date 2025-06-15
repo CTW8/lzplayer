@@ -1,126 +1,157 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res/auto"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
+    android:background="@android:color/black"
     tools:context=".MainActivity">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="LZ Player - Video Player"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:layout_marginBottom="16dp" />
-
-    <!-- Video Surface -->
+    <!-- Full Screen Video Surface -->
     <SurfaceView
         android:id="@+id/surfaceView"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="@android:color/black"
-        android:layout_marginBottom="16dp" />
+        android:layout_height="match_parent"
+        android:background="@android:color/black" />
 
-    <!-- File Selection -->
+    <!-- Overlay Control Panel -->
     <LinearLayout
+        android:id="@+id/controlPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginBottom="16dp">
+        android:layout_alignParentBottom="true"
+        android:orientation="vertical"
+        android:background="@drawable/control_panel_bg"
+        android:padding="16dp"
+        android:layout_margin="16dp">
 
-        <Button
-            android:id="@+id/btnSelectFile"
-            android:layout_width="0dp"
+        <!-- File Info and Duration Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Select Video"
-            android:textAllCaps="false"
-            android:layout_marginEnd="8dp" />
+            android:orientation="horizontal"
+            android:layout_marginBottom="12dp"
+            android:gravity="center_vertical">
 
+            <TextView
+                android:id="@+id/tvSelectedFile"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="No file selected"
+                android:textSize="12sp"
+                android:textColor="@android:color/white"
+                android:maxLines="1"
+                android:ellipsize="middle"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/tvDuration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="00:00"
+                android:textSize="12sp"
+                android:textColor="@android:color/white"
+                android:minWidth="50dp"
+                android:gravity="end" />
+
+        </LinearLayout>
+
+        <!-- Progress Bar -->
+        <SeekBar
+            android:id="@+id/seekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:enabled="false"
+            android:progressTint="@android:color/white"
+            android:thumbTint="@android:color/white"
+            android:progressBackgroundTint="#66FFFFFF" />
+
+        <!-- Control Buttons Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginBottom="8dp">
+
+            <Button
+                android:id="@+id/btnSelectFile"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="Select"
+                android:textAllCaps="false"
+                android:textSize="12sp"
+                android:layout_marginEnd="4dp"
+                style="@style/PlayerControlButton" />
+
+            <Button
+                android:id="@+id/btnPlay"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="Play"
+                android:textAllCaps="false"
+                android:textSize="12sp"
+                android:enabled="false"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                style="@style/PlayerControlButton" />
+
+            <Button
+                android:id="@+id/btnPause"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="Pause"
+                android:textAllCaps="false"
+                android:textSize="12sp"
+                android:enabled="false"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                style="@style/PlayerControlButton" />
+
+            <Button
+                android:id="@+id/btnStop"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="Stop"
+                android:textAllCaps="false"
+                android:textSize="12sp"
+                android:enabled="false"
+                android:layout_marginStart="4dp"
+                style="@style/PlayerControlButton" />
+
+        </LinearLayout>
+
+        <!-- Status Text -->
         <TextView
-            android:id="@+id/tvDuration"
-            android:layout_width="wrap_content"
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="00:00"
-            android:textSize="14sp"
-            android:gravity="center_vertical"
-            android:minWidth="60dp" />
+            android:text="Ready to select video"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:textColor="#CCFFFFFF"
+            android:layout_marginTop="4dp" />
 
     </LinearLayout>
 
-    <!-- Selected File Info -->
+    <!-- App Title (Top Left) -->
     <TextView
-        android:id="@+id/tvSelectedFile"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="No file selected"
-        android:textSize="12sp"
-        android:padding="8dp"
-        android:background="@android:color/darker_gray"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentStart="true"
+        android:text="LZ Player"
+        android:textSize="16sp"
+        android:textStyle="bold"
         android:textColor="@android:color/white"
-        android:layout_marginBottom="16dp"
-        android:maxLines="2"
-        android:ellipsize="middle" />
+        android:background="@drawable/title_bg"
+        android:padding="8dp"
+        android:layout_margin="16dp" />
 
-    <!-- Progress Bar -->
-    <SeekBar
-        android:id="@+id/seekBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        android:enabled="false" />
-
-    <!-- Control Buttons -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:layout_marginBottom="16dp">
-
-        <Button
-            android:id="@+id/btnPlay"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Play"
-            android:enabled="false"
-            android:layout_marginEnd="4dp" />
-
-        <Button
-            android:id="@+id/btnPause"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Pause"
-            android:enabled="false"
-            android:layout_marginStart="4dp"
-            android:layout_marginEnd="4dp" />
-
-        <Button
-            android:id="@+id/btnStop"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Stop"
-            android:enabled="false"
-            android:layout_marginStart="4dp" />
-
-    </LinearLayout>
-
-    <!-- Status Text -->
-    <TextView
-        android:id="@+id/tvStatus"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Ready"
-        android:textSize="14sp"
-        android:gravity="center"
-        android:textColor="@android:color/darker_gray" />
-
-</LinearLayout>
+</RelativeLayout>
