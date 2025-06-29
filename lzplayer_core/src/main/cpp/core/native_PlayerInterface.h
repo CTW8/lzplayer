@@ -7,30 +7,31 @@
 
 #include <jni.h>
 
-
+namespace VE {
 #ifdef __cplusplus
-extern "C" {
+    extern "C" {
 #endif
 
-jlong createNativeHandle(JNIEnv *env, jclass clazz);
-jint nativeInit(JNIEnv *env, jobject thiz,jobject weak_this, jlong handle, jstring path);
-jint nativeSetSurface(JNIEnv *env, jobject obj, jlong handle, jobject surface, jint width, jint height);
-jlong nativeGetDuration(JNIEnv *env, jobject obj, jlong handle);
-jint nativePrepare(JNIEnv *env, jobject obj, jlong handle);
-jint nativePrepareAsync(JNIEnv *env, jobject obj, jlong handle);
-jint nativeStart(JNIEnv *env, jobject obj, jlong handle);
-jint nativePause(JNIEnv *env, jobject obj, jlong handle);
-jint nativeResume(JNIEnv *env, jobject obj, jlong handle);
-jint nativeStop(JNIEnv *env, jobject obj, jlong handle);
-jint nativeSeekTo(JNIEnv *env, jobject obj, jlong handle, jdouble timestamp);
-jint nativeRelease(JNIEnv *env, jobject obj, jlong handle);
+    jlong createNativeHandle(JNIEnv *env, jclass clazz);
+    jint nativeInit(JNIEnv *env, jobject thiz, jobject weak_this, jlong handle, jstring path);
+    jint nativeSetSurface(JNIEnv *env, jobject obj, jlong handle, jobject surface, jint width,
+                          jint height);
+    jlong nativeGetDuration(JNIEnv *env, jobject obj, jlong handle);
+    jint nativePrepare(JNIEnv *env, jobject obj, jlong handle);
+    jint nativePrepareAsync(JNIEnv *env, jobject obj, jlong handle);
+    jint nativeStart(JNIEnv *env, jobject obj, jlong handle);
+    jint nativePause(JNIEnv *env, jobject obj, jlong handle);
+    jint nativeResume(JNIEnv *env, jobject obj, jlong handle);
+    jint nativeStop(JNIEnv *env, jobject obj, jlong handle);
+    jint nativeSeekTo(JNIEnv *env, jobject obj, jlong handle, jdouble timestamp);
+    jint nativeRelease(JNIEnv *env, jobject obj, jlong handle);
 
 // 新增的本地方法声明
-jint nativeSetLooping(JNIEnv *env, jobject obj, jlong handle, jboolean loop);
-jint nativeSetPlaySpeed(JNIEnv *env, jobject obj, jlong handle, jfloat speed);
+    jint nativeSetLooping(JNIEnv *env, jobject obj, jlong handle, jboolean loop);
+    jint nativeSetPlaySpeed(JNIEnv *env, jobject obj, jlong handle, jfloat speed);
 
 #ifdef __cplusplus
-}
+    }
 #endif
-
+}
 #endif //LZPLAYER_NATIVE_PLAYERINTERFACE_H

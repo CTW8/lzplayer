@@ -4,7 +4,7 @@
 
 #ifndef LZPLAYER_VEDEF_H
 #define LZPLAYER_VEDEF_H
-
+namespace VE {
 
 #define VE_PLAYER_NOTIFY_EVENT            0x100
 #define VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS                  (VE_PLAYER_NOTIFY_EVENT + 1)
@@ -21,22 +21,21 @@
 #define VE_PLAYER_ERROR_OPEN_DEMUX_FAILED                   (VE_PLAYER_ERROR + 1)
 
 
+    enum EFrameType {
+        E_FRAME_TYPE_UNKNOW = -1,
+        E_FRAME_TYPE_VIDEO,
+        E_FRAME_TYPE_AUDIO,
+        E_FRAME_TYPE_EOF
+    };
 
-enum EFrameType{
-    E_FRAME_TYPE_UNKNOW = -1,
-    E_FRAME_TYPE_VIDEO,
-    E_FRAME_TYPE_AUDIO,
-    E_FRAME_TYPE_EOF
-};
-
-enum EPacketType{
-    E_PACKET_TYPE_UNKNOW = -1,
-    E_PACKET_TYPE_VIDEO,
-    E_PACKET_TYPE_AUDIO,
-    E_PACKET_TYPE_EOF
-};
-
+    enum EPacketType {
+        E_PACKET_TYPE_UNKNOW = -1,
+        E_PACKET_TYPE_VIDEO,
+        E_PACKET_TYPE_AUDIO,
+        E_PACKET_TYPE_EOF
+    };
 
 
+}
 
 #endif //LZPLAYER_VEDEF_H

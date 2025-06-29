@@ -17,7 +17,7 @@
 #pragma once
 
 #include <jni.h>
-
+namespace VE {
 #if defined(__cplusplus)
 
 #if !defined(DISALLOW_COPY_AND_ASSIGN)
@@ -29,24 +29,25 @@
 #endif  // !defined(DISALLOW_COPY_AND_ASSIGN)
 
 // This seems a header-only include. Provide NPE throwing.
-static inline int jniThrowNullPointerException(JNIEnv* env) {
-    if (env->ExceptionCheck()) {
-        // Drop any pending exception.
-        env->ExceptionClear();
-    }
+    static inline int jniThrowNullPointerException(JNIEnv *env) {
+        if (env->ExceptionCheck()) {
+            // Drop any pending exception.
+            env->ExceptionClear();
+        }
 
-    jclass e_class = env->FindClass("java/lang/NullPointerException");
-    if (e_class == nullptr) {
-        return -1;
-    }
+        jclass e_class = env->FindClass("java/lang/NullPointerException");
+        if (e_class == nullptr) {
+            return -1;
+        }
 
-    if (env->ThrowNew(e_class, nullptr) != JNI_OK) {
+        if (env->ThrowNew(e_class, nullptr) != JNI_OK) {
+            env->DeleteLocalRef(e_class);
+            return -1;
+        }
+
         env->DeleteLocalRef(e_class);
-        return -1;
+        return 0;
     }
-
-    env->DeleteLocalRef(e_class);
-    return 0;
 }
 
 #endif  // defined(__cplusplus)

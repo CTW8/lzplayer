@@ -16,90 +16,103 @@ extern "C"
     #include "libavutil/avutil.h"
     #include "libavutil/timestamp.h"
 }
+namespace VE {
+    class VEDemux : public AHandler {
 
-class VEDemux : public AHandler
-{
+    public:
+        VEDemux();
 
-public:
-    VEDemux();
-    ~VEDemux();
+        ~VEDemux();
 
-    VEResult open(std::string file);
-    void start();
-    void stop();
-    void pause();
-    void needMorePacket(std::shared_ptr<AMessage> msg,int type);
-    VEResult read(bool isAudio,std::shared_ptr<VEPacket> &packet);
-    VEResult seek(double posMs);
-    VEResult close();
-    std::shared_ptr<VEMediaInfo> getFileInfo();
+        VEResult open(std::string file);
 
-private:
-    VEResult onOpen(std::string path);
-    VEResult onStart();
-    VEResult onRead();
-    VEResult onSeek(double posMs);
-    void putPacket(std::shared_ptr<VEPacket> packet,bool isAudio);
-    void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+        void start();
 
-private:
-    std::string mFilePath;
-    int32_t mWidth=0;
-    int32_t mHeight=0;
-    uint64_t mDuration=0;
-    int32_t mFps=0;
-    AVCodecParameters *mVideoCodecParams=nullptr;
-    AVRational mVideoTimeBase;
-    int64_t mVStartTime=0;
+        void stop();
 
-    int32_t mSampleRate=0;
-    int32_t mChannel=0;
-    int32_t mSampleFormat=0;
-    AVCodecParameters *mAudioCodecParams=nullptr;
-    AVRational mAudioTimeBase;
-    int64_t mAStartTime=0;
+        void pause();
 
-    int mAudio_index=-1;
-    int mVideo_index=-1;
+        void needMorePacket(std::shared_ptr<AMessage> msg, int type);
 
-    bool mIsStart = false;
+        VEResult read(bool isAudio, std::shared_ptr<VEPacket> &packet);
 
-    bool mNeedAudioMore = false;
-    bool mNeedVideoMore = false;
+        VEResult seek(double posMs);
 
-    std::shared_ptr<AMessage> mAudioNotify = nullptr;
-    std::shared_ptr<AMessage> mVideoNotify = nullptr;
+        VEResult close();
 
-    std::mutex mMutexAudio;
-    std::condition_variable mCondAudio;
+        std::shared_ptr<VEMediaInfo> getFileInfo();
 
-    std::mutex mMutexVideo;
-    std::condition_variable mCondVideo;
+    private:
+        VEResult onOpen(std::string path);
 
-    int64_t mAudioStartPts=0;
-    int64_t mVideoStartPts =0;
+        VEResult onStart();
 
-    bool mIsEOS = false;
+        VEResult onRead();
 
-    //视频帧
-    std::shared_ptr<VEPacketQueue> mVideoPacketQueue = nullptr;
-    //音频帧
-    std::shared_ptr<VEPacketQueue> mAudioPacketQueue = nullptr;
-    AVFormatContext* mFormatContext=nullptr;
+        VEResult onSeek(double posMs);
+
+        void putPacket(std::shared_ptr<VEPacket> packet, bool isAudio);
+
+        void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+
+    private:
+        std::string mFilePath;
+        int32_t mWidth = 0;
+        int32_t mHeight = 0;
+        uint64_t mDuration = 0;
+        int32_t mFps = 0;
+        AVCodecParameters *mVideoCodecParams = nullptr;
+        AVRational mVideoTimeBase;
+        int64_t mVStartTime = 0;
+
+        int32_t mSampleRate = 0;
+        int32_t mChannel = 0;
+        int32_t mSampleFormat = 0;
+        AVCodecParameters *mAudioCodecParams = nullptr;
+        AVRational mAudioTimeBase;
+        int64_t mAStartTime = 0;
+
+        int mAudio_index = -1;
+        int mVideo_index = -1;
+
+        bool mIsStart = false;
+
+        bool mNeedAudioMore = false;
+        bool mNeedVideoMore = false;
+
+        std::shared_ptr<AMessage> mAudioNotify = nullptr;
+        std::shared_ptr<AMessage> mVideoNotify = nullptr;
+
+        std::mutex mMutexAudio;
+        std::condition_variable mCondAudio;
+
+        std::mutex mMutexVideo;
+        std::condition_variable mCondVideo;
+
+        int64_t mAudioStartPts = 0;
+        int64_t mVideoStartPts = 0;
+
+        bool mIsEOS = false;
+
+        //视频帧
+        std::shared_ptr<VEPacketQueue> mVideoPacketQueue = nullptr;
+        //音频帧
+        std::shared_ptr<VEPacketQueue> mAudioPacketQueue = nullptr;
+        AVFormatContext *mFormatContext = nullptr;
 
 
-private:
-    enum {
-        kWhatOpen                = 'open',
-        kWhatStart               = 'star',
-        kWhatStop                = 'stop',
-        kWhatEOS                 = 'eos ',
-        kWhatPause               = 'paus',
-        kWhatResume              = 'resm',
-        kWhatSeek                = 'seek',
-        kWhatRead                = 'read'
+    private:
+        enum {
+            kWhatOpen = 'open',
+            kWhatStart = 'star',
+            kWhatStop = 'stop',
+            kWhatEOS = 'eos ',
+            kWhatPause = 'paus',
+            kWhatResume = 'resm',
+            kWhatSeek = 'seek',
+            kWhatRead = 'read'
+        };
+
     };
-
-};
-
+}
 #endif

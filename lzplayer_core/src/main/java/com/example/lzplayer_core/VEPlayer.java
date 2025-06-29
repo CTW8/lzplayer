@@ -14,7 +14,7 @@ public class VEPlayer {
 
     public int init(String path){
         if(mNativeHandle != null){
-            Log.d(TAG,"init enter");
+            Log.d(TAG,"prepare enter");
             return mNativeHandle.init(path);
         }
         return -1;

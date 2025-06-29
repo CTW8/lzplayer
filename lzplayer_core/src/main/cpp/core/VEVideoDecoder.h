@@ -10,6 +10,8 @@
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "VEDemux.h"
+#include "IVEComponent.h"
+#include "VEBundle.h"
 
 extern "C" {
 #include "libavformat/avformat.h"
@@ -18,64 +20,81 @@ extern "C" {
 #include "libavutil/timestamp.h"
 }
 
+namespace VE {
+    class VEVideoDecoder
+            : public AHandler ,IVEComponent{
+    public:
+        VEVideoDecoder();
 
-class VEVideoDecoder
-        : public AHandler
-{
-public:
-    VEVideoDecoder();
-    ~VEVideoDecoder();
+    public:
+        ~VEVideoDecoder();
 
-    VEResult init(std::shared_ptr<VEDemux> demux);
+        VEResult prepare(std::shared_ptr<VEDemux> demux);
 
-    void start();
-    void pause();
-    void stop();
-    VEResult flush();
-    VEResult readFrame(std::shared_ptr<VEFrame> &frame);
-    void needMoreFrame(std::shared_ptr<AMessage> msg);
-    VEResult uninit();
+        VEResult prepare(VEBundle params) override;
 
-protected:
-    void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+        VEResult start() override;
 
-private:
-    // 消息处理函数
-    VEResult onInit(std::shared_ptr<AMessage> msg);
-    VEResult onStart();
-    VEResult onPause();
-    VEResult onStop();
-    VEResult onFlush();
-    VEResult onDecode();
-    VEResult onUninit();
-    VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
+        VEResult pause() override;
 
-    // 帧入队列
-    void queueFrame(std::shared_ptr<VEFrame> frame);
+        VEResult stop() override;
 
-    enum {
-        kWhatInit   = 'init',
-        kWhatStart  = 'star',
-        kWhatStop   = 'stop',
-        kWhatPause  = 'paus',
-        kWhatResume = 'resu',  // 若需要resume可保留
-        kWhatFlush  = 'flus',
-        kWhatDecode = 'deco',
-        kWhatUninit = 'unin',
-        kWhatNeedMore = 'need'
+        VEResult flush() override;
+
+        VEResult seekTo(uint64_t timestamp) override;
+
+        VEResult readFrame(std::shared_ptr<VEFrame> &frame);
+
+        void needMoreFrame(std::shared_ptr<AMessage> msg);
+
+        VEResult release() override;
+
+    protected:
+        void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+
+    private:
+        // 消息处理函数
+        VEResult onPrepare(std::shared_ptr<AMessage> msg);
+
+        VEResult onStart();
+
+        VEResult onPause();
+
+        VEResult onStop();
+
+        VEResult onFlush();
+
+        VEResult onDecode();
+
+        VEResult onRelease();
+
+        VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
+
+        // 帧入队列
+        void queueFrame(std::shared_ptr<VEFrame> frame);
+
+        enum {
+            kWhatInit = 'init',
+            kWhatStart = 'star',
+            kWhatStop = 'stop',
+            kWhatPause = 'paus',
+            kWhatFlush = 'flus',
+            kWhatDecode = 'deco',
+            kWhatUninit = 'unin',
+            kWhatNeedMore = 'need'
+        };
+
+    private:
+        AVCodecContext *mVideoCtx = nullptr;
+        std::shared_ptr<VEMediaInfo> mMediaInfo = nullptr;
+        std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
+        std::shared_ptr<VEDemux> mDemux = nullptr;
+
+        std::mutex mMutex;               // 保护共享变量
+        bool mIsStarted = false;
+        bool mNeedMoreData = false;
+
+        std::shared_ptr<AMessage> mNotifyMore = nullptr;
     };
-
-private:
-    AVCodecContext *mVideoCtx = nullptr;
-    std::shared_ptr<VEMediaInfo> mMediaInfo = nullptr;
-    std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
-    std::shared_ptr<VEDemux> mDemux = nullptr;
-
-    std::mutex mMutex;               // 保护共享变量
-    bool mIsStarted = false;
-    bool mNeedMoreData = false;
-
-    std::shared_ptr<AMessage> mNotifyMore = nullptr;
-};
-
+}
 #endif // __VE_VIDEO_DECODER__

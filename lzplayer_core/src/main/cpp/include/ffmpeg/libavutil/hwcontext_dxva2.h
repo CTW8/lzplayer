@@ -52,7 +52,7 @@ typedef struct AVDXVA2FramesContext {
 
     /**
      * The surface pool. When an external pool is not provided by the caller,
-     * this will be managed (allocated and filled on init, freed on uninit) by
+     * this will be managed (allocated and filled on prepare, freed on release) by
      * libavutil.
      */
     IDirect3DSurface9 **surfaces;

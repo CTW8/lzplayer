@@ -63,7 +63,7 @@ enum AVTXType {
      *
      * NOTE: the inverse transform is half-length, meaning the output will not
      * contain redundant data. This is what most codecs work with. To do a full
-     * inverse transform, set the AV_TX_FULL_IMDCT flag on init.
+     * inverse transform, set the AV_TX_FULL_IMDCT flag on prepare.
      */
     AV_TX_FLOAT_MDCT  = 1,
     AV_TX_DOUBLE_MDCT = 3,

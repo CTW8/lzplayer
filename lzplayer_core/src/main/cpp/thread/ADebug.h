@@ -59,17 +59,24 @@ inline static const char *asString(status_t i, const char *def = "??") {
 /* If passed multiple args, returns ',' followed by all but 1st arg, otherwise
  * returns nothing.
  */
-#define __android_rest(first, ...)               , ## __VA_ARGS__
+//#define __android_rest(first, ...)               , ## __VA_ARGS__
 
-#define android_printAssert(cond, tag, fmt...) \
-    __android_log_assert(cond, tag, \
-        __android_second(0, ## fmt, NULL) __android_rest(fmt))
+//#define android_printAssert(cond, tag, ...)                              \
+//    __android_log_assert(                                                \
+//        cond,                                                            \
+//        tag,                                                             \
+//        __android_second(0, ##__VA_ARGS__, NULL)                         \
+//        __android_rest(__VA_ARGS__)                                      \
+//    )
+#define android_printAssert(cond, tag, fmt, ...) \
+    __android_log_assert(cond, tag, fmt, __VA_ARGS__)
 
 #ifndef LOG_ALWAYS_FATAL_IF
-#define LOG_ALWAYS_FATAL_IF(cond, ...) \
-    ( (CONDITION(cond)) \
-    ? ((void)android_printAssert(#cond, LOG_TAG, ## __VA_ARGS__)) \
-    : (void)0 )
+#define LOG_ALWAYS_FATAL_IF(cond, fmt, ...)                         \
+    ((CONDITION(cond))                                              \
+     ? ((void)android_printAssert(                                  \
+            #cond, LOG_TAG, fmt, __VA_ARGS__))                      \
+     : (void)0)
 #endif
 
 

@@ -9,90 +9,95 @@ extern "C"{
     #include "libavutil/pixfmt.h"
     #include "libavutil/channel_layout.h"
 }
-
-class VEFrame{
-public:
-    VEFrame(){
-        mFrame = av_frame_alloc();
-    }
-    ///format :AVPixelFormat and AVSampleFormat
-    VEFrame(int width,int height,int format){
-        mFrame = av_frame_alloc();
-        mFrame->width = width;
-        mFrame->height = height;
-        mFrame->format = format;
-
-        int ret = av_frame_get_buffer(mFrame,0);
-        if (ret < 0) {
-            ALOGE("Could not allocate the audio frame data");
-            av_frame_free(&mFrame);
+namespace VE {
+    class VEFrame {
+    public:
+        VEFrame() {
+            mFrame = av_frame_alloc();
         }
-    }
 
-    VEFrame(int sampleRate,int channel ,int size,int format){
-        mFrame = av_frame_alloc();
-        mFrame->sample_rate = sampleRate;
-        AVChannelLayout layout;
-        av_channel_layout_default(&layout,channel);
-        mFrame->ch_layout =layout;
-        mFrame->nb_samples = size;
-        mFrame->format = format;
+        ///format :AVPixelFormat and AVSampleFormat
+        VEFrame(int width, int height, int format) {
+            mFrame = av_frame_alloc();
+            mFrame->width = width;
+            mFrame->height = height;
+            mFrame->format = format;
 
-        ALOGI("VEFrame sample_rate:%d ch_layout:%d nb_samples:%d format:%d",mFrame->sample_rate,mFrame->ch_layout.nb_channels,mFrame->nb_samples,mFrame->format);
-
-        int ret = av_frame_get_buffer(mFrame,0);
-        if (ret < 0) {
-            ALOGE("Could not allocate the audio frame data");
-            av_frame_free(&mFrame);
+            int ret = av_frame_get_buffer(mFrame, 0);
+            if (ret < 0) {
+                ALOGE("Could not allocate the audio frame data");
+                av_frame_free(&mFrame);
+            }
         }
-    }
-    ~VEFrame(){
-        if(mFrame){
-            ALOGI("AVFrame is release  pts:%" PRId64,mFrame->pts);
+
+        VEFrame(int sampleRate, int channel, int size, int format) {
+            mFrame = av_frame_alloc();
+            mFrame->sample_rate = sampleRate;
+            AVChannelLayout layout;
+            av_channel_layout_default(&layout, channel);
+            mFrame->ch_layout = layout;
+            mFrame->nb_samples = size;
+            mFrame->format = format;
+
+            ALOGI("VEFrame sample_rate:%d ch_layout:%d nb_samples:%d format:%d",
+                  mFrame->sample_rate, mFrame->ch_layout.nb_channels, mFrame->nb_samples,
+                  mFrame->format);
+
+            int ret = av_frame_get_buffer(mFrame, 0);
+            if (ret < 0) {
+                ALOGE("Could not allocate the audio frame data");
+                av_frame_free(&mFrame);
+            }
+        }
+
+        ~VEFrame() {
+            if (mFrame) {
+                ALOGI("AVFrame is release  pts:%" PRId64, mFrame->pts);
 //            backTrace();
-            av_frame_unref(mFrame);
-            av_frame_free(&mFrame);
+                av_frame_unref(mFrame);
+                av_frame_free(&mFrame);
+            }
         }
-    }
 
-    AVFrame* getFrame(){
-        return mFrame;
-    }
+        AVFrame *getFrame() {
+            return mFrame;
+        }
 
-    VEFrame& operator=(VEFrame &frame){
-        mFrame = frame.getFrame();
-        av_frame_ref(mFrame,frame.getFrame());
-        return *this;
-    }
+        VEFrame &operator=(VEFrame &frame) {
+            mFrame = frame.getFrame();
+            av_frame_ref(mFrame, frame.getFrame());
+            return *this;
+        }
 
-    void setPts(int64_t pts){
-        timestamp = pts;
-    }
+        void setPts(int64_t pts) {
+            timestamp = pts;
+        }
 
-    uint64_t getPts(){
-        return timestamp;
-    }
+        uint64_t getPts() {
+            return timestamp;
+        }
 
-    void setFrameType(EFrameType type){
-        eFrameType = type;
-    }
+        void setFrameType(EFrameType type) {
+            eFrameType = type;
+        }
 
-    EFrameType getFrameType(){
-        return eFrameType;
-    }
+        EFrameType getFrameType() {
+            return eFrameType;
+        }
 
-    void setDts(int64_t dts){
-        this->dts = dts;
-    }
+        void setDts(int64_t dts) {
+            this->dts = dts;
+        }
 
-    int64_t getDts(){
-        return dts;
-    }
+        int64_t getDts() {
+            return dts;
+        }
 
-private:
-    int64_t timestamp = 0;
-    int64_t dts = 0;
-    EFrameType eFrameType = E_FRAME_TYPE_UNKNOW;
-    AVFrame *mFrame;
-};
+    private:
+        int64_t timestamp = 0;
+        int64_t dts = 0;
+        EFrameType eFrameType = E_FRAME_TYPE_UNKNOW;
+        AVFrame *mFrame;
+    };
+}
 #endif

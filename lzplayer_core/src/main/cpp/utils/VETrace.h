@@ -4,9 +4,9 @@
 
 #ifndef LZPLAYER_VETRACE_H
 #define LZPLAYER_VETRACE_H
+namespace VE {
 
+    void backTrace();
 
-void backTrace();
-
-
+}
 #endif //LZPLAYER_VETRACE_H

@@ -6,31 +6,31 @@
 #include <jni.h>
 
 #include "native_PlayerInterface.h"
-JavaVM* gJvm = nullptr;
+    JavaVM *gJvm = nullptr;
 
 
 // 定义 JNI 方法表
 static JNINativeMethod gVEPlayerMethods[] = {
-        {"createNativeHandle", "()J", (void *)createNativeHandle},
-        {"nativeInit", "(Ljava/lang/Object;JLjava/lang/String;)I", (void *)nativeInit},
-        {"nativeSetSurface", "(JLandroid/view/Surface;II)I", (void *)nativeSetSurface},
-        {"nativeGetDuration", "(J)J", (void *)nativeGetDuration},
-        {"nativePrepare", "(J)I", (void *)nativePrepare},
-        {"nativePrepareAsync", "(J)I", (void *)nativePrepareAsync},
-        {"nativeStart", "(J)I", (void *)nativeStart},
-        {"nativePause", "(J)I", (void *)nativePause},
-        {"nativeResume", "(J)I", (void *)nativeResume},
-        {"nativeStop", "(J)I", (void *)nativeStop},
-        {"nativeSeekTo", "(JD)I", (void *)nativeSeekTo},
-        {"nativeRelease", "(J)I", (void *)nativeRelease},
-        {"setLooping", "(JZ)I", (void *)nativeSetLooping},
-        {"setPlaySpeed", "(JF)I", (void *)nativeSetPlaySpeed},
+        {"createNativeHandle", "()J",                                      (void *) VE::createNativeHandle},
+        {"nativeInit",         "(Ljava/lang/Object;JLjava/lang/String;)I", (void *) VE::nativeInit},
+        {"nativeSetSurface",   "(JLandroid/view/Surface;II)I",             (void *) VE::nativeSetSurface},
+        {"nativeGetDuration",  "(J)J",                                     (void *) VE::nativeGetDuration},
+        {"nativePrepare",      "(J)I",                                     (void *) VE::nativePrepare},
+        {"nativePrepareAsync", "(J)I",                                     (void *) VE::nativePrepareAsync},
+        {"nativeStart",        "(J)I",                                     (void *) VE::nativeStart},
+        {"nativePause",        "(J)I",                                     (void *) VE::nativePause},
+        {"nativeResume",       "(J)I",                                     (void *) VE::nativeResume},
+        {"nativeStop",         "(J)I",                                     (void *) VE::nativeStop},
+        {"nativeSeekTo",       "(JD)I",                                    (void *) VE::nativeSeekTo},
+        {"nativeRelease",      "(J)I",                                     (void *) VE::nativeRelease},
+        {"setLooping",         "(JZ)I",                                    (void *) VE::nativeSetLooping},
+        {"setPlaySpeed",       "(JF)I",                                    (void *) VE::nativeSetPlaySpeed},
 };
 
 
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
-    JNIEnv* env;
-    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
+    JNIEnv *env;
+    if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
         ALOGE("Failed to get the environment using GetEnv()");
         return JNI_ERR;
     }
@@ -44,7 +44,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     }
 
     // 注册 JNI 方法
-    if (env->RegisterNatives(clazz, gVEPlayerMethods, sizeof(gVEPlayerMethods) / sizeof(gVEPlayerMethods[0])) < 0) {
+    if (env->RegisterNatives(clazz, gVEPlayerMethods,
+                             sizeof(gVEPlayerMethods) / sizeof(gVEPlayerMethods[0])) < 0) {
         return -1;
     }
 
@@ -53,21 +54,21 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
 }
 
 
-JNIEnv * AttachCurrentThreadEnv(){
+JNIEnv *AttachCurrentThreadEnv() {
     return AttachCurrentThreadEnvWithName(nullptr);
 }
 
-JNIEnv *AttachCurrentThreadEnvWithName(const char *threadName){
-    JNIEnv *env= nullptr;
-    gJvm->GetEnv((void**)&env,JNI_VERSION_1_6);
-    if(env!= nullptr){
+JNIEnv *AttachCurrentThreadEnvWithName(const char *threadName) {
+    JNIEnv *env = nullptr;
+    gJvm->GetEnv((void **) &env, JNI_VERSION_1_6);
+    if (env != nullptr) {
         return env;
     }
 
-    char name[32] ={0};
+    char name[32] = {0};
 
-    if(threadName == nullptr || threadName[0] == '\0'){
-        prctl(PR_GET_NAME,name);
+    if (threadName == nullptr || threadName[0] == '\0') {
+        prctl(PR_GET_NAME, name);
         threadName = name;
     }
 
@@ -75,6 +76,6 @@ JNIEnv *AttachCurrentThreadEnvWithName(const char *threadName){
     args.version = JNI_VERSION_1_6;
     args.name = threadName;
     args.group = nullptr;
-    gJvm->AttachCurrentThread(&env,&args);
+    gJvm->AttachCurrentThread(&env, &args);
     return env;
 }

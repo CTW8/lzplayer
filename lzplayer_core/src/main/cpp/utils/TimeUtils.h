@@ -6,10 +6,11 @@
 #define LZPLAYER_TIMEUTILS_H
 #include <cstdint>
 #include <chrono>
-class TimeUtils {
-public:
-    static uint64_t getCurrentTimeMs();
-};
-
+namespace VE {
+    class TimeUtils {
+    public:
+        static uint64_t getCurrentTimeMs();
+    };
+}
 
 #endif //LZPLAYER_TIMEUTILS_H

@@ -37,7 +37,7 @@
 
 /**
  * Main Vulkan context, allocated as AVHWDeviceContext.hwctx.
- * All of these can be set before init to change what the context uses
+ * All of these can be set before prepare to change what the context uses
  */
 typedef struct AVVulkanDeviceContext {
     /**
@@ -175,7 +175,7 @@ typedef struct AVVulkanFramesContext {
      * and the device supports DRM modifiers, then images will be allocated
      * with the specific requested DRM modifiers.
      * Additional structures may be added at av_hwframe_ctx_init() time,
-     * which will be freed automatically on uninit(), so users need only free
+     * which will be freed automatically on release(), so users need only free
      * any structures they've allocated themselves.
      */
     void *create_pnext;

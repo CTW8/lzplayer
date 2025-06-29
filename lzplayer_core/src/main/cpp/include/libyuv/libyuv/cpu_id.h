@@ -68,7 +68,7 @@ static const int kCpuHasLSX = 0x100;
 static const int kCpuHasLASX = 0x200;
 
 
-// Optional init function. TestCpuFlag does an auto-init.
+// Optional prepare function. TestCpuFlag does an auto-prepare.
 // Returns cpu_info flags.
 LIBYUV_API
 int InitCpuFlags(void);
@@ -107,7 +107,7 @@ int AArch64CpuCaps();
 // ie MaskCpuFlags(~kCpuHasSSSE3) to disable SSSE3.
 // MaskCpuFlags(-1) to enable all cpu specific optimizations.
 // MaskCpuFlags(1) to disable all cpu specific optimizations.
-// MaskCpuFlags(0) to reset state so next call will auto init.
+// MaskCpuFlags(0) to reset state so next call will auto prepare.
 // Returns cpu_info flags.
 LIBYUV_API
 int MaskCpuFlags(int enable_flags);

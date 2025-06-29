@@ -10,6 +10,9 @@
 #include "VEDemux.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
+#include "IVEComponent.h"
+#include "VEBundle.h"
+
 extern "C" {
     #include "libavformat/avformat.h"
     #include "libavcodec/avcodec.h"
@@ -18,57 +21,79 @@ extern "C" {
     #include "libswresample/swresample.h"
     #include "libavutil/opt.h"
 }
+namespace VE {
+    class VEAudioDecoder : public AHandler ,IVEComponent{
+    public:
+        VEAudioDecoder();
 
-class VEAudioDecoder : public AHandler {
-public:
-    VEAudioDecoder();
-    ~VEAudioDecoder();
+        ~VEAudioDecoder();
 
-    VEResult init(std::shared_ptr<VEDemux> demux);
-    void start();
-    void pause();
-    void stop();
-    VEResult flush();
-    void needMoreFrame(std::shared_ptr<AMessage> msg);
-    VEResult readFrame(std::shared_ptr<VEFrame> &frame);
-    VEResult uninit();
+        VEResult prepare(std::shared_ptr<VEDemux> demux);
 
-private:
-    VEResult onInit(std::shared_ptr<AMessage> msg);
-    VEResult onStart();
-    VEResult onPause();
-    VEResult onStop();
-    VEResult onFlush();
-    VEResult onDecode();
-    VEResult onUninit();
-    VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
-    void queueFrame(std::shared_ptr<VEFrame> frame);
-    void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+        VEResult start() override;
 
-    enum {
-        kWhatInit = 'init',
-        kWhatStart = 'star',
-        kWhatStop = 'stop',
-        kWhatPause = 'paus',
-        kWhatResume = 'resu',
-        kWhatFlush = 'flus',
-        kWhatDecode = 'deco',
-        kWhatUninit = 'unin',
-        kWhatNeedMore = 'need'
+        VEResult pause() override;
+
+        VEResult stop() override;
+
+        VEResult flush() override;
+
+        VEResult release() override;
+
+        VEResult prepare(VEBundle params) override;
+
+        VEResult seekTo(uint64_t timestamp) override;
+
+        void needMoreFrame(std::shared_ptr<AMessage> msg);
+
+        VEResult readFrame(std::shared_ptr<VEFrame> &frame);
+
+    private:
+        VEResult onPrepare(std::shared_ptr<AMessage> msg);
+
+        VEResult onStart();
+
+        VEResult onPause();
+
+        VEResult onStop();
+
+        VEResult onFlush();
+
+        VEResult onDecode();
+
+        VEResult onRelease();
+
+        VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
+
+        void queueFrame(std::shared_ptr<VEFrame> frame);
+
+        void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+
+        enum {
+            kWhatInit = 'init',
+            kWhatStart = 'star',
+            kWhatStop = 'stop',
+            kWhatPause = 'paus',
+            kWhatResume = 'resu',
+            kWhatFlush = 'flus',
+            kWhatDecode = 'deco',
+            kWhatUninit = 'unin',
+            kWhatNeedMore = 'need'
+        };
+
+    private:
+        AVCodecContext *mAudioCtx = nullptr;
+        VEMediaInfo *mMediaInfo = nullptr;
+        std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
+        std::shared_ptr<VEDemux> mDemux = nullptr;
+
+        std::mutex mMutex;
+        bool mIsStarted = false;
+        bool mNeedMoreData = false;
+
+        std::shared_ptr<AMessage> mNotifyMore = nullptr;
+        SwrContext *mSwrCtx = nullptr;
     };
-
-private:
-    AVCodecContext *mAudioCtx = nullptr;
-    VEMediaInfo *mMediaInfo = nullptr;
-    std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
-    std::shared_ptr<VEDemux> mDemux = nullptr;
-
-    std::mutex mMutex;
-    bool mIsStarted = false;
-    bool mNeedMoreData = false;
-
-    std::shared_ptr<AMessage> mNotifyMore = nullptr;
-    SwrContext *mSwrCtx = nullptr;
-};
+}
 
 #endif

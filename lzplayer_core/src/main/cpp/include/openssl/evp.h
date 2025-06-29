@@ -316,9 +316,9 @@ OSSL_DEPRECATEDIN_3_0 int
 # define         EVP_CIPH_VARIABLE_LENGTH        0x8
 /* Set if the iv handling should be done by the cipher itself */
 # define         EVP_CIPH_CUSTOM_IV              0x10
-/* Set if the cipher's init() function should be called if key is NULL */
+/* Set if the cipher's prepare() function should be called if key is NULL */
 # define         EVP_CIPH_ALWAYS_CALL_INIT       0x20
-/* Call ctrl() to init cipher parameters */
+/* Call ctrl() to prepare cipher parameters */
 # define         EVP_CIPH_CTRL_INIT              0x40
 /* Don't use standard key length function */
 # define         EVP_CIPH_CUSTOM_KEY_LENGTH      0x80

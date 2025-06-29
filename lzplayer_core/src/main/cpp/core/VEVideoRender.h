@@ -13,80 +13,102 @@
 #include <string>
 #include <iostream>
 #include "VEAVsync.h"
+#include "IVEComponent.h"
+namespace VE {
+    class VEPlayer;
 
-class VEPlayer;
-class VEVideoRender:public AHandler
-{
-public:
-    VEVideoRender(std::shared_ptr<AMessage> notify, std::shared_ptr<VEAVsync> avSync);
-    ~VEVideoRender();
+    class VEVideoRender : public AHandler, IVEComponent {
+    public:
+        VEVideoRender(const std::shared_ptr<AMessage> &notify,
+                      const std::shared_ptr<VEAVsync> &avSync);
 
-    VEResult init(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height, int fps);
-    VEResult start();
-    VEResult pause();
-    VEResult resume();
-    VEResult stop();
-    VEResult unInit();
-    VEResult setSurface(ANativeWindow *win, int width, int height);
+        ~VEVideoRender();
 
-    enum {
-        kWhatEOS            = 'veos',
-        kWhatProgress       = 'prog'
+        VEResult
+        prepare(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height,
+                int fps);
+
+        VEResult prepare(VEBundle params) override;
+
+        VEResult start() override;
+
+        VEResult pause() override;
+
+        VEResult stop() override;
+
+        VEResult release() override;
+
+        VEResult setSurface(ANativeWindow *win, int width, int height);
+
+        VEResult seekTo(uint64_t timestamp) override;
+
+        VEResult flush() override;
+
+        enum {
+            kWhatEOS = 'veos',
+            kWhatProgress = 'prog'
+        };
+
+    private:
+        void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+
+        VEResult onPrepare(ANativeWindow *win);
+
+        VEResult onStart();
+
+        VEResult onStop();
+
+        VEResult onPause();
+
+        VEResult onRelease();
+
+        VEResult onAVSync();
+
+        VEResult onRender(std::shared_ptr<AMessage> msg);
+
+        VEResult onSurfaceChanged(std::shared_ptr<AMessage> msg);
+
+        GLuint loadShader(GLenum type, const char *shaderSrc);
+
+        GLuint createProgram(const char *vertexSource, const char *fragmentSource);
+
+        bool createTexture();
+
+        enum {
+            kWhatInit = 'init',
+            kWhatStart = 'star',
+            kWhatStop = 'stop',
+            kWhatSync = 'sync',
+            kWhatRender = 'rend',
+            kWhatRelease = 'rele',
+            kWhatPause = 'paus',
+            kWhatSurfaceChanged = 'surf'
+        };
+
+    private:
+        ANativeWindow *mWin = nullptr;
+        bool mIsStarted = false;
+
+        std::shared_ptr<VEVideoDecoder> mVDec = nullptr;
+        std::shared_ptr<AMessage> mNotify = nullptr;
+
+        GLuint mTextures[3]{};
+        GLuint mProgram{};
+        GLuint mVAO{}, mVBO{};
+        EGLDisplay eglDisplay = EGL_NO_DISPLAY;
+        EGLSurface eglSurface = EGL_NO_SURFACE;
+        EGLContext eglContext = EGL_NO_CONTEXT;
+        EGLConfig eglConfig = nullptr;
+
+        int mViewWidth = 0;
+        int mViewHeight = 0;
+
+        int mFrameWidth = 0;
+        int mFrameHeight = 0;
+
+        FILE *fp = nullptr;
+
+        std::shared_ptr<VEAVsync> m_AVSync;
     };
-
-private:
-    void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
-    VEResult onInit(ANativeWindow * win);
-    VEResult onStart();
-    VEResult onStop();
-    VEResult onPause();
-    VEResult onResume();
-    VEResult onUnInit();
-    VEResult onAVSync();
-    VEResult onRender(std::shared_ptr<AMessage> msg);
-    VEResult onSurfaceChanged(std::shared_ptr<AMessage> msg);
-
-    GLuint loadShader(GLenum type, const char *shaderSrc);
-
-    GLuint createProgram(const char *vertexSource, const char *fragmentSource);
-    bool createTexture();
-
-    enum {
-        kWhatInit                = 'init',
-        kWhatStart               = 'star',
-        kWhatStop                = 'stop',
-        kWhatSync                = 'sync',
-        kWhatRender              = 'rend',
-        kWhatUninit              = 'unin',
-        kWhatPause               = 'paus',
-        kWhatResume              = 'resm',
-        kWhatSurfaceChanged      = 'surf'
-    };
-
-private:
-    ANativeWindow *mWin = nullptr;
-    bool           mIsStarted = false;
-
-    std::shared_ptr<VEVideoDecoder> mVDec = nullptr;
-    std::shared_ptr<AMessage> mNotify = nullptr;
-
-    GLuint          mTextures[3]{};
-    GLuint          mProgram{};
-    GLuint  mVAO{},mVBO{};
-    EGLDisplay eglDisplay = EGL_NO_DISPLAY;
-    EGLSurface eglSurface = EGL_NO_SURFACE;
-    EGLContext eglContext = EGL_NO_CONTEXT;
-    EGLConfig eglConfig = nullptr;
-
-    int mViewWidth = 0;
-    int mViewHeight = 0;
-
-    int mFrameWidth = 0;
-    int mFrameHeight = 0;
-
-    FILE *fp = nullptr;
-
-    std::shared_ptr<VEAVsync> m_AVSync;
-};
-
+}
 #endif

@@ -244,7 +244,7 @@ typedef struct AVFilter {
      * This callback will be called immediately after the filter context is
      * allocated, to allow allocating and initing sub-objects.
      *
-     * If this callback is not NULL, the uninit callback will be called on
+     * If this callback is not NULL, the release callback will be called on
      * allocation failure.
      *
      * @return 0 on success,
@@ -268,7 +268,7 @@ typedef struct AVFilter {
      * This callback must not assume that the filter links exist or frame
      * parameters are known.
      *
-     * @ref AVFilter.uninit "uninit" is guaranteed to be called even if
+     * @ref AVFilter.release "release" is guaranteed to be called even if
      * initialization fails, so this callback does not have to clean up on
      * failure.
      *
@@ -277,15 +277,15 @@ typedef struct AVFilter {
     int (*init)(AVFilterContext *ctx);
 
     /**
-     * Should be set instead of @ref AVFilter.init "init" by the filters that
+     * Should be set instead of @ref AVFilter.prepare "prepare" by the filters that
      * want to pass a dictionary of AVOptions to nested contexts that are
-     * allocated during init.
+     * allocated during prepare.
      *
      * On return, the options dict should be freed and replaced with one that
      * contains all the options which could not be processed by this filter (or
      * with NULL if all the options were processed).
      *
-     * Otherwise the semantics is the same as for @ref AVFilter.init "init".
+     * Otherwise the semantics is the same as for @ref AVFilter.prepare "prepare".
      */
     int (*init_dict)(AVFilterContext *ctx, AVDictionary **options);
 
@@ -296,7 +296,7 @@ typedef struct AVFilter {
      * memory held by the filter, release any buffer references, etc. It does
      * not need to deallocate the AVFilterContext.priv memory itself.
      *
-     * This callback may be called even if @ref AVFilter.init "init" was not
+     * This callback may be called even if @ref AVFilter.prepare "prepare" was not
      * called or failed, so it must be prepared to handle such a situation.
      */
     void (*uninit)(AVFilterContext *ctx);

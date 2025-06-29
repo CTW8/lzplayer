@@ -2,15 +2,16 @@
 #define __VE_PLAYER_CONTEXT__
 #include <memory>
 #include "AMessage.h"
-class VEPlayerContext
-{
+namespace VE {
+    class VEPlayerContext {
 
-public:
-    VEPlayerContext(std::shared_ptr<AMessage> msg);
-    ~VEPlayerContext();
+    public:
+        VEPlayerContext(std::shared_ptr<AMessage> msg);
 
-private:
-    std::shared_ptr<AMessage> mPlayerNotify = nullptr;
-};
+        ~VEPlayerContext();
 
+    private:
+        std::shared_ptr<AMessage> mPlayerNotify = nullptr;
+    };
+}
 #endif

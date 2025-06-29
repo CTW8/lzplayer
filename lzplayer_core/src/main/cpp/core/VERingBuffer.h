@@ -13,72 +13,74 @@
 #include <stdexcept>
 #include <algorithm>
 
-class VERingBuffer {
-private:
-    uint8_t* buffer;
-    size_t capacity;
-    size_t readIndex;
-    size_t writeIndex;
-    size_t dataSize;
+namespace VE {
 
-public:
-    VERingBuffer(size_t size) : capacity(size), readIndex(0), writeIndex(0), dataSize(0) {
-        buffer = static_cast<uint8_t*>(malloc(size));
-        if (!buffer) {
-            throw std::runtime_error("Failed to allocate memory for RingBuffer");
-        }
-    }
+    class VERingBuffer {
+    private:
+        uint8_t *buffer;
+        size_t capacity;
+        size_t readIndex;
+        size_t writeIndex;
+        size_t dataSize;
 
-    ~VERingBuffer() {
-        if (buffer) {
-            free(buffer);
-        }
-    }
-
-    size_t write(const uint8_t* data, size_t length) {
-        size_t availableSpace = capacity - dataSize;
-        size_t bytesToWrite = std::min(length, availableSpace);
-
-        if (bytesToWrite == 0) {
-            return 0; // Buffer is full, can't write
+    public:
+        VERingBuffer(size_t size) : capacity(size), readIndex(0), writeIndex(0), dataSize(0) {
+            buffer = static_cast<uint8_t *>(malloc(size));
+            if (!buffer) {
+                throw std::runtime_error("Failed to allocate memory for RingBuffer");
+            }
         }
 
-        size_t firstWrite = std::min(bytesToWrite, capacity - writeIndex);
-        memcpy(buffer + writeIndex, data, firstWrite);
-
-        if (bytesToWrite > firstWrite) {
-            memcpy(buffer, data + firstWrite, bytesToWrite - firstWrite);
+        ~VERingBuffer() {
+            if (buffer) {
+                free(buffer);
+            }
         }
 
-        writeIndex = (writeIndex + bytesToWrite) % capacity;
-        dataSize += bytesToWrite;
+        size_t write(const uint8_t *data, size_t length) {
+            size_t availableSpace = capacity - dataSize;
+            size_t bytesToWrite = std::min(length, availableSpace);
 
-        return bytesToWrite;
-    }
+            if (bytesToWrite == 0) {
+                return 0; // Buffer is full, can't write
+            }
 
-    size_t read(uint8_t* data, size_t length) {
-        size_t availableData = std::min(length, dataSize);
+            size_t firstWrite = std::min(bytesToWrite, capacity - writeIndex);
+            memcpy(buffer + writeIndex, data, firstWrite);
 
-        size_t firstRead = std::min(availableData, capacity - readIndex);
-        memcpy(data, buffer + readIndex, firstRead);
+            if (bytesToWrite > firstWrite) {
+                memcpy(buffer, data + firstWrite, bytesToWrite - firstWrite);
+            }
 
-        if (availableData > firstRead) {
-            memcpy(data + firstRead, buffer, availableData - firstRead);
+            writeIndex = (writeIndex + bytesToWrite) % capacity;
+            dataSize += bytesToWrite;
+
+            return bytesToWrite;
         }
 
-        readIndex = (readIndex + availableData) % capacity;
-        dataSize -= availableData;
+        size_t read(uint8_t *data, size_t length) {
+            size_t availableData = std::min(length, dataSize);
 
-        return availableData;
-    }
+            size_t firstRead = std::min(availableData, capacity - readIndex);
+            memcpy(data, buffer + readIndex, firstRead);
 
-    size_t getAvailableData() const {
-        return dataSize;
-    }
+            if (availableData > firstRead) {
+                memcpy(data + firstRead, buffer, availableData - firstRead);
+            }
 
-    size_t getAvailableSpace() const {
-        return capacity - dataSize;
-    }
-};
+            readIndex = (readIndex + availableData) % capacity;
+            dataSize -= availableData;
 
+            return availableData;
+        }
+
+        size_t getAvailableData() const {
+            return dataSize;
+        }
+
+        size_t getAvailableSpace() const {
+            return capacity - dataSize;
+        }
+    };
+}
 #endif //LZPLAYER_VERINGBUFFER_H
