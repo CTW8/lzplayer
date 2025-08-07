@@ -48,6 +48,13 @@ namespace VE {
                 ALOGE("Could not allocate the audio frame data");
                 av_frame_free(&mFrame);
             }
+
+            ret = av_samples_set_silence(mFrame->data, 0, mFrame->nb_samples,
+                                         mFrame->ch_layout.nb_channels,
+                                         (AVSampleFormat)mFrame->format);
+            if (ret < 0) {
+                ALOGE("Could not set silence to audio frame");
+            }
         }
 
         ~VEFrame() {

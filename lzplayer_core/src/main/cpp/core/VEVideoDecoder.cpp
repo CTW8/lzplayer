@@ -56,8 +56,8 @@ namespace VE {
         return 0;
     }
 
-    VEResult VEVideoDecoder::seekTo(uint64_t timestamp) {
-        return 0;
+    VEResult VEVideoDecoder::seekTo(double timestamp) {
+        return flush();
     }
 
     VEResult VEVideoDecoder::start() {
@@ -103,6 +103,10 @@ namespace VE {
         frame = mFrameQueue->get();
         if (frame) {
             ALOGD("VEVideoDecoder::readFrame got one frame, type=%d", frame->getFrameType());
+            if(mIsEOS == false && mIsStarted == false){
+                auto decodeMsg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
+                decodeMsg->post();
+            }
             return VE_OK;
         }
         return VE_NOT_ENOUGH_DATA;
@@ -292,6 +296,7 @@ namespace VE {
                 ALOGI("VEVideoDecoder::onDecode AVERROR_EOF");
                 frame->setFrameType(E_FRAME_TYPE_EOF);
                 queueFrame(frame);
+                mIsEOS = true;
                 return VE_EOS;
             }
             if (ret >= 0) {

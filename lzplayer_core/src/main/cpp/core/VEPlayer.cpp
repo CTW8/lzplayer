@@ -1,7 +1,18 @@
 #include "VEPlayer.h"
+#include "VEAudioRender.h"
+#include "VEVideoDisplay.h"
 
 #include <utility>
 namespace VE {
+    VEPlayer::VEPlayer() {
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+    }
+
+    VEPlayer::~VEPlayer() {
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+    }
 
     VEResult VEPlayer::setDataSource(std::string path) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
@@ -11,6 +22,16 @@ namespace VE {
         msg->post();
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
+    }
+
+    VEResult VEPlayer::setDisplayOut(ANativeWindow *win, int viewWidth, int viewHeight) {
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetVideoSurface,shared_from_this());
+        msg->setPointer("window",win);
+        msg->setInt32("viewWidth",viewWidth);
+        msg->setInt32("viewHeight",viewHeight);
+        msg->post();
+        return VE_OK;
     }
 
     VEResult VEPlayer::prepare() {
@@ -114,10 +135,10 @@ namespace VE {
                 msg->findPointer("window", (void **) &window);
                 int32_t width = 0;
                 int32_t height = 0;
-                msg->findInt32("width", &width);
-                msg->findInt32("height", &height);
+                msg->findInt32("viewWidth", &width);
+                msg->findInt32("viewHeight", &height);
                 if (window) {
-                    setDisplayOut(window, width, height);
+                    onSurfaceChanged(window, width, height);
                 }
                 break;
             }
@@ -197,44 +218,62 @@ namespace VE {
         }
 
         mMediaInfo = mDemux->getFileInfo();
-
-        mAudioDecodeLooper = std::make_shared<ALooper>();
-        mAudioDecodeLooper->setName("adec_thread");
-        mAudioDecodeLooper->start(false);
-
-        mAudioDecoder = std::make_shared<VEAudioDecoder>();
-        mAudioDecodeLooper->registerHandler(mAudioDecoder);
-        mAudioDecoder->prepare(mDemux);
-
-        mVideoDecodeLooper = std::make_shared<ALooper>();
-        mVideoDecodeLooper->setName("vdec_thread");
-        mVideoDecodeLooper->start(false);
-
-        mVideoDecoder = std::make_shared<VEVideoDecoder>();
-        mVideoDecodeLooper->registerHandler(mVideoDecoder);
-        mVideoDecoder->prepare(mDemux);
-
-        mVideoRenderLooper = std::make_shared<ALooper>();
-        mVideoRenderLooper->setName("video_render");
-        mVideoRenderLooper->start(false);
-        mRenderNotifyMsg = std::make_shared<AMessage>(kWhatRenderEvent, shared_from_this());
         mAVSync = std::make_shared<VEAVsync>();
-        mVideoRender = std::make_shared<VEVideoRender>(mRenderNotifyMsg, mAVSync);
-        mVideoRenderLooper->registerHandler(mVideoRender);
-        mVideoRender->prepare(mVideoDecoder, mWindow, mViewWidth, mViewHeight, mMediaInfo->fps);
 
-        // 如果Surface已经设置，则在VEVideoRender初始化后调用setSurface
-        if (mWindow != nullptr) {
-            mVideoRender->setSurface(mWindow, mViewWidth, mViewHeight);
+        mRenderNotifyMsg = std::make_shared<AMessage>(kWhatRenderEvent, shared_from_this());
+
+        if(mMediaInfo->audio_stream_index != -1) {
+            mAudioDecodeLooper = std::make_shared<ALooper>();
+            mAudioDecodeLooper->setName("adec_thread");
+            mAudioDecodeLooper->start(false);
+
+            mAudioDecoder = std::make_shared<VEAudioDecoder>();
+            mAudioDecodeLooper->registerHandler(mAudioDecoder);
+            mAudioDecoder->prepare(mDemux);
+
+            mAudioOutputLooper = std::make_shared<ALooper>();
+            mAudioOutputLooper->setName("audio_render");
+            mAudioOutputLooper->start(false);
+
+            mAudioOutput = std::make_shared<VEAudioRender>(mRenderNotifyMsg, mAVSync);
+            mAudioOutputLooper->registerHandler(mAudioOutput);
+            VEBundle params;
+            params.set("samplerate",44100);
+            params.set("channel",2);
+            params.set("format",1);
+            params.set("decode",mAudioDecoder);
+            mAudioOutput->prepare(params);
         }
 
-        mAudioOutputLooper = std::make_shared<ALooper>();
-        mAudioOutputLooper->setName("audio_render");
-        mAudioOutputLooper->start(false);
+        if(mMediaInfo->video_stream_index != -1) {
+            mVideoDecodeLooper = std::make_shared<ALooper>();
+            mVideoDecodeLooper->setName("vdec_thread");
+            mVideoDecodeLooper->start(false);
 
-        mAudioOutput = std::make_shared<AudioOpenSLESOutput>(mRenderNotifyMsg, mAVSync);
-        mAudioOutputLooper->registerHandler(mAudioOutput);
-        mAudioOutput->init(mAudioDecoder, 44100, 2, 1);
+            mVideoDecoder = std::make_shared<VEVideoDecoder>();
+            mVideoDecodeLooper->registerHandler(mVideoDecoder);
+            mVideoDecoder->prepare(mDemux);
+
+            mVideoRenderLooper = std::make_shared<ALooper>();
+            mVideoRenderLooper->setName("video_render");
+            mVideoRenderLooper->start(false);
+            mVideoRender = std::make_shared<VEVideoDisplay>(mRenderNotifyMsg, mAVSync);
+            mVideoRenderLooper->registerHandler(mVideoRender);
+
+//            mVideoRender->prepare(mVideoDecoder, mWindow, mViewWidth, mViewHeight, mMediaInfo->fps);
+
+            VEBundle params;
+            params.set("surface",mWindow);
+            params.set("width",mViewWidth);
+            params.set("height",mViewHeight);
+            params.set("fps",mMediaInfo->fps);
+            params.set("decoder",mVideoDecoder);
+            mVideoRender->prepare(params);
+            // 如果Surface已经设置，则在初始化后调用setSurface
+//            if (mWindow != nullptr) {
+//                mVideoRender->setSurface(mWindow, mViewWidth, mViewHeight);
+//            }
+        }
 
         onPreparedCallback();
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
@@ -282,9 +321,12 @@ namespace VE {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         double timestampMs;
         if (msg->findDouble("timestampMs", &timestampMs)) {
+            mVideoRender->seekTo(timestampMs);
+            mAudioOutput->seekTo(timestampMs);
+            mVideoDecoder->seekTo(timestampMs);
+            mAudioDecoder->seekTo(timestampMs);
             mDemux->seek(timestampMs);
-            mVideoDecoder->flush();
-            mAudioDecoder->flush();
+            //从这里发出时不对的，应该在精准seek解码后渲染完成后发出
             onSeekComplateCallback();
         }
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
@@ -293,9 +335,9 @@ namespace VE {
 
     VEResult VEPlayer::onReset(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        mDemux->seek(0);
         mVideoDecoder->flush();
         mAudioDecoder->flush();
+        mDemux->seek(0);
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
@@ -306,31 +348,6 @@ namespace VE {
             ANativeWindow_release(mWindow);
             mWindow = nullptr;
         }
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
-    }
-
-    VEPlayer::VEPlayer() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
-    }
-
-    VEPlayer::~VEPlayer() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
-    }
-
-    VEResult VEPlayer::setDisplayOut(ANativeWindow *win, int viewWidth, int viewHeight) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        mWindow = win;
-        mViewWidth = viewWidth;
-        mViewHeight = viewHeight;
-
-        // 只有在mVideoRender已经初始化后才调用setSurface
-        if (mVideoRender != nullptr) {
-            mVideoRender->setSurface(mWindow, mViewWidth, mViewHeight);
-        }
-
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
@@ -415,13 +432,13 @@ namespace VE {
         int32_t what = 0;
         msg->findInt32("type", &what);
         switch (what) {
-            case VEVideoRender::kWhatEOS: {
+            case VEVideoDisplay::kWhatEOS: {
                 ALOGI("VEPlayer::%s msg->kWhatEOS video", __FUNCTION__);
                 mVideoEOS = true;
                 onEOS();
                 break;
             }
-            case AudioOpenSLESOutput::kWhatEOS: {
+            case VEAudioRender::kWhatEOS: {
                 ALOGI("VEPlayer::%s msg->kWhatEOS audio", __FUNCTION__);
                 mAudioEOS = true;
                 onEOS();
@@ -460,5 +477,20 @@ namespace VE {
             }
         }
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
+    }
+
+    VEResult VEPlayer::onSurfaceChanged(ANativeWindow *win, int viewWidth, int viewHeight) {
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        mWindow = win;
+        mViewWidth = viewWidth;
+        mViewHeight = viewHeight;
+
+        // 只有在mVideoRender已经初始化后才调用setSurface
+        if (mVideoRender != nullptr) {
+            mVideoRender->setSurface(mWindow, mViewWidth, mViewHeight);
+        }
+
+        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        return 0;
     }
 }

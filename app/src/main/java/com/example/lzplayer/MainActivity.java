@@ -310,6 +310,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     currentState = STATE_ERROR;
                     updateStatus("Failed to prepare video");
                 }
+                vePlayer.setLooping(true);
             } catch (Exception e) {
                 Log.e(TAG, "Exception preparing video", e);
                 currentState = STATE_ERROR;
@@ -322,18 +323,18 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         if (vePlayer != null && (currentState == STATE_PREPARED || currentState == STATE_PAUSED)) {
             try {
                 // Double-check surface is valid before starting
-                if (surfaceHolder != null && surfaceHolder.getSurface() != null && surfaceHolder.getSurface().isValid()) {
-                    int width = surfaceView.getWidth();
-                    int height = surfaceView.getHeight();
-                    if (width > 0 && height > 0) {
-                        int surfaceResult = vePlayer.setSurface(surfaceHolder.getSurface(), width, height);
-                        Log.d(TAG, "Surface reconfirmed before start: " + surfaceResult + ", size: " + width + "x" + height);
-                    }
-                } else {
-                    Log.e(TAG, "Surface not valid when trying to start playback");
-                    updateStatus("Surface not ready");
-                    return;
-                }
+//                if (surfaceHolder != null && surfaceHolder.getSurface() != null && surfaceHolder.getSurface().isValid()) {
+//                    int width = surfaceView.getWidth();
+//                    int height = surfaceView.getHeight();
+//                    if (width > 0 && height > 0) {
+//                        int surfaceResult = vePlayer.setSurface(surfaceHolder.getSurface(), width, height);
+//                        Log.d(TAG, "Surface reconfirmed before start: " + surfaceResult + ", size: " + width + "x" + height);
+//                    }
+//                } else {
+//                    Log.e(TAG, "Surface not valid when trying to start playback");
+//                    updateStatus("Surface not ready");
+//                    return;
+//                }
                 
                 Log.d(TAG, "MainActivity: About to call vePlayer.start()");
                 int result = vePlayer.start();
@@ -552,17 +553,17 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         Log.d(TAG, "Surface changed: " + width + "x" + height + ", format: " + format + ", surface valid: " + (holder.getSurface() != null && holder.getSurface().isValid()));
-        if (vePlayer != null && width > 0 && height > 0 && holder.getSurface() != null && holder.getSurface().isValid()) {
-            try {
-                int result = vePlayer.setSurface(holder.getSurface(), width, height);
-                Log.d(TAG, "Surface reset result: " + result);
-                if (result != 0) {
-                    Log.e(TAG, "Failed to reset surface: " + result);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error setting surface on change", e);
-            }
-        }
+//        if (vePlayer != null && width > 0 && height > 0 && holder.getSurface() != null && holder.getSurface().isValid()) {
+//            try {
+//                int result = vePlayer.setSurface(holder.getSurface(), width, height);
+//                Log.d(TAG, "Surface reset result: " + result);
+//                if (result != 0) {
+//                    Log.e(TAG, "Failed to reset surface: " + result);
+//                }
+//            } catch (Exception e) {
+//                Log.e(TAG, "Error setting surface on change", e);
+//            }
+//        }
     }
 
     @Override

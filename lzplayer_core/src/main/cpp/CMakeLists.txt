@@ -37,6 +37,8 @@ target_include_directories(lzplayer_core PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/interface
         ${CMAKE_CURRENT_LIST_DIR}/platform
         ${CMAKE_CURRENT_LIST_DIR}/platform/android
+        ${CMAKE_CURRENT_LIST_DIR}/platform/android/renders
+        ${CMAKE_CURRENT_LIST_DIR}/platform/android/decoders
         ${CMAKE_CURRENT_LIST_DIR}/platform/ios
         ${CMAKE_CURRENT_LIST_DIR}/platform/linux
         ${CMAKE_CURRENT_LIST_DIR}/thread

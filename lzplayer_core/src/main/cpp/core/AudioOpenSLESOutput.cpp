@@ -22,11 +22,32 @@ namespace VE {
         }
     }
 
+    AudioOpenSLESOutput::AudioOpenSLESOutput(std::shared_ptr<AMessage> notify,
+                                             std::shared_ptr<VEAVsync> avSync)
+            : mNotify(notify), m_AVSync(avSync), mIstarted(false) {
+        ALOGI("AudioOpenSLESOutput::%s enter", __FUNCTION__);
 
-    status_t AudioOpenSLESOutput::init(std::shared_ptr<VEAudioDecoder> decoder, int samplerate, int channel,
-                              int format) {
+    }
+
+    AudioOpenSLESOutput::~AudioOpenSLESOutput() {
+        ALOGI("AudioOpenSLESOutput::%s enter", __FUNCTION__);
+
+    }
+
+    VEResult AudioOpenSLESOutput::prepare(VEBundle params) {
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
+        msg->setInt32("samplerate", params.get<int>("samplerate"));
+        msg->setInt32("channel", params.get<int>("channel"));
+        msg->setInt32("foramt", params.get<int>("format"));
+        msg->setObject("decoder", params.get<std::shared_ptr<VEAudioDecoder>>("decode"));
+        msg->post();
+        return 0;
+    }
+
+    VEResult AudioOpenSLESOutput::prepare(std::shared_ptr<VEAudioDecoder> decoder, int samplerate, int channel,
+                                          int format) {
 //    fp = fopen("/data/local/tmp/dump_arender.pcm","wb+");
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
         msg->setInt32("samplerate", samplerate);
         msg->setInt32("channel", channel);
         msg->setInt32("foramt", format);
@@ -35,29 +56,46 @@ namespace VE {
         return 0;
     }
 
-    void AudioOpenSLESOutput::start() {
+    VEResult AudioOpenSLESOutput::seekTo(double timestamp) {
+        return 0;
+    }
+
+    VEResult AudioOpenSLESOutput::flush() {
+        return 0;
+    }
+
+    VEResult AudioOpenSLESOutput::pause() {
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPause, shared_from_this());
+        msg->post();
+        return 0;
+    }
+
+    VEResult AudioOpenSLESOutput::start() {
         ALOGI("AudioOpenSLESOutput::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
         msg->post();
+        return 0;
     }
 
-    void AudioOpenSLESOutput::stop() {
+    VEResult AudioOpenSLESOutput::stop() {
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStop, shared_from_this());
         msg->post();
+        return 0;
     }
 
-    void AudioOpenSLESOutput::unInit() {
+    VEResult AudioOpenSLESOutput::release() {
 //    if(fp){
 //        fflush(fp);
 //        fclose(fp);
 //    }
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatUninit, shared_from_this());
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRelease, shared_from_this());
         msg->post();
+        return 0;
     }
 
     void AudioOpenSLESOutput::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         switch (msg->what()) {
-            case kWhatInit: {
+            case kWhatPrepare: {
                 int sampleRate = 0;
                 int channel = 0;
                 int format = 0;
@@ -81,10 +119,6 @@ namespace VE {
                 onPause();
                 break;
             }
-            case kWhatResume: {
-                onResume();
-                break;
-            }
             case kWhatPlay: {
                 if (!mIstarted) {
                     break;
@@ -101,7 +135,7 @@ namespace VE {
                 onStop();
                 break;
             }
-            case kWhatUninit: {
+            case kWhatRelease: {
                 onUnInit();
                 break;
             }
@@ -318,42 +352,5 @@ namespace VE {
         }
         mIstarted = false;
         return true;
-    }
-
-    bool AudioOpenSLESOutput::onResume() {
-        ALOGI("AudioOpenSLESOutput::%s enter", __FUNCTION__);
-        if (mPlayerPlay != NULL) {
-            SLresult result = (*mPlayerPlay)->SetPlayState(mPlayerPlay, SL_PLAYSTATE_PLAYING);
-            if (result != SL_RESULT_SUCCESS) {
-                ALOGI("AudioOpenSLESOutput Failed to set play state");
-                return false;
-            }
-        }
-        mIstarted = true;
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPlay, shared_from_this());
-        msg->post();
-        return true;
-    }
-
-    AudioOpenSLESOutput::AudioOpenSLESOutput(std::shared_ptr<AMessage> notify,
-                                             std::shared_ptr<VEAVsync> avSync)
-            : mNotify(notify), m_AVSync(avSync), mIstarted(false) {
-        ALOGI("AudioOpenSLESOutput::%s enter", __FUNCTION__);
-
-    }
-
-    AudioOpenSLESOutput::~AudioOpenSLESOutput() {
-        ALOGI("AudioOpenSLESOutput::%s enter", __FUNCTION__);
-
-    }
-
-    void AudioOpenSLESOutput::pause() {
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPause, shared_from_this());
-        msg->post();
-    }
-
-    void AudioOpenSLESOutput::resume() {
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatResume, shared_from_this());
-        msg->post();
     }
 }

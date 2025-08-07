@@ -13,6 +13,7 @@ namespace VE {
         mMediaInfo = nullptr;
         mIsStarted = false;
         mSwrCtx = nullptr;
+        mIsEOS = false;
     }
 
     VEAudioDecoder::~VEAudioDecoder() {
@@ -41,6 +42,10 @@ namespace VE {
         }
 
         frame = mFrameQueue->get();
+        if(mIsEOS == false && mIsStarted == false && mFrameQueue->getRemainingSize() > AUDIO_FRAME_QUEUE_SIZE/2){
+            auto decodeMsg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
+            decodeMsg->post();
+        }
         return 0;
     }
 
@@ -167,6 +172,7 @@ namespace VE {
                 ALOGI("VEAudioDecoder::onDecode AVERROR_EOF");
                 frame->setFrameType(E_FRAME_TYPE_EOF);
                 queueFrame(frame);
+                mIsEOS = true;
                 return VE_EOS;
             }
 
@@ -394,7 +400,7 @@ namespace VE {
         return 0;
     }
 
-    VEResult VEAudioDecoder::seekTo(uint64_t timestamp) {
-        return 0;
+    VEResult VEAudioDecoder::seekTo(double timestamp) {
+        return flush();
     }
 }

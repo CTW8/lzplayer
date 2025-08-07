@@ -225,12 +225,12 @@ void ALooper::post(const std::shared_ptr<AMessage> &msg, int64_t delayUs) {
     }
 
     mEventQueue.insert(it, event);
-    ALOGD("ALooper::post thread name: %s, event queue size: %zu", mName.c_str(), mEventQueue.size());
+//    ALOGD("ALooper::post thread name: %s, event queue size: %zu", mName.c_str(), mEventQueue.size());
 }
 
 bool ALooper::loop() {
     Event event;
-    ALOGD("ALooper::loop enter thread name: %s, event queue size: %zu", mName.c_str(), mEventQueue.size());
+//    ALOGD("ALooper::loop enter thread name: %s, event queue size: %zu", mName.c_str(), mEventQueue.size());
     {
         std::unique_lock<std::mutex> autoLock(mLock);
         if (mThread == NULL && !mRunningLocally) {
@@ -258,7 +258,7 @@ bool ALooper::loop() {
         event = *mEventQueue.begin();
         mEventQueue.erase(mEventQueue.begin());
 
-        ALOGD("ALooper::loop thread name: %s, event queue size: %zu", mName.c_str(), mEventQueue.size());
+//        ALOGD("ALooper::loop thread name: %s, event queue size: %zu", mName.c_str(), mEventQueue.size());
     }
 
     event.mMessage->deliver();

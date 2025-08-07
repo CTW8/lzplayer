@@ -22,7 +22,7 @@ extern "C" {
     #include "libavutil/opt.h"
 }
 namespace VE {
-    class VEAudioDecoder : public AHandler ,IVEComponent{
+    class VEAudioDecoder : public IVEComponent{
     public:
         VEAudioDecoder();
 
@@ -42,7 +42,7 @@ namespace VE {
 
         VEResult prepare(VEBundle params) override;
 
-        VEResult seekTo(uint64_t timestamp) override;
+        VEResult seekTo(double timestamp) override;
 
         void needMoreFrame(std::shared_ptr<AMessage> msg);
 
@@ -92,6 +92,7 @@ namespace VE {
         bool mNeedMoreData = false;
 
         std::shared_ptr<AMessage> mNotifyMore = nullptr;
+        bool mIsEOS = false;
         SwrContext *mSwrCtx = nullptr;
     };
 }

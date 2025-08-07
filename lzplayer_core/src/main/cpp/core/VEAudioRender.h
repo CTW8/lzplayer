@@ -5,19 +5,17 @@
 #include "VEAudioDecoder.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
+#include "VEAVsync.h"
 #include <memory>
 #include <deque>
 #include <mutex>
 #include <condition_variable>
 namespace VE {
-    class VEAudioRender : public AHandler ,IVEComponent{
+class VEAudioRender : public IVEComponent{
     public:
-        VEAudioRender(const std::shared_ptr<IAudioRender>& audioRenderer,
-                      const std::shared_ptr<VEAudioDecoder>& audioDecoder);
+        VEAudioRender(const std::shared_ptr<AMessage> &notify,const std::shared_ptr<VEAVsync> &avSync);
 
         ~VEAudioRender();
-
-        VEResult prepare(const AudioConfig &config);
 
         VEResult prepare(VEBundle params) override;
 
@@ -25,20 +23,25 @@ namespace VE {
 
         VEResult stop() override;
 
-        VEResult seekTo(uint64_t timestamp) override;
+        VEResult seekTo(double timestamp) override;
 
         VEResult flush() override;
 
         VEResult pause() override;
 
         VEResult release() override;
+    enum {
+        kWhatEOS = 'aeos',
+        kWhatError = 'aerr'
+    };
 
-    public:
-        // 渲染音频帧
-        void renderFrame(std::shared_ptr<VEFrame> frame);
 
-    protected:
+protected:
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+
+
+    private:
+        VEResult onRender();
 
     private:
         std::shared_ptr<IAudioRender> m_AudioRenderer; // 音频渲染器接口
@@ -46,17 +49,23 @@ namespace VE {
         std::deque<std::shared_ptr<VEFrame>> m_FrameQueue; // PCM帧队列
         std::mutex m_Mutex;
         std::condition_variable m_Cond;
+        std::shared_ptr<AMessage> m_Notify = nullptr;
 
-        // 声明 fetchAudioData 函数
-        void fetchAudioData();
+        std::shared_ptr<VEAVsync> m_AVSync = nullptr;
+        uint8_t * mSliceBuffer = nullptr;
+
+        FILE *fp= nullptr;
 
         // 消息类型
         enum {
-            kWhatInit = 'init',
+            kWhatPrepare = 'prep',
             kWhatStart = 'star',
+            kWhatPause = 'paus',
             kWhatStop = 'stop',
+            kWhatSeek = 'seek',
             kWhatRender = 'rend',
-            kWhatFetchData = 'fdat',
+            kWhatFlush = 'flus',
+            kWhatRelease = 'rele',
         };
     };
 }

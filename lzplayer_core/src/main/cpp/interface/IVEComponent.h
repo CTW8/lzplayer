@@ -8,8 +8,10 @@
 
 #include "VEError.h"
 #include "VEBundle.h"
+#include "AHandler.h"
 namespace VE {
-    class IVEComponent {
+    class IVEComponent :public virtual AHandler{
+    public:
         virtual VEResult prepare(VEBundle params) = 0;
 
         /// start
@@ -19,7 +21,7 @@ namespace VE {
         virtual VEResult stop() = 0;
 
         ///seek
-        virtual VEResult seekTo(uint64_t timestamp) = 0;
+        virtual VEResult seekTo(double timestamp) = 0;
 
         ///flush
         virtual VEResult flush() = 0;

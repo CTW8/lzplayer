@@ -16,6 +16,8 @@
 #include "VEVideoRender.h"
 #include "AudioOpenSLESOutput.h"
 #include "VEDef.h"
+#include "VEAudioRender.h"
+#include "VEVideoDisplay.h"
 
 
 typedef std::function<void(int code,double arg1,std::string str1,void *obj3)> funOnInfoCallback;
@@ -144,6 +146,8 @@ namespace VE {
 
         VEResult onRelease(std::shared_ptr<AMessage> msg);
 
+        VEResult onSurfaceChanged(ANativeWindow *win,int viewWidth,int viewHeight);
+
         pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
         std::shared_ptr<VEDemux> mDemux = nullptr;
         std::shared_ptr<ALooper> mDemuxLooper = nullptr;
@@ -151,13 +155,13 @@ namespace VE {
         std::shared_ptr<ALooper> mAudioDecodeLooper = nullptr;
         std::shared_ptr<VEVideoDecoder> mVideoDecoder = nullptr;
         std::shared_ptr<ALooper> mVideoDecodeLooper = nullptr;
-        std::shared_ptr<VEVideoRender> mVideoRender = nullptr;
+        std::shared_ptr<VEVideoDisplay> mVideoRender = nullptr;
         std::shared_ptr<ALooper> mVideoRenderLooper = nullptr;
         std::shared_ptr<VEAVsync> mAVSync = nullptr;
 
         std::shared_ptr<AMessage> mRenderNotifyMsg = nullptr;
 
-        std::shared_ptr<AudioOpenSLESOutput> mAudioOutput = nullptr;
+        std::shared_ptr<VEAudioRender> mAudioOutput = nullptr;
         std::shared_ptr<ALooper> mAudioOutputLooper = nullptr;
 
         std::shared_ptr<VEPacketQueue> mAPacketQueue = nullptr;

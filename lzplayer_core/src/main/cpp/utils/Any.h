@@ -30,9 +30,7 @@ namespace VE {
         // 类型擦除的基类
         struct HolderBase {
             virtual ~HolderBase() {}
-
             virtual HolderBase *clone() const = 0;
-
             virtual const std::type_info &type() const = 0;
         };
 
@@ -126,6 +124,15 @@ namespace VE {
             holder_.swap(other.holder_);
         }
 
+        // 调试辅助方法
+        void debug_info() const {
+            if (holder_) {
+                std::cout << "Any contains type: " << holder_->type().name() << std::endl;
+            } else {
+                std::cout << "Any is empty" << std::endl;
+            }
+        }
+
         // 友元函数声明
         template<typename T>
         friend T any_cast(const Any &operand);
@@ -143,63 +150,67 @@ namespace VE {
         friend T *any_cast(Any *operand);
     };
 
-// any_cast 实现 - const Any& 版本
+// 统一使用 dynamic_cast 的 any_cast 实现
+
+// const Any& 版本
     template<typename T>
     T any_cast(const Any &operand) {
-        typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type U;
+        using U = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
 
-        if (operand.holder_ && operand.holder_->type() == typeid(U)) {
-            const Any::Holder<U> *holder = static_cast<const Any::Holder<U> *>(operand.holder_.get());
+        auto* holder = dynamic_cast<const Any::Holder<U>*>(operand.holder_.get());
+        if (holder) {
             return static_cast<T>(holder->value);
         }
 
         throw bad_any_cast();
     }
 
-// any_cast 实现 - Any& 版本
+// Any& 版本
     template<typename T>
     T any_cast(Any &operand) {
-        typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type U;
+        using U = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
 
-        if (operand.holder_ && operand.holder_->type() == typeid(U)) {
-            Any::Holder<U> *holder = static_cast<Any::Holder<U> *>(operand.holder_.get());
+        auto* holder = dynamic_cast<Any::Holder<U>*>(operand.holder_.get());
+        if (holder) {
             return static_cast<T>(holder->value);
         }
 
         throw bad_any_cast();
     }
 
-// any_cast 实现 - Any&& 版本
+// Any&& 版本
     template<typename T>
     T any_cast(Any &&operand) {
-        typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type U;
+        using U = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
 
-        if (operand.holder_ && operand.holder_->type() == typeid(U)) {
-            Any::Holder<U> *holder = static_cast<Any::Holder<U> *>(operand.holder_.get());
+        auto* holder = dynamic_cast<Any::Holder<U>*>(operand.holder_.get());
+        if (holder) {
             return static_cast<T>(std::move(holder->value));
         }
 
         throw bad_any_cast();
     }
 
-// any_cast 实现 - const Any* 版本
+// const Any* 版本 - 修复为使用 dynamic_cast
     template<typename T>
     const T *any_cast(const Any *operand) {
-        if (operand && operand->holder_ && operand->holder_->type() == typeid(T)) {
-            const Any::Holder<T> *holder = static_cast<const Any::Holder<T> *>(operand->holder_.get());
-            return &holder->value;
+        if (!operand || !operand->holder_) {
+            return nullptr;
         }
-        return nullptr;
+
+        auto* holder = dynamic_cast<const Any::Holder<T>*>(operand->holder_.get());
+        return holder ? &holder->value : nullptr;
     }
 
-// any_cast 实现 - Any* 版本
+// Any* 版本 - 修复为使用 dynamic_cast
     template<typename T>
     T *any_cast(Any *operand) {
-        if (operand && operand->holder_ && operand->holder_->type() == typeid(T)) {
-            Any::Holder<T> *holder = static_cast<Any::Holder<T> *>(operand->holder_.get());
-            return &holder->value;
+        if (!operand || !operand->holder_) {
+            return nullptr;
         }
-        return nullptr;
+
+        auto* holder = dynamic_cast<Any::Holder<T>*>(operand->holder_.get());
+        return holder ? &holder->value : nullptr;
     }
 
 // 便利函数：make_any
@@ -215,120 +226,3 @@ namespace VE {
 }
 
 #endif
-
-// 示例和测试代码
-//int main() {
-//    std::cout << "=== Custom Any Implementation Demo (C++11 Compatible) ===" << std::endl;
-//
-//    // 1. 基本使用示例
-//    std::cout << "\n1. 基本使用：" << std::endl;
-//
-//    Any a1 = 42;
-//    Any a2 = std::string("Hello, World!");
-//    Any a3 = 3.14;
-//
-//    std::cout << "a1 contains: " << any_cast<int>(a1) << std::endl;
-//    std::cout << "a2 contains: " << any_cast<std::string>(a2) << std::endl;
-//    std::cout << "a3 contains: " << any_cast<double>(a3) << std::endl;
-//
-//    // 2. 类型检查
-//    std::cout << "\n2. 类型检查：" << std::endl;
-//    std::cout << "a1 type: " << a1.type().name() << std::endl;
-//    std::cout << "a2 type: " << a2.type().name() << std::endl;
-//    std::cout << "a3 type: " << a3.type().name() << std::endl;
-//
-//    // 3. 安全的指针转换
-//    std::cout << "\n3. 安全的指针转换：" << std::endl;
-//
-//    int* ptr1 = any_cast<int>(&a1);
-//    std::string* ptr2 = any_cast<std::string>(&a2);
-//    float* ptr3 = any_cast<float>(&a3);  // 这会返回 nullptr
-//
-//    std::cout << "int* from a1: " << (ptr1 ? "valid" : "null") << std::endl;
-//    std::cout << "string* from a2: " << (ptr2 ? "valid" : "null") << std::endl;
-//    std::cout << "float* from a3: " << (ptr3 ? "valid" : "null") << std::endl;
-//
-//    // 4. 异常处理
-//    std::cout << "\n4. 异常处理：" << std::endl;
-//
-//    try {
-//        int wrong_cast = any_cast<int>(a2);  // 这会抛出异常
-//    } catch (const bad_any_cast& e) {
-//        std::cout << "捕获异常: " << e.what() << std::endl;
-//    }
-//
-//    // 5. 复杂类型存储
-//    std::cout << "\n5. 复杂类型存储：" << std::endl;
-//
-//    std::vector<int> vec;
-//    vec.push_back(1);
-//    vec.push_back(2);
-//    vec.push_back(3);
-//    vec.push_back(4);
-//    vec.push_back(5);
-//
-//    Any a4 = vec;
-//
-//    std::vector<int> retrieved_vec = any_cast<std::vector<int> >(a4);
-//    std::cout << "Vector contents: ";
-//    for (std::vector<int>::iterator it = retrieved_vec.begin(); it != retrieved_vec.end(); ++it) {
-//        std::cout << *it << " ";
-//    }
-//    std::cout << std::endl;
-//
-//    // 6. 拷贝和移动
-//    std::cout << "\n6. 拷贝和移动：" << std::endl;
-//
-//    Any a5 = a1;  // 拷贝构造
-//    Any a6 = std::move(a2);  // 移动构造
-//
-//    std::cout << "a5 (copy of a1): " << any_cast<int>(a5) << std::endl;
-//    std::cout << "a6 (moved from a2): " << any_cast<std::string>(a6) << std::endl;
-//    std::cout << "a2 after move has_value: " << (a2.has_value() ? "true" : "false") << std::endl;
-//
-//    // 7. 重置和检查
-//    std::cout << "\n7. 重置和检查：" << std::endl;
-//
-//    std::cout << "a1 has_value: " << (a1.has_value() ? "true" : "false") << std::endl;
-//    a1.reset();
-//    std::cout << "a1 after reset has_value: " << (a1.has_value() ? "true" : "false") << std::endl;
-//
-//    // 8. make_any 使用
-//    std::cout << "\n8. make_any 使用：" << std::endl;
-//
-//    Any a7 = make_any<std::string>("Created with make_any");
-//    std::cout << "a7 contains: " << any_cast<std::string>(a7) << std::endl;
-//
-//    // 9. 自定义类型
-//    std::cout << "\n9. 自定义类型：" << std::endl;
-//
-//    struct Person {
-//        std::string name;
-//        int age;
-//
-//        Person(const std::string& n, int a) : name(n), age(a) {}
-//
-//        void print() const {
-//            std::cout << "Person: " << name << ", age: " << age << std::endl;
-//        }
-//    };
-//
-//    Any a8 = Person("Alice", 30);
-//    Person person = any_cast<Person>(a8);
-//    person.print();
-//
-//    // 10. 测试空 Any 对象
-//    std::cout << "\n10. 空 Any 对象测试：" << std::endl;
-//
-//    Any empty_any;
-//    std::cout << "Empty any has_value: " << (empty_any.has_value() ? "true" : "false") << std::endl;
-//    std::cout << "Empty any type: " << empty_any.type().name() << std::endl;
-//
-//    try {
-//        int invalid = any_cast<int>(empty_any);
-//    } catch (const bad_any_cast& e) {
-//        std::cout << "Empty any cast exception: " << e.what() << std::endl;
-//    }
-//
-//    return 0;
-//}

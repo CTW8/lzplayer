@@ -17,16 +17,14 @@
 namespace VE {
     class VEPlayer;
 
-    class VEVideoRender : public AHandler, IVEComponent {
+    class VEVideoRender : public IVEComponent {
     public:
         VEVideoRender(const std::shared_ptr<AMessage> &notify,
                       const std::shared_ptr<VEAVsync> &avSync);
 
         ~VEVideoRender();
 
-        VEResult
-        prepare(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height,
-                int fps);
+        VEResult prepare(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height,int fps);
 
         VEResult prepare(VEBundle params) override;
 
@@ -40,9 +38,11 @@ namespace VE {
 
         VEResult setSurface(ANativeWindow *win, int width, int height);
 
-        VEResult seekTo(uint64_t timestamp) override;
+        VEResult seekTo(double timestamp) override;
 
         VEResult flush() override;
+
+        VEResult setSpeedRate(double speed);
 
         enum {
             kWhatEOS = 'veos',
@@ -68,6 +68,8 @@ namespace VE {
 
         VEResult onSurfaceChanged(std::shared_ptr<AMessage> msg);
 
+        VEResult onSetSpeedRate(double speed);
+
         GLuint loadShader(GLenum type, const char *shaderSrc);
 
         GLuint createProgram(const char *vertexSource, const char *fragmentSource);
@@ -78,6 +80,7 @@ namespace VE {
             kWhatInit = 'init',
             kWhatStart = 'star',
             kWhatStop = 'stop',
+            kWhatSpeedRate = 'rate',
             kWhatSync = 'sync',
             kWhatRender = 'rend',
             kWhatRelease = 'rele',
@@ -102,6 +105,8 @@ namespace VE {
 
         int mViewWidth = 0;
         int mViewHeight = 0;
+
+        double mSpeedRate = 1.0f;
 
         int mFrameWidth = 0;
         int mFrameHeight = 0;

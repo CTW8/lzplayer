@@ -75,6 +75,12 @@ void main() {
                 onStop();
                 break;
             }
+            case kWhatSpeedRate:{
+                double speed = 1.0f;
+                msg->findDouble("speedrate",&speed);
+                onSetSpeedRate(speed);
+                break;
+            }
             case kWhatRelease: {
                 onRelease();
                 break;
@@ -161,7 +167,7 @@ void main() {
             std::make_shared<AMessage>(kWhatRelease, shared_from_this())->post();
             return 0;
         } catch (const std::bad_weak_ptr &e) {
-            ALOGE("VEVideoRender::unInit - Object not managed by shared_ptr yet");
+            ALOGE("VEVideoRender::release - Object not managed by shared_ptr yet");
             return UNKNOWN_ERROR;
         }
     }
@@ -702,11 +708,22 @@ void main() {
         return VE_OK;
     }
 
-    VEResult VEVideoRender::seekTo(uint64_t timestamp) {
+    VEResult VEVideoRender::seekTo(double timestamp) {
         return 0;
     }
 
     VEResult VEVideoRender::flush() {
+        return 0;
+    }
+
+    VEResult VEVideoRender::setSpeedRate(double speed) {
+        auto msg = std::make_shared<AMessage>(kWhatSpeedRate,shared_from_this());
+        msg->setDouble("speedrate",speed);
+        return 0;
+    }
+
+    VEResult VEVideoRender::onSetSpeedRate(double speed) {
+        mSpeedRate = speed;
         return 0;
     }
 }

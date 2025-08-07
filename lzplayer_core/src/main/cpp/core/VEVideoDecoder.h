@@ -22,7 +22,7 @@ extern "C" {
 
 namespace VE {
     class VEVideoDecoder
-            : public AHandler ,IVEComponent{
+            : public IVEComponent{
     public:
         VEVideoDecoder();
 
@@ -41,7 +41,7 @@ namespace VE {
 
         VEResult flush() override;
 
-        VEResult seekTo(uint64_t timestamp) override;
+        VEResult seekTo(double timestamp) override;
 
         VEResult readFrame(std::shared_ptr<VEFrame> &frame);
 
@@ -89,6 +89,7 @@ namespace VE {
         std::shared_ptr<VEMediaInfo> mMediaInfo = nullptr;
         std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
         std::shared_ptr<VEDemux> mDemux = nullptr;
+        bool mIsEOS = false;
 
         std::mutex mMutex;               // 保护共享变量
         bool mIsStarted = false;

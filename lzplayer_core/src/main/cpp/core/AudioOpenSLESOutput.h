@@ -16,8 +16,10 @@
 
 
 void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
+
+
 namespace VE {
-    class AudioOpenSLESOutput : public AHandler {
+    class AudioOpenSLESOutput : public IVEComponent{
         friend void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
 
     public:
@@ -25,19 +27,23 @@ namespace VE {
 
         ~AudioOpenSLESOutput();
 
-        status_t
-        init(std::shared_ptr<VEAudioDecoder> decoder, int samplerate, int channel, int format);
+        VEResult prepare(std::shared_ptr<VEAudioDecoder> decoder, int samplerate, int channel, int format);
 
-        void start();
+        VEResult prepare(VEBundle params) override;
 
-        void pause();
+        VEResult start() override;
 
-        void resume();
+        VEResult pause() override;
 
-        void stop();
+        VEResult stop() override;
 
-        void unInit();
+        VEResult release() override;
 
+        VEResult seekTo(double timestamp) override;
+
+        VEResult flush() override;
+
+    public:
         friend void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
 
         enum {
@@ -54,8 +60,6 @@ namespace VE {
 
         bool onPause();
 
-        bool onResume();
-
         bool onStop();
 
         bool onUnInit();
@@ -63,13 +67,13 @@ namespace VE {
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
         enum {
-            kWhatInit = 'init',
+            kWhatPrepare = 'prep',
             kWhatStart = 'star',
             kWhatPause = 'paus',
-            kWhatResume = 'resu',
+            kWhatSeek  =  'seek',
             kWhatStop = 'stop',
             kWhatPlay = 'play',
-            kWhatUninit = 'unin'
+            kWhatRelease = 'rele'
         };
     private:
         bool mIstarted = false;

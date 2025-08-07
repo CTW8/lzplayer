@@ -146,6 +146,7 @@ namespace VE {
         ANativeWindow *nativeWindow = ANativeWindow_fromSurface(env, surface);
         ALOGD("nativeSetSurface called with handle: %ld, width: %d, height: %d", handle, width,
               height);
+
         return vePlayer->setSurface(nativeWindow, width, height);
     }
 

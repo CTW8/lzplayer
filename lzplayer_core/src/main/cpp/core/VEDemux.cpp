@@ -63,6 +63,10 @@ namespace VE {
 
             packet = mVideoPacketQueue->get();
         }
+        if(mVideoPacketQueue->getRemainingSize()>0 && mAudioPacketQueue->getRemainingSize()>0 && !mIsEOS && !mIsStart){
+            std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
+            msg->post();
+        }
         ALOGI("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
     }
