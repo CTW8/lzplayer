@@ -24,10 +24,8 @@ namespace VE {
     class VEVideoDecoder
             : public IVEComponent{
     public:
-        VEVideoDecoder();
-
-    public:
-        ~VEVideoDecoder();
+        VEVideoDecoder(std::shared_ptr<AMessage> &nofity);
+        ~VEVideoDecoder() override;
 
         VEResult prepare(std::shared_ptr<VEDemux> demux);
 
@@ -70,6 +68,8 @@ namespace VE {
 
         VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
 
+        VEResult postMessage(int32_t event,int32_t arg1,int32_t arg2,int64_t arg3,void*params);
+
         // 帧入队列
         void queueFrame(std::shared_ptr<VEFrame> frame);
 
@@ -79,6 +79,7 @@ namespace VE {
             kWhatStop = 'stop',
             kWhatPause = 'paus',
             kWhatFlush = 'flus',
+            kWhatSeek  = 'seek',
             kWhatDecode = 'deco',
             kWhatUninit = 'unin',
             kWhatNeedMore = 'need'
@@ -90,6 +91,8 @@ namespace VE {
         std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
         std::shared_ptr<VEDemux> mDemux = nullptr;
         bool mIsEOS = false;
+
+        std::shared_ptr<AMessage> mNofityEvent = nullptr;
 
         std::mutex mMutex;               // 保护共享变量
         bool mIsStarted = false;

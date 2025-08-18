@@ -53,9 +53,12 @@ namespace VE {
     }
 
     VEResult VEAudioRender::seekTo(double_t timestamp) {
+        int32_t ret = VE_OK;
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
-        msg->post();
-        return 0;
+        std::shared_ptr<AMessage> response;
+        msg->postAndAwaitResponse(&response);
+        response->findInt32("ret", &ret);
+        return ret;
     }
 
     VEResult VEAudioRender::flush() {
@@ -143,6 +146,11 @@ namespace VE {
                 if (m_AudioRenderer) {
                     m_AudioRenderer->flush();
                 }
+//                std::shared_ptr<AMessage> msg = m_Notify->dup();
+//                msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER);
+//                msg->setInt32("ret",VE_OK);
+//                msg->post();
+                postMessage(VE_NOTIFY_EVENT_SEEK_DONE,0,0,0, nullptr);
                 break;
             }
             case kWhatRelease:{
@@ -176,9 +184,10 @@ namespace VE {
             if (frame != nullptr) {
                 if (frame->getFrameType() == E_FRAME_TYPE_EOF) {
                     ALOGI("VEAudioRender::%s - End of Stream (EOS) detected", __FUNCTION__);
-                    std::shared_ptr<AMessage> eosMsg = m_Notify->dup();
-                    eosMsg->setInt32("type", kWhatEOS);
-                    eosMsg->post();
+//                    std::shared_ptr<AMessage> eosMsg = m_Notify->dup();
+//                    eosMsg->setInt32("type", kWhatEOS);
+//                    eosMsg->post();
+                    postMessage(VE_NOTIFY_EVENT_EOS,0,0,0, nullptr);
 
                     m_AudioDecoder->pause();
 
@@ -212,6 +221,19 @@ namespace VE {
                 ALOGD("VEAudioRender frame is null");
             }
         }
+        return 0;
+    }
+
+    VEResult VEAudioRender::postMessage(int32_t event, int32_t arg1, int32_t arg2, int64_t arg3,
+                                        void *params) {
+        std::shared_ptr<AMessage> msg = m_Notify->dup();
+        msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER);
+        msg->setInt32("event",event);
+        msg->setInt32("arg1",arg1);
+        msg->setInt32("arg2",arg2);
+        msg->setInt64("arg3",arg3);
+        msg->setPointer("params",params);
+        msg->post();
         return 0;
     }
 }

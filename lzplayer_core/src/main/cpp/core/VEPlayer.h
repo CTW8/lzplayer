@@ -35,13 +35,6 @@ namespace VE {
 
         ~VEPlayer();
 
-    private:
-        void onRenderNotify(std::shared_ptr<AMessage> msg);
-
-        void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
-
-        void onEOS();
-
     public:
         /// setDataSource
         VEResult setDataSource(std::string path);
@@ -110,6 +103,12 @@ namespace VE {
         }
 
     private:
+
+        void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
+
+        void onEOS();
+
+    private:
         enum {
             kWhatSetDataSource = '=DaS',
             kWhatPrepare = 'prep',
@@ -123,10 +122,7 @@ namespace VE {
             kWhatSeek = 'seek',
             kWhatPause = 'paus',
             kWhatStop = 'stop',
-            kWhatRenderEvent = 'renE',
-            kWhatVideoDecEvent = 'vdec',
-            kWhatAudioDecEvent = 'adec',
-            kWhatDemuxEvent = 'demx',
+            kWhatComponentEvent = 'renE',
             kWhatRelease = 'rele'
         };
 
@@ -147,6 +143,12 @@ namespace VE {
         VEResult onRelease(std::shared_ptr<AMessage> msg);
 
         VEResult onSurfaceChanged(ANativeWindow *win,int viewWidth,int viewHeight);
+
+        VEResult onVideoRenderEvent(std::shared_ptr<AMessage> msg);
+        VEResult onAudioRenderEvent(std::shared_ptr<AMessage> msg);
+        VEResult onVideoDecoderEvent(std::shared_ptr<AMessage> msg);
+        VEResult onAudioDecoderEvent(std::shared_ptr<AMessage> msg);
+        VEResult onDemuxEvent(std::shared_ptr<AMessage> msg);
 
         pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
         std::shared_ptr<VEDemux> mDemux = nullptr;

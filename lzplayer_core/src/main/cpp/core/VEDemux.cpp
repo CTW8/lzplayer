@@ -11,33 +11,64 @@ extern "C"{
 #define AUDIO_QUEUE_SIZE    100
 #define VIDEO_QUEUE_SIZE    100
 namespace VE {
-    VEDemux::VEDemux() {
+    VEDemux::VEDemux(std::shared_ptr<AMessage> &notify) :mNotifyEvent(notify){
         ALOGI("VEDemux::%s enter", __FUNCTION__);
         mAudioCodecParams = nullptr;
         mVideoCodecParams = nullptr;
         mFormatContext = nullptr;
         mAudioStartPts = -1;
         mVideoStartPts = -1;
+        mNotifyEvent = notify;
         ALOGI("VEDemux::%s exit", __FUNCTION__);
     }
 
     VEDemux::~VEDemux() {
         ALOGI("VEDemux::%s enter", __FUNCTION__);
-        close();
+        release();
         ALOGI("VEDemux::%s exit", __FUNCTION__);
     }
 
-    VEResult VEDemux::open(std::string file) {
+    VEResult VEDemux::prepare(VE::VEBundle params){
         ALOGI("VEDemux::%s enter", __FUNCTION__);
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatOpen, shared_from_this());
-        msg->setString("filePath", file);
-
-        std::shared_ptr<AMessage> respone;
-        msg->postAndAwaitResponse(&respone);
-        int32_t ret;
-        respone->findInt32("ret", &ret);
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
+        msg->setString("filePath", params.get<std::string >("path"));
+        msg->post();
         ALOGI("VEDemux::%s exit", __FUNCTION__);
-        return ret;
+        return VE_OK;
+    }
+
+
+    VEResult VEDemux::start() {
+        ALOGI("VEDemux::%s enter", __FUNCTION__);
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
+        msg->post();
+        ALOGI("VEDemux::%s exit", __FUNCTION__);
+        return VE_OK;
+    }
+
+    VEResult VEDemux::stop() {
+        ALOGI("VEDemux::%s enter", __FUNCTION__);
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStop, shared_from_this());
+        msg->post();
+        ALOGI("VEDemux::%s exit", __FUNCTION__);
+        return VE_OK;
+    }
+
+    VEResult VEDemux::pause() {
+        ALOGI("VEDemux::%s enter", __FUNCTION__);
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPause, shared_from_this());
+        msg->post();
+        ALOGI("VEDemux::%s exit", __FUNCTION__);
+        return VE_OK;
+    }
+
+    VEResult VEDemux::seekTo(double posMs) {
+        ALOGI("VEDemux::%s enter", __FUNCTION__);
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
+        msg->setDouble("posMs", posMs);
+        msg->post();
+        ALOGI("VEDemux::%s exit", __FUNCTION__);
+        return VE_OK;
     }
 
     VEResult VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet) {
@@ -71,23 +102,18 @@ namespace VE {
         return VE_OK;
     }
 
-    VEResult VEDemux::close() {
+    VEResult VEDemux::release(){
         ALOGI("VEDemux::%s enter", __FUNCTION__);
-        if (mFormatContext) {
-            avformat_close_input(&mFormatContext);
-            mFormatContext = nullptr;
-        }
-
-        if (mAudioCodecParams) {
-            avcodec_parameters_free(&mAudioCodecParams);
-            mAudioCodecParams = nullptr;
-        }
-        if (mVideoCodecParams) {
-            avcodec_parameters_free(&mVideoCodecParams);
-            mVideoCodecParams = nullptr;
-        }
+        std::make_shared<AMessage>(kWhatRelease,shared_from_this())->post();
         ALOGI("VEDemux::%s exit", __FUNCTION__);
         return 0;
+    }
+
+
+    VEResult VEDemux::flush() {
+        std::make_shared<AMessage>(kWhatFlush,shared_from_this())->post();
+        ALOGI("VEDemux::%s enter", __FUNCTION__);
+        return VE_OK;
     }
 
     std::shared_ptr<VEMediaInfo> VEDemux::getFileInfo() {
@@ -116,20 +142,15 @@ namespace VE {
     void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         ALOGI("VEDemux::%s enter", __FUNCTION__);
         switch (msg->what()) {
-            case kWhatOpen: {
+            case kWhatPrepare: {
                 std::string path;
                 msg->findString("filePath", path);
-                std::shared_ptr<AReplyToken> replyToken;
-                msg->senderAwaitsResponse(replyToken);
-                VEResult ret = onOpen(path);
-
-                std::shared_ptr<AMessage> replyMsg = std::make_shared<AMessage>();
-                replyMsg->setInt32("ret", ret);
-                replyMsg->postReply(replyToken);
+                onPrepare(path);
                 break;
             }
             case kWhatStart: {
                 mIsStart = true;
+                mIsEOS = false;
                 onStart();
                 break;
             }
@@ -144,14 +165,7 @@ namespace VE {
             case kWhatSeek: {
                 double pos = 0;
                 msg->findDouble("posMs", &pos);
-                std::shared_ptr<AReplyToken> replyToken;
-                msg->senderAwaitsResponse(replyToken);
-
                 int32_t ret = onSeek(pos);
-
-                std::shared_ptr<AMessage> replyMsg = std::make_shared<AMessage>();
-                replyMsg->setInt32("ret", ret);
-                replyMsg->postReply(replyToken);
                 break;
             }
             case kWhatRead: {
@@ -167,45 +181,18 @@ namespace VE {
                 }
                 break;
             }
+            case kWhatRelease:{
+                onRelease();
+            }
+            default:{
+                ALOGW("VEDemux::%s unknown message: %d", __FUNCTION__, msg->what());
+                break;
+            }
         }
         ALOGI("VEDemux::%s exit", __FUNCTION__);
     }
 
-    void VEDemux::start() {
-        ALOGI("VEDemux::%s enter", __FUNCTION__);
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
-        msg->post();
-        ALOGI("VEDemux::%s exit", __FUNCTION__);
-    }
-
-    void VEDemux::stop() {
-        ALOGI("VEDemux::%s enter", __FUNCTION__);
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStop, shared_from_this());
-        msg->post();
-        ALOGI("VEDemux::%s exit", __FUNCTION__);
-    }
-
-    void VEDemux::pause() {
-        ALOGI("VEDemux::%s enter", __FUNCTION__);
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPause, shared_from_this());
-        msg->post();
-        ALOGI("VEDemux::%s exit", __FUNCTION__);
-    }
-
-    VEResult VEDemux::seek(double posMs) {
-        ALOGI("VEDemux::%s enter", __FUNCTION__);
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
-        msg->setDouble("posMs", posMs);
-        std::shared_ptr<AMessage> response;
-        msg->postAndAwaitResponse(&response);
-
-        int32_t ret = VE_OK;
-        response->findInt32("ret", &ret);
-        ALOGI("VEDemux::%s exit", __FUNCTION__);
-        return ret;
-    }
-
-    VEResult VEDemux::onOpen(std::string path) {
+    VEResult VEDemux::onPrepare(std::string path){
         ALOGI("VEDemux::%s enter", __FUNCTION__);
         ///打开文件
         if (path.empty()) {
@@ -447,5 +434,47 @@ namespace VE {
             std::make_shared<AMessage>(kWhatRead, shared_from_this())->post();
         }
         ALOGI("VEDemux::%s exit", __FUNCTION__);
+    }
+
+    VEResult
+    VEDemux::postMessage(int32_t event, int32_t arg1, int32_t arg2, int64_t arg3, void *params) {
+        std::shared_ptr<AMessage> msg = mNotifyEvent->dup();
+        msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_DEMUX);
+        msg->setInt32("event",event);
+        msg->setInt32("arg1",arg1);
+        msg->setInt32("arg2",arg2);
+        msg->setInt64("arg3",arg3);
+        msg->setPointer("params",params);
+        msg->post();
+        return VE_OK;
+    }
+
+    VEResult VEDemux::onPause() {
+        return VE_OK;
+    }
+
+    VEResult VEDemux::onStop() {
+        return VE_OK;
+    }
+
+    VEResult VEDemux::onFlush() {
+        return VE_OK;
+    }
+
+    VEResult VEDemux::onRelease() {
+        if (mFormatContext) {
+            avformat_close_input(&mFormatContext);
+            mFormatContext = nullptr;
+        }
+
+        if (mAudioCodecParams) {
+            avcodec_parameters_free(&mAudioCodecParams);
+            mAudioCodecParams = nullptr;
+        }
+        if (mVideoCodecParams) {
+            avcodec_parameters_free(&mVideoCodecParams);
+            mVideoCodecParams = nullptr;
+        }
+        return VE_OK;
     }
 }

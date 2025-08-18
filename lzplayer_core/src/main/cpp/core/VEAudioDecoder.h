@@ -24,9 +24,9 @@ extern "C" {
 namespace VE {
     class VEAudioDecoder : public IVEComponent{
     public:
-        VEAudioDecoder();
+        VEAudioDecoder(std::shared_ptr<AMessage> &notify);
 
-        ~VEAudioDecoder();
+        ~VEAudioDecoder() override;
 
         VEResult prepare(std::shared_ptr<VEDemux> demux);
 
@@ -63,18 +63,21 @@ namespace VE {
 
         VEResult onRelease();
 
+        VEResult onSeek(double timestamp);
+
         VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
 
         void queueFrame(std::shared_ptr<VEFrame> frame);
 
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
-
+        VEResult postMessage(int32_t event,int32_t arg1,int32_t arg2,int64_t arg3,void*params);
         enum {
             kWhatInit = 'init',
             kWhatStart = 'star',
             kWhatStop = 'stop',
             kWhatPause = 'paus',
             kWhatResume = 'resu',
+            kWhatSeek   = 'seek',
             kWhatFlush = 'flus',
             kWhatDecode = 'deco',
             kWhatUninit = 'unin',
@@ -86,6 +89,8 @@ namespace VE {
         VEMediaInfo *mMediaInfo = nullptr;
         std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
         std::shared_ptr<VEDemux> mDemux = nullptr;
+
+        std::shared_ptr<AMessage> mNotifyEvent = nullptr;
 
         std::mutex mMutex;
         bool mIsStarted = false;

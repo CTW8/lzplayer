@@ -19,12 +19,13 @@ namespace VE {
         libyuv::CopyPlane(src_v, src_stride_v, dst_v, width / 2, width / 2, height / 2);
     }
 
-    VEVideoDecoder::VEVideoDecoder()
+    VEVideoDecoder::VEVideoDecoder(std::shared_ptr<AMessage> &notify)
             : mVideoCtx(nullptr),
               mMediaInfo(nullptr),
               mIsStarted(false),
               mNeedMoreData(false) {
         ALOGI("VEVideoDecoder::VEVideoDecoder enter");
+        mNofityEvent = notify;
     }
 
     VEVideoDecoder::~VEVideoDecoder() {
@@ -57,7 +58,12 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::seekTo(double timestamp) {
-        return flush();
+        ALOGI("VEVideoDecoder::seekTo enter");
+
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
+        msg->setDouble("timestamp",timestamp);
+        msg->post();
+        return VE_OK;
     }
 
     VEResult VEVideoDecoder::start() {
@@ -179,6 +185,15 @@ namespace VE {
                 onNeedMoreFrame(msg);
                 break;
             }
+            case kWhatSeek:{
+                mIsEOS = false;
+//                std::shared_ptr<AMessage> msg = mNofityEvent->dup();
+//                msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER);
+//                msg->setInt32("ret",VE_OK);
+//                msg->post();
+                postMessage(VE_NOTIFY_EVENT_SEEK_DONE,0,0,0, nullptr);
+                break;
+            }
             default: {
                 ALOGW("VEVideoDecoder::onMessageReceived unknown message");
                 break;
@@ -248,6 +263,7 @@ namespace VE {
             ALOGI("VEVideoDecoder::onStart already started");
             return VE_OK;
         }
+        mIsEOS = false;
         mIsStarted = true;
         auto decodeMsg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
         decodeMsg->post();
@@ -406,6 +422,19 @@ namespace VE {
                 mNotifyMore->post();
             }
         }
+    }
+
+    VEResult VEVideoDecoder::postMessage(int32_t event, int32_t arg1, int32_t arg2, int64_t arg3,
+                                         void *params) {
+        std::shared_ptr<AMessage> msg = mNofityEvent->dup();
+        msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_VIDEO_DECODER);
+        msg->setInt32("event",event);
+        msg->setInt32("arg1",arg1);
+        msg->setInt32("arg2",arg2);
+        msg->setInt64("arg3",arg3);
+        msg->setPointer("params",params);
+        msg->post();
+        return 0;
     }
 
 }

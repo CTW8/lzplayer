@@ -18,7 +18,7 @@ namespace VE {
     public:
         VEVideoDisplay(const std::shared_ptr<AMessage> &notify,
                        const std::shared_ptr<VEAVsync> &avSync);
-        ~VEVideoDisplay();
+        ~VEVideoDisplay() override;
 
         VEResult prepare(VEBundle params) override;
 
@@ -38,7 +38,8 @@ namespace VE {
 
         enum {
             kWhatEOS = 'veos',
-            kWhatProgress = 'prog'
+            kWhatProgress = 'prog',
+            kWhatEvent
         };
 
     private:
@@ -63,6 +64,8 @@ namespace VE {
         VEResult onRelease(std::shared_ptr<AMessage> msg);
 
         VEResult onSurfaceChanged(std::shared_ptr<AMessage> msg);
+
+        VEResult postMessage(int32_t event,int32_t arg1,int32_t arg2,int64_t arg3,void*params);
     private:
         enum {
             kWhatPrepare = 'prep',

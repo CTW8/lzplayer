@@ -63,6 +63,8 @@ namespace VE {
         std::shared_ptr<VEPlayer> mPlayer;
         std::shared_ptr<MediaPlayerListener> mListener;
 
+        bool mEnableLooping = false;
+
         bool mIsSeeking = false;
 
         std::mutex mMutex;

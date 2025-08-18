@@ -12,6 +12,7 @@
 namespace VE {
     class IVEComponent :public virtual AHandler{
     public:
+        virtual ~IVEComponent() = default;
         virtual VEResult prepare(VEBundle params) = 0;
 
         /// start

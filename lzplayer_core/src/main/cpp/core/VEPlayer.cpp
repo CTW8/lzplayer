@@ -102,21 +102,36 @@ namespace VE {
     void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         switch (msg->what()) {
-            case kWhatRenderEvent: {
+            case kWhatComponentEvent: {
                 ALOGI("VEPlayer::onMessageReceived - kWhatRenderEvent received");
-                onRenderNotify(msg);
-                break;
-            }
-            case kWhatAudioDecEvent: {
-                ALOGI("VEPlayer::onMessageReceived - kWhatAudioDecEvent received");
-                break;
-            }
-            case kWhatDemuxEvent: {
-                ALOGI("VEPlayer::onMessageReceived - kWhatDemuxEvent received");
-                break;
-            }
-            case kWhatVideoDecEvent: {
-                ALOGI("VEPlayer::onMessageReceived - kWhatVideoDecEvent received");
+                int type = EComponentType::E_COMPONENT_TYPE_UNKNOW;
+                msg->findInt32("type",&type);
+                switch(type){
+                    case EComponentType::E_COMPONENT_TYPE_AUDIO_DECODER:{
+                        onAudioDecoderEvent(msg);
+                        break;
+                    }
+                    case EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER:{
+                        onVideoRenderEvent(msg);
+                        break;
+                    }
+                    case EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER:{
+                        onAudioRenderEvent(msg);
+                        break;
+                    }
+                    case EComponentType::E_COMPONENT_TYPE_VIDEO_DECODER:{
+                        onVideoDecoderEvent(msg);
+                        break;
+                    }
+                    case EComponentType::E_COMPONENT_TYPE_DEMUX:{
+                        onDemuxEvent(msg);
+                        break;
+                    }
+                    default:{
+                        ALOGD("can't find type:%d",type);
+                        break;
+                    }
+                }
                 break;
             }
             case kWhatSetDataSource: {
@@ -200,11 +215,13 @@ namespace VE {
         }
         mPath = path;
 
+        mRenderNotifyMsg = std::make_shared<AMessage>(kWhatComponentEvent, shared_from_this());
+
         mDemuxLooper = std::make_shared<ALooper>();
         mDemuxLooper->setName("demux_thread");
         mDemuxLooper->start(false);
 
-        mDemux = std::make_shared<VEDemux>();
+        mDemux = std::make_shared<VEDemux>(mRenderNotifyMsg);
         mDemuxLooper->registerHandler(mDemux);
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
@@ -212,7 +229,9 @@ namespace VE {
 
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        if (mDemux->open(mPath) != VE_OK) {
+        VEBundle params;
+        params.set("path", mPath);
+        if (mDemux->prepare(params) != VE_OK) {
             //notify error
             onErrorCallback(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
         }
@@ -220,14 +239,12 @@ namespace VE {
         mMediaInfo = mDemux->getFileInfo();
         mAVSync = std::make_shared<VEAVsync>();
 
-        mRenderNotifyMsg = std::make_shared<AMessage>(kWhatRenderEvent, shared_from_this());
-
         if(mMediaInfo->audio_stream_index != -1) {
             mAudioDecodeLooper = std::make_shared<ALooper>();
             mAudioDecodeLooper->setName("adec_thread");
             mAudioDecodeLooper->start(false);
 
-            mAudioDecoder = std::make_shared<VEAudioDecoder>();
+            mAudioDecoder = std::make_shared<VEAudioDecoder>(mRenderNotifyMsg);
             mAudioDecodeLooper->registerHandler(mAudioDecoder);
             mAudioDecoder->prepare(mDemux);
 
@@ -250,7 +267,7 @@ namespace VE {
             mVideoDecodeLooper->setName("vdec_thread");
             mVideoDecodeLooper->start(false);
 
-            mVideoDecoder = std::make_shared<VEVideoDecoder>();
+            mVideoDecoder = std::make_shared<VEVideoDecoder>(mRenderNotifyMsg);
             mVideoDecodeLooper->registerHandler(mVideoDecoder);
             mVideoDecoder->prepare(mDemux);
 
@@ -325,7 +342,7 @@ namespace VE {
             mAudioOutput->seekTo(timestampMs);
             mVideoDecoder->seekTo(timestampMs);
             mAudioDecoder->seekTo(timestampMs);
-            mDemux->seek(timestampMs);
+            mDemux->seekTo(timestampMs);
             //从这里发出时不对的，应该在精准seek解码后渲染完成后发出
             onSeekComplateCallback();
         }
@@ -337,7 +354,7 @@ namespace VE {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         mVideoDecoder->flush();
         mAudioDecoder->flush();
-        mDemux->seek(0);
+        mDemux->seekTo(0);
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
@@ -427,54 +444,13 @@ namespace VE {
         return 0;
     }
 
-    void VEPlayer::onRenderNotify(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        int32_t what = 0;
-        msg->findInt32("type", &what);
-        switch (what) {
-            case VEVideoDisplay::kWhatEOS: {
-                ALOGI("VEPlayer::%s msg->kWhatEOS video", __FUNCTION__);
-                mVideoEOS = true;
-                onEOS();
-                break;
-            }
-            case VEAudioRender::kWhatEOS: {
-                ALOGI("VEPlayer::%s msg->kWhatEOS audio", __FUNCTION__);
-                mAudioEOS = true;
-                onEOS();
-                break;
-            }
-            case VEVideoRender::kWhatProgress: {
-                int64_t value;
-                ALOGI("VEPlayer::%s progress: %" PRId64, __FUNCTION__, value);
-                msg->findInt64("progress", &value);
-                notifyProgress(value);
-                break;
-            }
-            default: {
-                ALOGI("VEPlayer::%s default", __FUNCTION__);
-                break;
-            }
-        }
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
-    }
-
     void VEPlayer::onEOS() {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         if (mVideoEOS && mAudioEOS) {
-            if (!mEnableLoop) {
-                ALOGI("VEPlayer::%s play complate", __FUNCTION__);
-                onCompleteCallback();
-                mVideoEOS = false;
-                mAudioEOS = false;
-                seek(0);
-                pause();
-            } else {
-                mVideoEOS = false;
-                mAudioEOS = false;
-                seek(0);
-                ALOGI("VEPlayer::%s Starting loop", __FUNCTION__);
-            }
+            ALOGI("VEPlayer::%s play complate", __FUNCTION__);
+            onCompleteCallback();
+            mVideoEOS = false;
+            mAudioEOS = false;
         }
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
     }
@@ -491,6 +467,150 @@ namespace VE {
         }
 
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        return 0;
+    }
+
+    VEResult VEPlayer::onVideoRenderEvent(std::shared_ptr<AMessage> msg) {
+        int eventType = 0;
+        msg->findInt32("event",&eventType);
+        switch (eventType) {
+            case VE_NOTIFY_EVENT_SEEK_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_FLUSH_DOING:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_FLUSH_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_OPEN_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_STOP_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_EOS:{
+                mVideoEOS = true;
+                onEOS();
+                break;
+            }
+            case VE_NOTIFY_EVENT_PROGRESS:{
+                int64_t progress=0;
+                msg->findInt64("arg3",&progress);
+                notifyProgress(progress);
+                break;
+            }
+            default:{
+                ALOGD("event type:%d",eventType);
+                break;
+            }
+        }
+        return 0;
+    }
+
+    VEResult VEPlayer::onAudioRenderEvent(std::shared_ptr<AMessage> msg) {
+        int eventType = 0;
+        msg->findInt32("event",&eventType);
+        switch (eventType) {
+            case VE_NOTIFY_EVENT_SEEK_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_FLUSH_DOING:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_FLUSH_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_OPEN_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_STOP_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_EOS:{
+                mAudioEOS = true;
+                onEOS();
+                break;
+            }
+            default:{
+                ALOGD("event type:%d",eventType);
+                break;
+            }
+        }
+        return 0;
+    }
+
+    VEResult VEPlayer::onVideoDecoderEvent(std::shared_ptr<AMessage> msg) {
+        int eventType = 0;
+        msg->findInt32("event",&eventType);
+        switch (eventType) {
+            case VE_NOTIFY_EVENT_SEEK_DONE:{
+
+                break;
+            }
+            case VE_NOTIFY_EVENT_FLUSH_DOING:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_FLUSH_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_OPEN_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_STOP_DONE:{
+                break;
+            }
+            default:{
+                ALOGD("event type:%d",eventType);
+                break;
+            }
+        }
+        return 0;
+    }
+
+    VEResult VEPlayer::onAudioDecoderEvent(std::shared_ptr<AMessage> msg) {
+        int eventType = 0;
+        msg->findInt32("event",&eventType);
+        switch (eventType) {
+            case VE_NOTIFY_EVENT_SEEK_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_FLUSH_DOING:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_FLUSH_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_OPEN_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_STOP_DONE:{
+                break;
+            }
+        }
+        return 0;
+    }
+
+    VEResult VEPlayer::onDemuxEvent(std::shared_ptr<AMessage> msg) {
+        int eventType = 0;
+        msg->findInt32("event",&eventType);
+        switch (eventType) {
+            case VE_NOTIFY_EVENT_SEEK_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_FLUSH_DOING:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_FLUSH_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_OPEN_DONE:{
+                break;
+            }
+            case VE_NOTIFY_EVENT_STOP_DONE:{
+                break;
+            }
+        }
         return 0;
     }
 }

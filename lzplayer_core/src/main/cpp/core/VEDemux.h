@@ -9,6 +9,8 @@
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "VEError.h"
+#include "IVEComponent.h"
+
 extern "C"
 {
     #include "libavformat/avformat.h"
@@ -17,35 +19,46 @@ extern "C"
     #include "libavutil/timestamp.h"
 }
 namespace VE {
-    class VEDemux : public AHandler {
+    class VEDemux : public IVEComponent {
 
     public:
-        VEDemux();
+        explicit VEDemux(std::shared_ptr<AMessage> &notify);
 
-        ~VEDemux();
+        ~VEDemux() override;
 
-        VEResult open(std::string file);
+        VEResult prepare(VEBundle params) override;
 
-        void start();
+        VEResult seekTo(double timestamp) override;
 
-        void stop();
+        VEResult flush() override;
 
-        void pause();
+        VEResult release() override;
 
+        VEResult start() override;
+
+        VEResult stop() override;
+
+        VEResult pause() override;
+
+    public:
         void needMorePacket(std::shared_ptr<AMessage> msg, int type);
 
         VEResult read(bool isAudio, std::shared_ptr<VEPacket> &packet);
 
-        VEResult seek(double posMs);
-
-        VEResult close();
-
         std::shared_ptr<VEMediaInfo> getFileInfo();
 
     private:
-        VEResult onOpen(std::string path);
+        VEResult onPrepare(std::string path);
 
         VEResult onStart();
+
+        VEResult onPause();
+
+        VEResult onStop();
+
+        VEResult onFlush();
+
+        VEResult onRelease();
 
         VEResult onRead();
 
@@ -54,7 +67,7 @@ namespace VE {
         void putPacket(std::shared_ptr<VEPacket> packet, bool isAudio);
 
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
-
+        VEResult postMessage(int32_t event,int32_t arg1,int32_t arg2,int64_t arg3,void*params);
     private:
         std::string mFilePath;
         int32_t mWidth = 0;
@@ -64,6 +77,8 @@ namespace VE {
         AVCodecParameters *mVideoCodecParams = nullptr;
         AVRational mVideoTimeBase;
         int64_t mVStartTime = 0;
+
+        std::shared_ptr<AMessage> mNotifyEvent = nullptr;
 
         int32_t mSampleRate = 0;
         int32_t mChannel = 0;
@@ -100,19 +115,19 @@ namespace VE {
         std::shared_ptr<VEPacketQueue> mAudioPacketQueue = nullptr;
         AVFormatContext *mFormatContext = nullptr;
 
-
     private:
         enum {
-            kWhatOpen = 'open',
+            kWhatPrepare = 'prep',
             kWhatStart = 'star',
             kWhatStop = 'stop',
             kWhatEOS = 'eos ',
             kWhatPause = 'paus',
             kWhatResume = 'resm',
             kWhatSeek = 'seek',
-            kWhatRead = 'read'
+            kWhatFlush = 'flus',
+            kWhatRead = 'read',
+            kWhatRelease = 'rele',
         };
-
     };
 }
 #endif

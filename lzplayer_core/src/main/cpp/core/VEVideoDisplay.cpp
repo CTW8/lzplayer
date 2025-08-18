@@ -5,6 +5,7 @@
 #include "VEVideoDisplay.h"
 #include "VEVideoDecoder.h"
 #include "VEGLESVideoRenderer.h"
+#include "VEDef.h"
 
 namespace VE {
     VEVideoDisplay::VEVideoDisplay(const std::shared_ptr<AMessage> &notify,
@@ -45,24 +46,24 @@ namespace VE {
         ALOGI("VEVideoDisplay::%s enter",__FUNCTION__ );
         try {
             std::make_shared<AMessage>(kWhatStop, shared_from_this())->post();
-            return 0;
         } catch (const std::bad_weak_ptr &e) {
             ALOGE("VEVideoDisplay::stop - Object not managed by shared_ptr yet");
             return UNKNOWN_ERROR;
         }
-        return 0;
+        return VE_OK;
     }
 
     VEResult VEVideoDisplay::seekTo(double timestamp) {
         ALOGI("VEVideoDisplay::%s enter",__FUNCTION__ );
         try {
-            std::make_shared<AMessage>(kWhatSeek, shared_from_this())->post();
-            return 0;
+            std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
+            msg->setDouble("timestamp",timestamp);
+            msg->post();
         } catch (const std::bad_weak_ptr &e) {
             ALOGE("VEVideoDisplay::pause - Object not managed by shared_ptr yet");
             return UNKNOWN_ERROR;
         }
-        return 0;
+        return VE_OK;
     }
 
     VEResult VEVideoDisplay::flush() {
@@ -190,7 +191,13 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::onSeekTo(double timestamp) {
-        return 0;
+//        std::shared_ptr<AMessage> msg = m_pNotify->dup();
+//        msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER);
+//        msg->setInt32("event",NOTIFY_EVENT_SEEK_DONE);
+//        msg->setInt32("ret",VE_OK);
+//        msg->post();
+        postMessage(VE_NOTIFY_EVENT_SEEK_DONE,0,0,0, nullptr);
+        return VE_OK;
     }
 
     VEResult VEVideoDisplay::onFlush(std::shared_ptr<AMessage> msg) {
@@ -244,10 +251,11 @@ namespace VE {
         m_pVideoRender->renderFrame(frame);
 
         if (m_pNotify) {
-            std::shared_ptr<AMessage> msg = m_pNotify->dup();
-            msg->setInt32("type", kWhatProgress);
-            msg->setInt64("progress", static_cast<int64_t>(frame->getPts()));
-            msg->post();
+//            std::shared_ptr<AMessage> msg = m_pNotify->dup();
+//            msg->setInt32("type", kWhatProgress);
+//            msg->setInt64("progress", static_cast<int64_t>(frame->getPts()));
+//            msg->post();
+            postMessage(VE_NOTIFY_EVENT_PROGRESS,0,0,static_cast<int64_t>(frame->getPts()), nullptr);
             ALOGI("VEGLESVideoRenderer::renderFrame - Notifying progress: %" PRId64, frame->getPts());
         }
         return VE_OK;
@@ -286,9 +294,10 @@ namespace VE {
 
         if (frame->getFrameType() == E_FRAME_TYPE_EOF) {
             ALOGD("VEVideoDisplay::onAVSync E_FRAME_TYPE_EOF");
-            std::shared_ptr<AMessage> eosMsg = m_pNotify->dup();
-            eosMsg->setInt32("type", kWhatEOS);
-            eosMsg->post();
+//            std::shared_ptr<AMessage> eosMsg = m_pNotify->dup();
+//            eosMsg->setInt32("type", kWhatEOS);
+//            eosMsg->post();
+            postMessage(VE_NOTIFY_EVENT_EOS,0,0,0, nullptr);
             return UNKNOWN_ERROR;
         }
 
@@ -351,6 +360,18 @@ namespace VE {
             mViewHeight = height;
             return 0;
         }
+    }
+
+    VEResult VEVideoDisplay::postMessage(int32_t event, int32_t arg1, int32_t arg2,int64_t arg3, void *params) {
+        std::shared_ptr<AMessage> msg = m_pNotify->dup();
+        msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER);
+        msg->setInt32("event",event);
+        msg->setInt32("arg1",arg1);
+        msg->setInt32("arg2",arg2);
+        msg->setInt64("arg3",arg3);
+        msg->setPointer("params",params);
+        msg->post();
+        return 0;
     }
 
 

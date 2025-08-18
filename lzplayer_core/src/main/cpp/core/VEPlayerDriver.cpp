@@ -36,7 +36,12 @@ namespace VE {
             // 否则进入播放完成状态
             currentState = MEDIA_PLAYER_PLAYBACK_COMPLETE;
             ALOGD("VEPlayerDriver --> VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION enter!!!");
-            notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION, 0, 0, nullptr);
+            if(mEnableLooping){
+                currentState = MEDIA_PLAYER_STARTED;
+                seekTo(0);
+            }else{
+                notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION, 0, 0, nullptr);
+            }
         });
 
         mPlayer->setOnPreparedListener([this]() {
@@ -174,7 +179,8 @@ namespace VE {
 
     VEResult VEPlayerDriver::setLooping(bool looping) {
         std::lock_guard<std::mutex> lk(mMutex);
-        mPlayer->setLooping(looping);
+//        mPlayer->setLooping(looping);
+        mEnableLooping = looping;
         return 0;
     }
 

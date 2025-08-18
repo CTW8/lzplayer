@@ -35,6 +35,24 @@ namespace VE {
         E_PACKET_TYPE_EOF
     };
 
+    enum EComponentType{
+        E_COMPONENT_TYPE_UNKNOW = -1,
+        E_COMPONENT_TYPE_VIDEO_RENDER = 0,
+        E_COMPONENT_TYPE_AUDIO_RENDER,
+        E_COMPONENT_TYPE_VIDEO_DECODER,
+        E_COMPONENT_TYPE_AUDIO_DECODER,
+        E_COMPONENT_TYPE_DEMUX
+    };
+
+#define VE_NOTIFY_EVENT_UNKNOW                       -100
+#define VE_NOTIFY_EVENT_SEEK_DONE                    100
+#define VE_NOTIFY_EVENT_OPEN_DONE                    101
+#define VE_NOTIFY_EVENT_STOP_DONE                    102
+#define VE_NOTIFY_EVENT_FLUSH_DOING                  103
+#define VE_NOTIFY_EVENT_FLUSH_DONE                   104
+#define VE_NOTIFY_EVENT_EOS                          105
+#define VE_NOTIFY_EVENT_PROGRESS                     106
+#define VE_NOTIFY_EVENT_ERROR                        107
 
 }
 

@@ -15,7 +15,7 @@ class VEAudioRender : public IVEComponent{
     public:
         VEAudioRender(const std::shared_ptr<AMessage> &notify,const std::shared_ptr<VEAVsync> &avSync);
 
-        ~VEAudioRender();
+        ~VEAudioRender() override;
 
         VEResult prepare(VEBundle params) override;
 
@@ -40,8 +40,9 @@ protected:
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
 
-    private:
+private:
         VEResult onRender();
+    VEResult postMessage(int32_t event,int32_t arg1,int32_t arg2,int64_t arg3,void*params);
 
     private:
         std::shared_ptr<IAudioRender> m_AudioRenderer; // 音频渲染器接口

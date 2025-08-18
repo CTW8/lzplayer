@@ -8,12 +8,13 @@
 #define AUDIO_TARGET_OUTPUT_SAMPLERATE 44100
 #define AUDIO_TARGET_OUTPUT_CHANNELS 2
 namespace VE {
-    VEAudioDecoder::VEAudioDecoder() {
+    VEAudioDecoder::VEAudioDecoder(std::shared_ptr<AMessage> &notify) {
         mAudioCtx = nullptr;
         mMediaInfo = nullptr;
         mIsStarted = false;
         mSwrCtx = nullptr;
         mIsEOS = false;
+        mNotifyEvent = notify;
     }
 
     VEAudioDecoder::~VEAudioDecoder() {
@@ -111,6 +112,12 @@ namespace VE {
             }
             case kWhatNeedMore: {
                 onNeedMoreFrame(msg);
+                break;
+            }
+            case kWhatSeek:{
+                double pts =0;
+                msg->findDouble("timestamp",&pts);
+                onSeek(pts);
                 break;
             }
             default: {
@@ -329,6 +336,7 @@ namespace VE {
             ALOGI("VEAudioDecoder::onStart already started");
             return VE_OK;
         }
+        mIsEOS = false;
         mIsStarted = true;
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
         msg->post();
@@ -401,6 +409,31 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::seekTo(double timestamp) {
-        return flush();
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
+        msg->setDouble("timestamp",timestamp);
+        msg->post();
+        return VE_OK;
+    }
+
+    VEResult VEAudioDecoder::onSeek(double timestamp) {
+//        std::shared_ptr<AMessage> msg = mNotifyEvent->dup();
+//        msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_AUDIO_DECODER);
+//        msg->setInt32("ret",VE_OK);
+//        msg->post();
+        postMessage(VE_NOTIFY_EVENT_SEEK_DONE,0,0,0, nullptr);
+        return VE_OK;
+    }
+
+    VEResult VEAudioDecoder::postMessage(int32_t event, int32_t arg1, int32_t arg2, int64_t arg3,
+                                         void *params) {
+        std::shared_ptr<AMessage> msg = mNotifyEvent->dup();
+        msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_AUDIO_DECODER);
+        msg->setInt32("event",event);
+        msg->setInt32("arg1",arg1);
+        msg->setInt32("arg2",arg2);
+        msg->setInt64("arg3",arg3);
+        msg->setPointer("params",params);
+        msg->post();
+        return 0;
     }
 }
