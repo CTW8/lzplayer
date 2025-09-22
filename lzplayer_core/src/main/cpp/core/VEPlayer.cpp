@@ -213,24 +213,61 @@ namespace VE {
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         
-        // 直接调用demux的open方法，但确保它在demux线程中执行
-        VEResult demuxResult = mDemux->open(mPath);
-        if (demuxResult != VE_OK) {
-            ALOGE("VEPlayer::%s demux open failed", __FUNCTION__);
-            if (onErrorCallback) {
-                onErrorCallback(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
+        // 检查消息类型
+        int32_t isDemuxComplete = 0;
+        int32_t doDemuxOpen = 0;
+        msg->findInt32("demux_complete", &isDemuxComplete);
+        msg->findInt32("do_demux_open", &doDemuxOpen);
+        
+        if (isDemuxComplete == 1) {
+            // demux已完成，继续初始化其他组件
+            ALOGI("VEPlayer::%s received demux complete notification", __FUNCTION__);
+            VEResult result = onPrepareComponents();
+            if (result != VE_OK) {
+                ALOGE("VEPlayer::%s prepare components failed", __FUNCTION__);
+                return result;
             }
-            return VE_PLAYER_ERROR_OPEN_DEMUX_FAILED;
+            ALOGI("VEPlayer::%s exit", __FUNCTION__);
+            return VE_OK;
         }
         
-        // demux打开成功，继续初始化其他组件
-        VEResult result = onPrepareComponents();
-        if (result != VE_OK) {
-            ALOGE("VEPlayer::%s prepare components failed", __FUNCTION__);
-            return result;
+        if (doDemuxOpen == 1) {
+            // 执行demux open操作
+            ALOGI("VEPlayer::%s executing demux open", __FUNCTION__);
+            
+            std::shared_ptr<void> completionMsgObj;
+            msg->findObject("completion_msg", &completionMsgObj);
+            std::shared_ptr<AMessage> completionMsg = std::static_pointer_cast<AMessage>(completionMsgObj);
+            
+            VEResult demuxResult = mDemux->open(mPath);
+            if (demuxResult != VE_OK) {
+                ALOGE("VEPlayer::%s demux open failed", __FUNCTION__);
+                if (onErrorCallback) {
+                    onErrorCallback(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
+                }
+                return VE_PLAYER_ERROR_OPEN_DEMUX_FAILED;
+            }
+            
+            // demux open成功，发送完成通知
+            ALOGI("VEPlayer::%s demux open success, sending completion notification", __FUNCTION__);
+            completionMsg->post();
+            return VE_OK;
         }
-
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        
+        // 首次prepare调用，异步执行demux open
+        ALOGI("VEPlayer::%s starting async demux open", __FUNCTION__);
+        
+        // 创建一个回调消息，当demux完成时会发送此消息
+        std::shared_ptr<AMessage> completionMsg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
+        completionMsg->setInt32("demux_complete", 1);
+        
+        // 异步调用demux open，在独立的任务中执行
+        std::shared_ptr<AMessage> openMsg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
+        openMsg->setInt32("do_demux_open", 1);
+        openMsg->setObject("completion_msg", completionMsg);
+        openMsg->post();
+        
+        ALOGI("VEPlayer::%s exit (async)", __FUNCTION__);
         return VE_OK;
     }
 
