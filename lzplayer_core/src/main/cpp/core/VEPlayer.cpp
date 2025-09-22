@@ -113,7 +113,6 @@ namespace VE {
             }
             case kWhatDemuxEvent: {
                 ALOGI("VEPlayer::onMessageReceived - kWhatDemuxEvent received");
-                onDemuxEvent(msg);
                 break;
             }
             case kWhatVideoDecEvent: {
@@ -214,26 +213,21 @@ namespace VE {
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         
-        // 异步打开demux，完成后再初始化其他组件
-        std::shared_ptr<AMessage> demuxOpenMsg = std::make_shared<AMessage>(kWhatDemuxEvent, shared_from_this());
-        demuxOpenMsg->setString("action", "open");
-        demuxOpenMsg->setString("path", mPath);
-        
-        // 使用postAndAwaitResponse确保demux open完成后再继续
-        std::shared_ptr<AMessage> response;
-        demuxOpenMsg->postAndAwaitResponse(&response);
-        
-        int32_t demuxResult = VE_UNKNOWN_ERROR;
-        if (response && response->findInt32("result", &demuxResult) && demuxResult == VE_OK) {
-            // demux打开成功，继续初始化其他组件
-            onPrepareComponents();
-        } else {
-            // demux打开失败
+        // 直接调用demux的open方法，但确保它在demux线程中执行
+        VEResult demuxResult = mDemux->open(mPath);
+        if (demuxResult != VE_OK) {
             ALOGE("VEPlayer::%s demux open failed", __FUNCTION__);
             if (onErrorCallback) {
                 onErrorCallback(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
             }
             return VE_PLAYER_ERROR_OPEN_DEMUX_FAILED;
+        }
+        
+        // demux打开成功，继续初始化其他组件
+        VEResult result = onPrepareComponents();
+        if (result != VE_OK) {
+            ALOGE("VEPlayer::%s prepare components failed", __FUNCTION__);
+            return result;
         }
 
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
@@ -452,39 +446,6 @@ namespace VE {
 
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
-    }
-
-    VEResult VEPlayer::onDemuxEvent(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        
-        std::string action;
-        if (!msg->findString("action", action)) {
-            ALOGE("VEPlayer::%s no action found", __FUNCTION__);
-            return VE_INVALID_PARAMS;
-        }
-        
-        if (action == "open") {
-            std::string path;
-            if (!msg->findString("path", path)) {
-                ALOGE("VEPlayer::%s no path found", __FUNCTION__);
-                return VE_INVALID_PARAMS;
-            }
-            
-            // 获取reply token
-            std::shared_ptr<AReplyToken> replyToken;
-            msg->senderAwaitsResponse(replyToken);
-            
-            // 执行demux open操作
-            VEResult result = mDemux->open(path);
-            
-            // 发送回复
-            std::shared_ptr<AMessage> reply = std::make_shared<AMessage>();
-            reply->setInt32("result", result);
-            reply->postReply(replyToken);
-        }
-        
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return VE_OK;
     }
 
     VEResult VEPlayer::onPrepareComponents() {
