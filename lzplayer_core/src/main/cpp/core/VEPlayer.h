@@ -147,6 +147,10 @@ namespace VE {
         VEResult onRelease(std::shared_ptr<AMessage> msg);
 
         VEResult onSurfaceChanged(ANativeWindow *win,int viewWidth,int viewHeight);
+        
+        VEResult onPrepareComponents();
+        
+        VEResult onDemuxEvent(std::shared_ptr<AMessage> msg);
 
         pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
         std::shared_ptr<VEDemux> mDemux = nullptr;

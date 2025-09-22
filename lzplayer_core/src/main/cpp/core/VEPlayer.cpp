@@ -113,6 +113,7 @@ namespace VE {
             }
             case kWhatDemuxEvent: {
                 ALOGI("VEPlayer::onMessageReceived - kWhatDemuxEvent received");
+                onDemuxEvent(msg);
                 break;
             }
             case kWhatVideoDecEvent: {
@@ -212,72 +213,31 @@ namespace VE {
 
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        if (mDemux->open(mPath) != VE_OK) {
-            //notify error
-            onErrorCallback(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
+        
+        // 异步打开demux，完成后再初始化其他组件
+        std::shared_ptr<AMessage> demuxOpenMsg = std::make_shared<AMessage>(kWhatDemuxEvent, shared_from_this());
+        demuxOpenMsg->setString("action", "open");
+        demuxOpenMsg->setString("path", mPath);
+        
+        // 使用postAndAwaitResponse确保demux open完成后再继续
+        std::shared_ptr<AMessage> response;
+        demuxOpenMsg->postAndAwaitResponse(&response);
+        
+        int32_t demuxResult = VE_UNKNOWN_ERROR;
+        if (response && response->findInt32("result", &demuxResult) && demuxResult == VE_OK) {
+            // demux打开成功，继续初始化其他组件
+            onPrepareComponents();
+        } else {
+            // demux打开失败
+            ALOGE("VEPlayer::%s demux open failed", __FUNCTION__);
+            if (onErrorCallback) {
+                onErrorCallback(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
+            }
+            return VE_PLAYER_ERROR_OPEN_DEMUX_FAILED;
         }
 
-        mMediaInfo = mDemux->getFileInfo();
-        mAVSync = std::make_shared<VEAVsync>();
-
-        mRenderNotifyMsg = std::make_shared<AMessage>(kWhatRenderEvent, shared_from_this());
-
-        if(mMediaInfo->audio_stream_index != -1) {
-            mAudioDecodeLooper = std::make_shared<ALooper>();
-            mAudioDecodeLooper->setName("adec_thread");
-            mAudioDecodeLooper->start(false);
-
-            mAudioDecoder = std::make_shared<VEAudioDecoder>();
-            mAudioDecodeLooper->registerHandler(mAudioDecoder);
-            mAudioDecoder->prepare(mDemux);
-
-            mAudioOutputLooper = std::make_shared<ALooper>();
-            mAudioOutputLooper->setName("audio_render");
-            mAudioOutputLooper->start(false);
-
-            mAudioOutput = std::make_shared<VEAudioRender>(mRenderNotifyMsg, mAVSync);
-            mAudioOutputLooper->registerHandler(mAudioOutput);
-            VEBundle params;
-            params.set("samplerate",44100);
-            params.set("channel",2);
-            params.set("format",1);
-            params.set("decode",mAudioDecoder);
-            mAudioOutput->prepare(params);
-        }
-
-        if(mMediaInfo->video_stream_index != -1) {
-            mVideoDecodeLooper = std::make_shared<ALooper>();
-            mVideoDecodeLooper->setName("vdec_thread");
-            mVideoDecodeLooper->start(false);
-
-            mVideoDecoder = std::make_shared<VEVideoDecoder>();
-            mVideoDecodeLooper->registerHandler(mVideoDecoder);
-            mVideoDecoder->prepare(mDemux);
-
-            mVideoRenderLooper = std::make_shared<ALooper>();
-            mVideoRenderLooper->setName("video_render");
-            mVideoRenderLooper->start(false);
-            mVideoRender = std::make_shared<VEVideoDisplay>(mRenderNotifyMsg, mAVSync);
-            mVideoRenderLooper->registerHandler(mVideoRender);
-
-//            mVideoRender->prepare(mVideoDecoder, mWindow, mViewWidth, mViewHeight, mMediaInfo->fps);
-
-            VEBundle params;
-            params.set("surface",mWindow);
-            params.set("width",mViewWidth);
-            params.set("height",mViewHeight);
-            params.set("fps",mMediaInfo->fps);
-            params.set("decoder",mVideoDecoder);
-            mVideoRender->prepare(params);
-            // 如果Surface已经设置，则在初始化后调用setSurface
-//            if (mWindow != nullptr) {
-//                mVideoRender->setSurface(mWindow, mViewWidth, mViewHeight);
-//            }
-        }
-
-        onPreparedCallback();
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
+        return VE_OK;
     }
 
     VEResult VEPlayer::onStart(std::shared_ptr<AMessage> msg) {
@@ -492,5 +452,109 @@ namespace VE {
 
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
+    }
+
+    VEResult VEPlayer::onDemuxEvent(std::shared_ptr<AMessage> msg) {
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        
+        std::string action;
+        if (!msg->findString("action", action)) {
+            ALOGE("VEPlayer::%s no action found", __FUNCTION__);
+            return VE_INVALID_PARAMS;
+        }
+        
+        if (action == "open") {
+            std::string path;
+            if (!msg->findString("path", path)) {
+                ALOGE("VEPlayer::%s no path found", __FUNCTION__);
+                return VE_INVALID_PARAMS;
+            }
+            
+            // 获取reply token
+            std::shared_ptr<AReplyToken> replyToken;
+            msg->senderAwaitsResponse(replyToken);
+            
+            // 执行demux open操作
+            VEResult result = mDemux->open(path);
+            
+            // 发送回复
+            std::shared_ptr<AMessage> reply = std::make_shared<AMessage>();
+            reply->setInt32("result", result);
+            reply->postReply(replyToken);
+        }
+        
+        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        return VE_OK;
+    }
+
+    VEResult VEPlayer::onPrepareComponents() {
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        
+        // 获取媒体信息
+        mMediaInfo = mDemux->getFileInfo();
+        if (!mMediaInfo) {
+            ALOGE("VEPlayer::%s failed to get media info", __FUNCTION__);
+            return VE_UNKNOWN_ERROR;
+        }
+        
+        mAVSync = std::make_shared<VEAVsync>();
+        mRenderNotifyMsg = std::make_shared<AMessage>(kWhatRenderEvent, shared_from_this());
+
+        // 初始化音频组件
+        if(mMediaInfo->audio_stream_index != -1) {
+            mAudioDecodeLooper = std::make_shared<ALooper>();
+            mAudioDecodeLooper->setName("adec_thread");
+            mAudioDecodeLooper->start(false);
+
+            mAudioDecoder = std::make_shared<VEAudioDecoder>();
+            mAudioDecodeLooper->registerHandler(mAudioDecoder);
+            mAudioDecoder->prepare(mDemux);
+
+            mAudioOutputLooper = std::make_shared<ALooper>();
+            mAudioOutputLooper->setName("audio_render");
+            mAudioOutputLooper->start(false);
+
+            mAudioOutput = std::make_shared<VEAudioRender>(mRenderNotifyMsg, mAVSync);
+            mAudioOutputLooper->registerHandler(mAudioOutput);
+            VEBundle params;
+            params.set("samplerate",44100);
+            params.set("channel",2);
+            params.set("format",1);
+            params.set("decode",mAudioDecoder);
+            mAudioOutput->prepare(params);
+        }
+
+        // 初始化视频组件
+        if(mMediaInfo->video_stream_index != -1) {
+            mVideoDecodeLooper = std::make_shared<ALooper>();
+            mVideoDecodeLooper->setName("vdec_thread");
+            mVideoDecodeLooper->start(false);
+
+            mVideoDecoder = std::make_shared<VEVideoDecoder>();
+            mVideoDecodeLooper->registerHandler(mVideoDecoder);
+            mVideoDecoder->prepare(mDemux);
+
+            mVideoRenderLooper = std::make_shared<ALooper>();
+            mVideoRenderLooper->setName("video_render");
+            mVideoRenderLooper->start(false);
+            mVideoRender = std::make_shared<VEVideoDisplay>(mRenderNotifyMsg, mAVSync);
+            mVideoRenderLooper->registerHandler(mVideoRender);
+
+            VEBundle params;
+            params.set("surface",mWindow);
+            params.set("width",mViewWidth);
+            params.set("height",mViewHeight);
+            params.set("fps",mMediaInfo->fps);
+            params.set("decoder",mVideoDecoder);
+            mVideoRender->prepare(params);
+        }
+
+        // 所有组件准备完成，通知上层
+        if (onPreparedCallback) {
+            onPreparedCallback();
+        }
+        
+        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        return VE_OK;
     }
 }
