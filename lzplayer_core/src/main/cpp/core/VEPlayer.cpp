@@ -320,9 +320,10 @@ namespace VE {
     }
 
     VEResult VEPlayer::onSeek(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEPlayer::%s enter timestampMs", __FUNCTION__);
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
         double timestampMs;
         if (msg->findDouble("timestampMs", &timestampMs)) {
+            ALOGD("VEPlayer::onSeek timestampMs:%f", timestampMs);
             mVideoRender->seekTo(timestampMs);
             mAudioOutput->seekTo(timestampMs);
             mVideoDecoder->seekTo(timestampMs);

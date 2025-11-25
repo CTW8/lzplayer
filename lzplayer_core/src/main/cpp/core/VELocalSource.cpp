@@ -94,7 +94,8 @@ namespace VE {
             packet = mVideoPacketQueue->get();
         }
 
-        // Resume reading if queues have space and we're not at EOS
+        // Resume reading if queues have space, we're not at EOS, and reading was stopped
+        // (!mIsStarted means reading loop was stopped due to full queues)
         if (mVideoPacketQueue->getRemainingSize() > 0 && 
             mAudioPacketQueue->getRemainingSize() > 0 && 
             !mIsEOS && !mIsStarted) {
@@ -312,8 +313,9 @@ namespace VE {
                 avcodec_parameters_copy(mVideoCodecParams, stream->codecpar);
                 mWidth = mVideoCodecParams->width;
                 mHeight = mVideoCodecParams->height;
-                if (stream->r_frame_rate.den > 0) {
-                    mFps = stream->r_frame_rate.num / stream->r_frame_rate.den;
+                // Calculate fps safely, avoiding division by zero
+                if (stream->r_frame_rate.num > 0 && stream->r_frame_rate.den > 0) {
+                    mFps = static_cast<int32_t>(av_q2d(stream->r_frame_rate));
                 }
             }
         }
@@ -384,7 +386,7 @@ namespace VE {
         if (!packet) {
             ALOGD("VELocalSource::onRead Could not allocate VEPacket");
             ALOGI("VELocalSource::%s exit", __FUNCTION__);
-            return VE_NO_ERROR;
+            return VE_OK;
         }
 
         int ret = av_read_frame(mFormatContext, packet->getPacket());
@@ -457,6 +459,13 @@ namespace VE {
         
         if (!mFormatContext) {
             ALOGE("VELocalSource::onSeek Error: File not opened.");
+            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            return VE_INVALID_PARAMS;
+        }
+
+        // Check if we have a valid video stream to seek
+        if (mVideoIndex < 0 || mVideoIndex >= static_cast<int>(mFormatContext->nb_streams)) {
+            ALOGE("VELocalSource::onSeek Error: Invalid video stream index.");
             ALOGI("VELocalSource::%s exit", __FUNCTION__);
             return VE_INVALID_PARAMS;
         }
