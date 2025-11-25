@@ -250,6 +250,8 @@ void VEPlayer::onSetDataSource(const std::shared_ptr<AMessage> &msg) {
     ALOGI("VEPlayer::%s - Source created for url: %s", __FUNCTION__, url.c_str());
 }
 
+// NuPlayer::onPrepareAsync - Only prepares the source (GenericSource)
+// Decoder/Renderer creation is deferred to onStart()
 void VEPlayer::onPrepareAsync() {
     ALOGI("VEPlayer::%s", __FUNCTION__);
     
@@ -259,7 +261,8 @@ void VEPlayer::onPrepareAsync() {
         return;
     }
     
-    // Prepare source (open file, parse tracks)
+    // Prepare source only (open file, parse tracks) - NuPlayer style
+    // In NuPlayer, GenericSource::prepareAsync() is called here
     VEBundle params;
     params.set("path", mDataSourcePath);
     
@@ -276,79 +279,28 @@ void VEPlayer::onPrepareAsync() {
         return;
     }
     
-    // Create AV sync controller
+    // Create AV sync controller (needed for duration queries)
     mAVSync = std::make_shared<VEAVsync>();
     
-    // Instantiate decoders based on available tracks (NuPlayer::instantiateDecoder style)
-    if (mMediaInfo->audio_stream_index != -1) {
-        // Create audio decoder
-        mAudioDecoderLooper = std::make_shared<ALooper>();
-        mAudioDecoderLooper->setName("audio_decoder");
-        mAudioDecoderLooper->start(false);
-        
-        auto audioNotify = std::make_shared<AMessage>(kWhatAudioNotify, shared_from_this());
-        mAudioDecoder = std::make_shared<VEAudioDecoder>(audioNotify);
-        mAudioDecoderLooper->registerHandler(mAudioDecoder);
-        mAudioDecoder->prepare(mSource);
-        
-        // Create audio renderer
-        mAudioRendererLooper = std::make_shared<ALooper>();
-        mAudioRendererLooper->setName("audio_renderer");
-        mAudioRendererLooper->start(false);
-        
-        auto audioRenderNotify = std::make_shared<AMessage>(kWhatRendererNotify, shared_from_this());
-        mAudioRenderer = std::make_shared<VEAudioRender>(audioRenderNotify, mAVSync);
-        mAudioRendererLooper->registerHandler(mAudioRenderer);
-        
-        VEBundle audioParams;
-        audioParams.set("samplerate", 44100);
-        audioParams.set("channel", 2);
-        audioParams.set("format", 1);
-        audioParams.set("decode", mAudioDecoder);
-        mAudioRenderer->prepare(audioParams);
-        
-        ALOGI("VEPlayer::%s - Audio decoder and renderer created", __FUNCTION__);
-    }
+    // Note: In NuPlayer, decoders and renderers are NOT created here
+    // They are created in onStart() via instantiateDecoder()
     
-    if (mMediaInfo->video_stream_index != -1) {
-        // Create video decoder
-        mVideoDecoderLooper = std::make_shared<ALooper>();
-        mVideoDecoderLooper->setName("video_decoder");
-        mVideoDecoderLooper->start(false);
-        
-        auto videoNotify = std::make_shared<AMessage>(kWhatVideoNotify, shared_from_this());
-        mVideoDecoder = std::make_shared<VEVideoDecoder>(videoNotify);
-        mVideoDecoderLooper->registerHandler(mVideoDecoder);
-        mVideoDecoder->prepare(mSource);
-        
-        // Create video renderer
-        mVideoRendererLooper = std::make_shared<ALooper>();
-        mVideoRendererLooper->setName("video_renderer");
-        mVideoRendererLooper->start(false);
-        
-        auto videoRenderNotify = std::make_shared<AMessage>(kWhatRendererNotify, shared_from_this());
-        mVideoRenderer = std::make_shared<VEVideoDisplay>(videoRenderNotify, mAVSync);
-        mVideoRendererLooper->registerHandler(mVideoRenderer);
-        
-        VEBundle videoParams;
-        videoParams.set("surface", mNativeWindow);
-        videoParams.set("width", mSurfaceWidth);
-        videoParams.set("height", mSurfaceHeight);
-        videoParams.set("fps", mMediaInfo->fps);
-        videoParams.set("decoder", mVideoDecoder);
-        mVideoRenderer->prepare(videoParams);
-        
-        ALOGI("VEPlayer::%s - Video decoder and renderer created", __FUNCTION__);
-    }
+    mPrepared = true;
     
     // Notify prepared (NuPlayer style)
     finishPrepare();
     
-    ALOGI("VEPlayer::%s - Prepare complete", __FUNCTION__);
+    ALOGI("VEPlayer::%s - Source prepare complete (decoders/renderers will be created on start)", __FUNCTION__);
 }
 
+// NuPlayer::onStart - Creates decoders/renderers here via instantiateDecoder()
 void VEPlayer::onStart() {
-    ALOGI("VEPlayer::%s mStarted=%d mPaused=%d", __FUNCTION__, mStarted, mPaused);
+    ALOGI("VEPlayer::%s mStarted=%d mPaused=%d mPrepared=%d", __FUNCTION__, mStarted, mPaused, mPrepared);
+    
+    if (!mPrepared) {
+        ALOGE("VEPlayer::%s - Not prepared", __FUNCTION__);
+        return;
+    }
     
     if (mStarted && mPaused) {
         // Already started, just resume
@@ -364,6 +316,13 @@ void VEPlayer::onStart() {
     mStarted = true;
     mPaused = false;
     mPausedByClient = false;
+    
+    // NuPlayer: instantiate decoders on start, not on prepare
+    // This is the key difference from my previous implementation
+    if (!mDecodersInstantiated) {
+        instantiateDecodersAndRenderers();
+        mDecodersInstantiated = true;
+    }
     
     // Start components in order: renderers -> decoders -> source (NuPlayer style)
     if (mVideoRenderer) {
@@ -531,7 +490,7 @@ void VEPlayer::onReset() {
         mNativeWindow = nullptr;
     }
     
-    // Reset state
+    // Reset state (NuPlayer style)
     mMediaInfo = nullptr;
     mAVSync = nullptr;
     mAudioEOS = false;
@@ -541,6 +500,8 @@ void VEPlayer::onReset() {
     mFlushingAudio = NONE;
     mFlushingVideo = NONE;
     mPlaybackRate = 1.0f;
+    mPrepared = false;
+    mDecodersInstantiated = false;
     
     ALOGI("VEPlayer::%s - Reset complete", __FUNCTION__);
 }
@@ -739,6 +700,79 @@ void VEPlayer::finishSeek() {
     
     mSeeking = false;
     notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE, 0, 0);
+}
+
+// NuPlayer::instantiateDecoder style - called from onStart(), not onPrepare()
+void VEPlayer::instantiateDecodersAndRenderers() {
+    ALOGI("VEPlayer::%s", __FUNCTION__);
+    
+    if (mMediaInfo == nullptr) {
+        ALOGE("VEPlayer::%s - No media info available", __FUNCTION__);
+        return;
+    }
+    
+    // Create audio decoder and renderer (NuPlayer: instantiateDecoder(true, &mAudioDecoder))
+    if (mMediaInfo->audio_stream_index != -1) {
+        // Create audio decoder
+        mAudioDecoderLooper = std::make_shared<ALooper>();
+        mAudioDecoderLooper->setName("audio_decoder");
+        mAudioDecoderLooper->start(false);
+        
+        auto audioNotify = std::make_shared<AMessage>(kWhatAudioNotify, shared_from_this());
+        mAudioDecoder = std::make_shared<VEAudioDecoder>(audioNotify);
+        mAudioDecoderLooper->registerHandler(mAudioDecoder);
+        mAudioDecoder->prepare(mSource);
+        
+        // Create audio renderer (NuPlayer: mRenderer->openAudioSink)
+        mAudioRendererLooper = std::make_shared<ALooper>();
+        mAudioRendererLooper->setName("audio_renderer");
+        mAudioRendererLooper->start(false);
+        
+        auto audioRenderNotify = std::make_shared<AMessage>(kWhatRendererNotify, shared_from_this());
+        mAudioRenderer = std::make_shared<VEAudioRender>(audioRenderNotify, mAVSync);
+        mAudioRendererLooper->registerHandler(mAudioRenderer);
+        
+        VEBundle audioParams;
+        audioParams.set("samplerate", 44100);
+        audioParams.set("channel", 2);
+        audioParams.set("format", 1);
+        audioParams.set("decode", mAudioDecoder);
+        mAudioRenderer->prepare(audioParams);
+        
+        ALOGI("VEPlayer::%s - Audio decoder and renderer instantiated", __FUNCTION__);
+    }
+    
+    // Create video decoder and renderer (NuPlayer: instantiateDecoder(false, &mVideoDecoder))
+    if (mMediaInfo->video_stream_index != -1) {
+        // Create video decoder
+        mVideoDecoderLooper = std::make_shared<ALooper>();
+        mVideoDecoderLooper->setName("video_decoder");
+        mVideoDecoderLooper->start(false);
+        
+        auto videoNotify = std::make_shared<AMessage>(kWhatVideoNotify, shared_from_this());
+        mVideoDecoder = std::make_shared<VEVideoDecoder>(videoNotify);
+        mVideoDecoderLooper->registerHandler(mVideoDecoder);
+        mVideoDecoder->prepare(mSource);
+        
+        // Create video renderer (NuPlayer uses Renderer for scheduling)
+        mVideoRendererLooper = std::make_shared<ALooper>();
+        mVideoRendererLooper->setName("video_renderer");
+        mVideoRendererLooper->start(false);
+        
+        auto videoRenderNotify = std::make_shared<AMessage>(kWhatRendererNotify, shared_from_this());
+        mVideoRenderer = std::make_shared<VEVideoDisplay>(videoRenderNotify, mAVSync);
+        mVideoRendererLooper->registerHandler(mVideoRenderer);
+        
+        VEBundle videoParams;
+        videoParams.set("surface", mNativeWindow);
+        videoParams.set("width", mSurfaceWidth);
+        videoParams.set("height", mSurfaceHeight);
+        videoParams.set("fps", mMediaInfo->fps);
+        videoParams.set("decoder", mVideoDecoder);
+        mVideoRenderer->prepare(videoParams);
+        
+        ALOGI("VEPlayer::%s - Video decoder and renderer instantiated", __FUNCTION__);
+    }
 }
 
 void VEPlayer::handleEOS() {

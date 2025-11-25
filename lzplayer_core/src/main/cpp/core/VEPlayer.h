@@ -109,6 +109,9 @@ namespace VE {
         void finishFlushIfPossible();
         void finishPrepare();
         void handleEOS();
+        
+        // NuPlayer::instantiateDecoder style - called from onStart()
+        void instantiateDecodersAndRenderers();
 
         // --- Message types (aligned with NuPlayer::kWhat*) ---
         enum {
@@ -184,6 +187,10 @@ namespace VE {
         bool mPaused = false;
         bool mPausedByClient = false;
         bool mSourceStarted = false;
+        
+        // NuPlayer-style: prepare only prepares source, decoders instantiated on start
+        bool mPrepared = false;
+        bool mDecodersInstantiated = false;
 
         // Flush state
         FlushStatus mFlushingAudio = NONE;
