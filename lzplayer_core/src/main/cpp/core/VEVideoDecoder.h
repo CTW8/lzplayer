@@ -10,7 +10,6 @@
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "VEDemux.h"
-#include "IVEComponent.h"
 #include "VEBundle.h"
 
 extern "C" {
@@ -22,30 +21,30 @@ extern "C" {
 
 namespace VE {
     class VEVideoDecoder
-            : public IVEComponent{
+            : public AHandler{
     public:
         VEVideoDecoder(std::shared_ptr<AMessage> &nofity);
-        ~VEVideoDecoder() override;
+        ~VEVideoDecoder();
 
         VEResult prepare(std::shared_ptr<VEDemux> demux);
 
-        VEResult prepare(VEBundle params) override;
+        VEResult prepare(VEBundle params);
 
-        VEResult start() override;
+        VEResult start();
 
-        VEResult pause() override;
+        VEResult pause();
 
-        VEResult stop() override;
+        VEResult stop();
 
-        VEResult flush() override;
+        VEResult flush();
 
-        VEResult seekTo(double timestamp) override;
+        VEResult seekTo(double timestamp);
 
         VEResult readFrame(std::shared_ptr<VEFrame> &frame);
 
         void needMoreFrame(std::shared_ptr<AMessage> msg);
 
-        VEResult release() override;
+        VEResult release();
 
     protected:
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;

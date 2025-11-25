@@ -19,7 +19,7 @@ void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
 
 
 namespace VE {
-    class AudioOpenSLESOutput : public IVEComponent{
+    class AudioOpenSLESOutput : public AHandler{
         friend void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
 
     public:
@@ -29,19 +29,19 @@ namespace VE {
 
         VEResult prepare(std::shared_ptr<VEAudioDecoder> decoder, int samplerate, int channel, int format);
 
-        VEResult prepare(VEBundle params) override;
+        VEResult prepare(VEBundle params);
 
-        VEResult start() override;
+        VEResult start();
 
-        VEResult pause() override;
+        VEResult pause();
 
-        VEResult stop() override;
+        VEResult stop();
 
-        VEResult release() override;
+        VEResult release();
 
-        VEResult seekTo(double timestamp) override;
+        VEResult seekTo(double timestamp);
 
-        VEResult flush() override;
+        VEResult flush();
 
     public:
         friend void bufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);

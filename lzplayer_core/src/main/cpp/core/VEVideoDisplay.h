@@ -5,7 +5,6 @@
 #ifndef LZPLAYER_VEVIDEODISPLAY_H
 #define LZPLAYER_VEVIDEODISPLAY_H
 
-#include "IVEComponent.h"
 #include "IVideoRender.h"
 #include "AHandler.h"
 #include "VEVideoDecoder.h"
@@ -14,25 +13,25 @@
 
 namespace VE {
 
-    class VEVideoDisplay :public IVEComponent{
+    class VEVideoDisplay :public AHandler{
     public:
         VEVideoDisplay(const std::shared_ptr<AMessage> &notify,
                        const std::shared_ptr<VEAVsync> &avSync);
-        ~VEVideoDisplay() override;
+        ~VEVideoDisplay();
 
-        VEResult prepare(VEBundle params) override;
+        VEResult prepare(VEBundle params);
 
-        VEResult start() override;
+        VEResult start();
 
-        VEResult stop() override;
+        VEResult stop();
 
-        VEResult seekTo(double timestamp) override;
+        VEResult seekTo(double timestamp);
 
-        VEResult flush() override;
+        VEResult flush();
 
-        VEResult pause() override;
+        VEResult pause();
 
-        VEResult release() override;
+        VEResult release();
 
         VEResult setSurface(ANativeWindow *win, int width, int height);
 

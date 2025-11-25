@@ -10,7 +10,6 @@
 #include "VEDemux.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
-#include "IVEComponent.h"
 #include "VEBundle.h"
 
 extern "C" {
@@ -22,27 +21,27 @@ extern "C" {
     #include "libavutil/opt.h"
 }
 namespace VE {
-    class VEAudioDecoder : public IVEComponent{
+    class VEAudioDecoder : public AHandler{
     public:
         VEAudioDecoder(std::shared_ptr<AMessage> &notify);
 
-        ~VEAudioDecoder() override;
+        ~VEAudioDecoder();
 
         VEResult prepare(std::shared_ptr<VEDemux> demux);
 
-        VEResult start() override;
+        VEResult start();
 
-        VEResult pause() override;
+        VEResult pause();
 
-        VEResult stop() override;
+        VEResult stop();
 
-        VEResult flush() override;
+        VEResult flush();
 
-        VEResult release() override;
+        VEResult release();
 
-        VEResult prepare(VEBundle params) override;
+        VEResult prepare(VEBundle params);
 
-        VEResult seekTo(double timestamp) override;
+        VEResult seekTo(double timestamp);
 
         void needMoreFrame(std::shared_ptr<AMessage> msg);
 

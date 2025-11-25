@@ -13,11 +13,11 @@
 #include <string>
 #include <iostream>
 #include "VEAVsync.h"
-#include "IVEComponent.h"
+
 namespace VE {
     class VEPlayer;
 
-    class VEVideoRender : public IVEComponent {
+    class VEVideoRender : public AHandler {
     public:
         VEVideoRender(const std::shared_ptr<AMessage> &notify,
                       const std::shared_ptr<VEAVsync> &avSync);
@@ -26,21 +26,21 @@ namespace VE {
 
         VEResult prepare(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height,int fps);
 
-        VEResult prepare(VEBundle params) override;
+        VEResult prepare(VEBundle params);
 
-        VEResult start() override;
+        VEResult start();
 
-        VEResult pause() override;
+        VEResult pause();
 
-        VEResult stop() override;
+        VEResult stop();
 
-        VEResult release() override;
+        VEResult release();
 
         VEResult setSurface(ANativeWindow *win, int width, int height);
 
-        VEResult seekTo(double timestamp) override;
+        VEResult seekTo(double timestamp);
 
-        VEResult flush() override;
+        VEResult flush();
 
         VEResult setSpeedRate(double speed);
 

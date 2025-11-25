@@ -9,7 +9,7 @@
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "VEError.h"
-#include "IVEComponent.h"
+#include "VEBundle.h"
 
 extern "C"
 {
@@ -19,26 +19,26 @@ extern "C"
     #include "libavutil/timestamp.h"
 }
 namespace VE {
-    class VEDemux : public IVEComponent {
+    class VEDemux : public AHandler {
 
     public:
         explicit VEDemux(std::shared_ptr<AMessage> &notify);
 
-        ~VEDemux() override;
+        ~VEDemux();
 
-        VEResult prepare(VEBundle params) override;
+        VEResult prepare(VEBundle params);
 
-        VEResult seekTo(double timestamp) override;
+        VEResult seekTo(double timestamp);
 
-        VEResult flush() override;
+        VEResult flush();
 
-        VEResult release() override;
+        VEResult release();
 
-        VEResult start() override;
+        VEResult start();
 
-        VEResult stop() override;
+        VEResult stop();
 
-        VEResult pause() override;
+        VEResult pause();
 
     public:
         void needMorePacket(std::shared_ptr<AMessage> msg, int type);

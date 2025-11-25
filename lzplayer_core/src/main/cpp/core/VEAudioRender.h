@@ -11,25 +11,25 @@
 #include <mutex>
 #include <condition_variable>
 namespace VE {
-class VEAudioRender : public IVEComponent{
+class VEAudioRender : public AHandler{
     public:
         VEAudioRender(const std::shared_ptr<AMessage> &notify,const std::shared_ptr<VEAVsync> &avSync);
 
-        ~VEAudioRender() override;
+        ~VEAudioRender();
 
-        VEResult prepare(VEBundle params) override;
+        VEResult prepare(VEBundle params);
 
-        VEResult start() override;
+        VEResult start();
 
-        VEResult stop() override;
+        VEResult stop();
 
-        VEResult seekTo(double timestamp) override;
+        VEResult seekTo(double timestamp);
 
-        VEResult flush() override;
+        VEResult flush();
 
-        VEResult pause() override;
+        VEResult pause();
 
-        VEResult release() override;
+        VEResult release();
     enum {
         kWhatEOS = 'aeos',
         kWhatError = 'aerr'
