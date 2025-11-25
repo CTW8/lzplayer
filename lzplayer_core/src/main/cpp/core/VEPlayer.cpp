@@ -208,13 +208,18 @@ namespace VE {
         // Create generic source (following NuPlayerSource pattern)
         mSource = std::make_shared<VEGenericSource>();
         mSourceLooper->registerHandler(mSource);
+        
+        // Set data source (NuPlayer pattern: setDataSource before prepareAsync)
+        mSource->setDataSource(mPath);
+        
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        if (mSource->prepareAsync(mPath) != VE_OK) {
+        // Call prepareAsync without path (NuPlayer pattern: path already set via setDataSource)
+        if (mSource->prepareAsync() != VE_OK) {
             //notify error
             onErrorCallback(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "source open failed!!");
         }
@@ -328,7 +333,9 @@ namespace VE {
             mAudioOutput->seekTo(timestampMs);
             mVideoDecoder->seekTo(timestampMs);
             mAudioDecoder->seekTo(timestampMs);
-            mSource->seekTo(static_cast<int64_t>(timestampMs));
+            // Convert milliseconds to microseconds for source (NuPlayer uses microseconds)
+            int64_t seekTimeUs = static_cast<int64_t>(timestampMs * 1000);
+            mSource->seekTo(seekTimeUs, VESource::SEEK_PREVIOUS_SYNC);
             //从这里发出时不对的，应该在精准seek解码后渲染完成后发出
             onSeekComplateCallback();
         }
@@ -340,7 +347,7 @@ namespace VE {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         mVideoDecoder->flush();
         mAudioDecoder->flush();
-        mSource->seekTo(0);
+        mSource->seekTo(0, VESource::SEEK_PREVIOUS_SYNC);
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
