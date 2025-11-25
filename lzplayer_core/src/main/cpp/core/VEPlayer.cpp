@@ -21,21 +21,24 @@ void VEPlayer::setListener(const std::shared_ptr<Listener> &listener) {
     mListener = listener;
 }
 
-VEResult VEPlayer::setDataSource(const std::string &path) {
-    ALOGI("VEPlayer::%s path=%s", __FUNCTION__, path.c_str());
+// NuPlayer::setDataSourceAsync style
+VEResult VEPlayer::setDataSourceAsync(const std::string &url) {
+    ALOGI("VEPlayer::%s url=%s", __FUNCTION__, url.c_str());
     
     auto msg = std::make_shared<AMessage>(kWhatSetDataSource, shared_from_this());
-    msg->setString("path", path);
+    msg->setString("url", url);
     msg->post();
     
     return VE_OK;
 }
 
-VEResult VEPlayer::setVideoSurfaceTexture(VENativeWindow win, int width, int height) {
-    ALOGI("VEPlayer::%s win=%p width=%d height=%d", __FUNCTION__, win, width, height);
+// NuPlayer::setVideoSurfaceTextureAsync style
+VEResult VEPlayer::setVideoSurfaceTextureAsync(VENativeWindow surfaceTexture, int width, int height) {
+    ALOGI("VEPlayer::%s surfaceTexture=%p width=%d height=%d", 
+          __FUNCTION__, surfaceTexture, width, height);
     
     auto msg = std::make_shared<AMessage>(kWhatSetVideoSurface, shared_from_this());
-    msg->setPointer("surface", static_cast<void*>(win));
+    msg->setPointer("surface", static_cast<void*>(surfaceTexture));
     msg->setInt32("width", width);
     msg->setInt32("height", height);
     msg->post();
@@ -43,11 +46,7 @@ VEResult VEPlayer::setVideoSurfaceTexture(VENativeWindow win, int width, int hei
     return VE_OK;
 }
 
-VEResult VEPlayer::prepare() {
-    ALOGI("VEPlayer::%s", __FUNCTION__);
-    return prepareAsync();
-}
-
+// NuPlayer::prepareAsync style
 VEResult VEPlayer::prepareAsync() {
     ALOGI("VEPlayer::%s", __FUNCTION__);
     
@@ -57,6 +56,7 @@ VEResult VEPlayer::prepareAsync() {
     return VE_OK;
 }
 
+// NuPlayer::start style
 VEResult VEPlayer::start() {
     ALOGI("VEPlayer::%s", __FUNCTION__);
     
@@ -66,6 +66,7 @@ VEResult VEPlayer::start() {
     return VE_OK;
 }
 
+// NuPlayer::pause style
 VEResult VEPlayer::pause() {
     ALOGI("VEPlayer::%s", __FUNCTION__);
     
@@ -75,6 +76,7 @@ VEResult VEPlayer::pause() {
     return VE_OK;
 }
 
+// NuPlayer::resume style
 VEResult VEPlayer::resume() {
     ALOGI("VEPlayer::%s", __FUNCTION__);
     
@@ -84,6 +86,7 @@ VEResult VEPlayer::resume() {
     return VE_OK;
 }
 
+// NuPlayer stop (no direct equivalent, we implement it)
 VEResult VEPlayer::stop() {
     ALOGI("VEPlayer::%s", __FUNCTION__);
     
@@ -93,6 +96,7 @@ VEResult VEPlayer::stop() {
     return VE_OK;
 }
 
+// NuPlayer::resetAsync style
 VEResult VEPlayer::resetAsync() {
     ALOGI("VEPlayer::%s", __FUNCTION__);
     
@@ -102,7 +106,8 @@ VEResult VEPlayer::resetAsync() {
     return VE_OK;
 }
 
-VEResult VEPlayer::seekTo(int64_t seekTimeUs, int mode) {
+// NuPlayer::seekToAsync style
+VEResult VEPlayer::seekToAsync(int64_t seekTimeUs, int mode) {
     ALOGI("VEPlayer::%s seekTimeUs=%" PRId64 " mode=%d", __FUNCTION__, seekTimeUs, mode);
     
     auto msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
@@ -129,7 +134,18 @@ int64_t VEPlayer::getDuration() {
 
 VEResult VEPlayer::setPlaybackSettings(float rate) {
     ALOGI("VEPlayer::%s rate=%f", __FUNCTION__, rate);
-    // TODO: Implement playback speed setting
+    std::lock_guard<std::mutex> lock(mLock);
+    mPlaybackRate = rate;
+    // TODO: Apply playback speed to renderer
+    return VE_OK;
+}
+
+VEResult VEPlayer::getPlaybackSettings(float *rate) {
+    std::lock_guard<std::mutex> lock(mLock);
+    if (rate == nullptr) {
+        return VE_BAD_VALUE;
+    }
+    *rate = mPlaybackRate;
     return VE_OK;
 }
 
@@ -140,7 +156,12 @@ VEResult VEPlayer::setLooping(bool looping) {
     return VE_OK;
 }
 
-// ============= Message Handler =============
+bool VEPlayer::isLooping() {
+    std::lock_guard<std::mutex> lock(mLock);
+    return mLooping;
+}
+
+// ============= Message Handler (NuPlayer::onMessageReceived style) =============
 void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     switch (msg->what()) {
         case kWhatSetDataSource:
@@ -184,8 +205,11 @@ void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             break;
 
         case kWhatVideoNotify:
+            onVideoNotify(msg);
+            break;
+
         case kWhatAudioNotify:
-            onDecoderNotify(msg);
+            onAudioNotify(msg);
             break;
 
         case kWhatRendererNotify:
@@ -198,19 +222,19 @@ void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     }
 }
 
-// ============= Internal Handlers (NuPlayer-style) =============
+// ============= Internal Handlers (NuPlayer style) =============
 
 void VEPlayer::onSetDataSource(const std::shared_ptr<AMessage> &msg) {
     ALOGI("VEPlayer::%s", __FUNCTION__);
     
-    std::string path;
-    if (!msg->findString("path", path) || path.empty()) {
-        ALOGE("VEPlayer::%s - Invalid path", __FUNCTION__);
+    std::string url;
+    if (!msg->findString("url", url) || url.empty()) {
+        ALOGE("VEPlayer::%s - Invalid url", __FUNCTION__);
         notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_ERROR, VE_PLAYER_ERROR_UNKNOWN, 0);
         return;
     }
     
-    mDataSourcePath = path;
+    mDataSourcePath = url;
     
     // Create notification message for source
     mNotifyMsg = std::make_shared<AMessage>(kWhatSourceNotify, shared_from_this());
@@ -223,7 +247,7 @@ void VEPlayer::onSetDataSource(const std::shared_ptr<AMessage> &msg) {
     mSource = std::make_shared<VEDemux>(mNotifyMsg);
     mSourceLooper->registerHandler(mSource);
     
-    ALOGI("VEPlayer::%s - Source created for path: %s", __FUNCTION__, path.c_str());
+    ALOGI("VEPlayer::%s - Source created for url: %s", __FUNCTION__, url.c_str());
 }
 
 void VEPlayer::onPrepareAsync() {
@@ -255,7 +279,7 @@ void VEPlayer::onPrepareAsync() {
     // Create AV sync controller
     mAVSync = std::make_shared<VEAVsync>();
     
-    // Instantiate decoders based on available tracks
+    // Instantiate decoders based on available tracks (NuPlayer::instantiateDecoder style)
     if (mMediaInfo->audio_stream_index != -1) {
         // Create audio decoder
         mAudioDecoderLooper = std::make_shared<ALooper>();
@@ -324,11 +348,16 @@ void VEPlayer::onPrepareAsync() {
 }
 
 void VEPlayer::onStart() {
-    ALOGI("VEPlayer::%s mStarted=%d", __FUNCTION__, mStarted);
+    ALOGI("VEPlayer::%s mStarted=%d mPaused=%d", __FUNCTION__, mStarted, mPaused);
     
-    if (mStarted) {
+    if (mStarted && mPaused) {
         // Already started, just resume
         onResume();
+        return;
+    }
+    
+    if (mStarted) {
+        // Already started and running
         return;
     }
     
@@ -336,7 +365,7 @@ void VEPlayer::onStart() {
     mPaused = false;
     mPausedByClient = false;
     
-    // Start components in order: renderers -> decoders -> source
+    // Start components in order: renderers -> decoders -> source (NuPlayer style)
     if (mVideoRenderer) {
         mVideoRenderer->start();
     }
@@ -358,16 +387,16 @@ void VEPlayer::onStart() {
 }
 
 void VEPlayer::onPause() {
-    ALOGI("VEPlayer::%s", __FUNCTION__);
+    ALOGI("VEPlayer::%s mStarted=%d mPaused=%d", __FUNCTION__, mStarted, mPaused);
     
-    if (!mStarted) {
+    if (!mStarted || mPaused) {
         return;
     }
     
     mPaused = true;
     mPausedByClient = true;
     
-    // Pause all components
+    // Pause all components (NuPlayer style)
     if (mVideoRenderer) {
         mVideoRenderer->pause();
     }
@@ -388,7 +417,7 @@ void VEPlayer::onPause() {
 }
 
 void VEPlayer::onResume() {
-    ALOGI("VEPlayer::%s", __FUNCTION__);
+    ALOGI("VEPlayer::%s mPaused=%d", __FUNCTION__, mPaused);
     
     if (!mPaused) {
         return;
@@ -397,7 +426,7 @@ void VEPlayer::onResume() {
     mPaused = false;
     mPausedByClient = false;
     
-    // Resume all components
+    // Resume all components (NuPlayer style)
     if (mVideoRenderer) {
         mVideoRenderer->start();
     }
@@ -450,7 +479,7 @@ void VEPlayer::onReset() {
     // Stop everything first
     onStop();
     
-    // Release all components
+    // Release all components (NuPlayer style shutdown)
     if (mVideoRenderer) {
         mVideoRenderer->release();
         mVideoRenderer = nullptr;
@@ -511,6 +540,7 @@ void VEPlayer::onReset() {
     mSeeking = false;
     mFlushingAudio = NONE;
     mFlushingVideo = NONE;
+    mPlaybackRate = 1.0f;
     
     ALOGI("VEPlayer::%s - Reset complete", __FUNCTION__);
 }
@@ -540,7 +570,7 @@ void VEPlayer::onSetVideoSurface(const std::shared_ptr<AMessage> &msg) {
     
     mNativeWindow = static_cast<VENativeWindow>(surface);
     
-    // If video renderer exists, update surface
+    // If video renderer exists, update surface (NuPlayer style)
     if (mVideoRenderer) {
         mVideoRenderer->setSurface(mNativeWindow, mSurfaceWidth, mSurfaceHeight);
     }
@@ -569,29 +599,42 @@ void VEPlayer::onSourceNotify(const std::shared_ptr<AMessage> &msg) {
     }
 }
 
-void VEPlayer::onDecoderNotify(const std::shared_ptr<AMessage> &msg) {
+void VEPlayer::onVideoNotify(const std::shared_ptr<AMessage> &msg) {
     int32_t what = 0;
     msg->findInt32("event", &what);
     
-    bool audio = (msg->what() == kWhatAudioNotify);
-    ALOGI("VEPlayer::%s audio=%d what=%d", __FUNCTION__, audio, what);
+    ALOGI("VEPlayer::%s what=%d", __FUNCTION__, what);
     
     switch (what) {
         case VE_NOTIFY_EVENT_EOS:
-            if (audio) {
-                mAudioEOS = true;
-            } else {
-                mVideoEOS = true;
-            }
+            mVideoEOS = true;
             handleEOS();
             break;
             
         case VE_NOTIFY_EVENT_FLUSH_DONE:
-            if (audio) {
-                mFlushingAudio = FLUSHED;
-            } else {
-                mFlushingVideo = FLUSHED;
-            }
+            mFlushingVideo = FLUSHED;
+            finishFlushIfPossible();
+            break;
+            
+        default:
+            break;
+    }
+}
+
+void VEPlayer::onAudioNotify(const std::shared_ptr<AMessage> &msg) {
+    int32_t what = 0;
+    msg->findInt32("event", &what);
+    
+    ALOGI("VEPlayer::%s what=%d", __FUNCTION__, what);
+    
+    switch (what) {
+        case VE_NOTIFY_EVENT_EOS:
+            mAudioEOS = true;
+            handleEOS();
+            break;
+            
+        case VE_NOTIFY_EVENT_FLUSH_DONE:
+            mFlushingAudio = FLUSHED;
             finishFlushIfPossible();
             break;
             
@@ -640,13 +683,15 @@ void VEPlayer::onRendererNotify(const std::shared_ptr<AMessage> &msg) {
     }
 }
 
-// ============= Helper Methods =============
+// ============= Helper Methods (NuPlayer style) =============
 
 void VEPlayer::performSeek(int64_t seekTimeUs, int mode) {
-    ALOGI("VEPlayer::%s seekTimeUs=%" PRId64, __FUNCTION__, seekTimeUs);
+    ALOGI("VEPlayer::%s seekTimeUs=%" PRId64 " mode=%d", __FUNCTION__, seekTimeUs, mode);
     
     if (mSeeking) {
-        ALOGI("VEPlayer::%s - Already seeking, skip", __FUNCTION__);
+        ALOGI("VEPlayer::%s - Already seeking, updating target", __FUNCTION__);
+        mSeekTimeUs = seekTimeUs;
+        mSeekMode = mode;
         return;
     }
     
@@ -662,7 +707,7 @@ void VEPlayer::performSeek(int64_t seekTimeUs, int mode) {
         onPause();
     }
     
-    // Flush decoders and renderers
+    // Flush decoders and renderers (NuPlayer style)
     if (mVideoRenderer) {
         mVideoRenderer->flush();
     }
@@ -700,7 +745,7 @@ void VEPlayer::handleEOS() {
     ALOGI("VEPlayer::%s audioEOS=%d videoEOS=%d sentEOS=%d", 
           __FUNCTION__, mAudioEOS, mVideoEOS, mSentEOS);
     
-    // Check if both audio and video have reached EOS
+    // Check if both audio and video have reached EOS (NuPlayer style)
     bool audioComplete = (mAudioDecoder == nullptr) || mAudioEOS;
     bool videoComplete = (mVideoDecoder == nullptr) || mVideoEOS;
     
@@ -708,7 +753,7 @@ void VEPlayer::handleEOS() {
         mSentEOS = true;
         
         if (mLooping) {
-            // Seek to beginning for looping
+            // Seek to beginning for looping (NuPlayer style)
             performSeek(0, 0);
             mSentEOS = false;
         } else {
@@ -731,6 +776,11 @@ void VEPlayer::finishFlushIfPossible() {
     // Both flushed, reset state
     mFlushingAudio = NONE;
     mFlushingVideo = NONE;
+}
+
+void VEPlayer::finishPrepare() {
+    ALOGI("VEPlayer::%s", __FUNCTION__);
+    notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_PREPARED, 0, 0);
 }
 
 void VEPlayer::notifyListener(int msg, int ext1, int ext2, const void *obj) {

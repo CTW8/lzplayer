@@ -33,17 +33,19 @@ namespace VE {
 
     /**
      * VEPlayer - NuPlayer-style media player implementation
+     * Reference: frameworks/av/media/libmediaplayerservice/nuplayer/NuPlayer.h
      * 
      * Architecture follows Android NuPlayer design:
      * - Source: Media source abstraction (similar to GenericSource)
-     * - Decoders: Audio/Video decoders
+     * - Decoders: Audio/Video decoders (VEAudioDecoder, VEVideoDecoder)
      * - Renderer: Audio/Video rendering and synchronization
      * 
      * All operations are async via AHandler/ALooper message passing.
+     * Note: DRM support is not included as per requirements.
      */
     class VEPlayer : public AHandler {
     public:
-        // Listener interface for player events (similar to NuPlayerDriver::notifyListener)
+        // Listener interface for player events (similar to NuPlayer::notifyListener)
         struct Listener {
             virtual void notify(int msg, int ext1, int ext2, const void *obj) = 0;
             virtual ~Listener() = default;
@@ -52,15 +54,16 @@ namespace VE {
         VEPlayer();
         ~VEPlayer();
 
-        // --- Driver Interface (called from VEPlayerDriver) ---
+        // --- Driver Interface (called from VEPlayerDriver, all async) ---
         void setListener(const std::shared_ptr<Listener> &listener);
 
-        // Data source operations
-        VEResult setDataSource(const std::string &path);
-        VEResult setVideoSurfaceTexture(VENativeWindow win, int width, int height);
+        // Data source operations (NuPlayer::setDataSourceAsync)
+        VEResult setDataSourceAsync(const std::string &url);
+        
+        // Video surface (NuPlayer::setVideoSurfaceTextureAsync)
+        VEResult setVideoSurfaceTextureAsync(VENativeWindow surfaceTexture, int width, int height);
 
-        // Playback control
-        VEResult prepare();
+        // Playback control (NuPlayer style - all async)
         VEResult prepareAsync();
         VEResult start();
         VEResult pause();
@@ -68,19 +71,21 @@ namespace VE {
         VEResult stop();
         VEResult resetAsync();
 
-        // Seek operation
-        VEResult seekTo(int64_t seekTimeUs, int mode = 0 /* SEEK_PREVIOUS_SYNC */);
+        // Seek operation (NuPlayer::seekToAsync)
+        VEResult seekToAsync(int64_t seekTimeUs, int mode = 0 /* SEEK_PREVIOUS_SYNC */);
 
         // Properties
         int64_t getCurrentPosition();
         int64_t getDuration();
         VEResult setPlaybackSettings(float rate);
+        VEResult getPlaybackSettings(float *rate);
         VEResult setLooping(bool looping);
+        bool isLooping();
 
     private:
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
-        // --- Internal message handlers ---
+        // --- Internal message handlers (NuPlayer style) ---
         void onSetDataSource(const std::shared_ptr<AMessage> &msg);
         void onPrepareAsync();
         void onStart();
@@ -91,9 +96,10 @@ namespace VE {
         void onSeek(const std::shared_ptr<AMessage> &msg);
         void onSetVideoSurface(const std::shared_ptr<AMessage> &msg);
 
-        // Source/Decoder/Renderer event handlers
+        // Source/Decoder/Renderer event handlers (NuPlayer style)
         void onSourceNotify(const std::shared_ptr<AMessage> &msg);
-        void onDecoderNotify(const std::shared_ptr<AMessage> &msg);
+        void onVideoNotify(const std::shared_ptr<AMessage> &msg);
+        void onAudioNotify(const std::shared_ptr<AMessage> &msg);
         void onRendererNotify(const std::shared_ptr<AMessage> &msg);
 
         // Helper methods
@@ -101,16 +107,14 @@ namespace VE {
         void finishSeek();
         void notifyListener(int msg, int ext1, int ext2, const void *obj = nullptr);
         void finishFlushIfPossible();
-        void tryOpenAudioSink();
-        void instantiateDecoder(bool audio, std::shared_ptr<AMessage> *format);
         void finishPrepare();
         void handleEOS();
 
-        // --- Message types (aligned with NuPlayer) ---
+        // --- Message types (aligned with NuPlayer::kWhat*) ---
         enum {
-            kWhatSetDataSource          = 'sDS ',
+            kWhatSetDataSource          = 'setD',
             kWhatPrepare                = 'prep',
-            kWhatSetVideoSurface        = 'sVSu',
+            kWhatSetVideoSurface        = 'setSf',
             kWhatStart                  = 'strt',
             kWhatPause                  = 'paus',
             kWhatResume                 = 'rsme',
@@ -122,7 +126,9 @@ namespace VE {
             kWhatAudioNotify            = 'audN',
             kWhatRendererNotify         = 'renN',
             kWhatClosedCaptionNotify    = 'capN',
-            kWhatScanSources            = 'scan',
+            kWhatGetTrackInfo           = 'gTrI',
+            kWhatGetSelectedTrack       = 'gSel',
+            kWhatSelectTrack            = 'selT',
             kWhatFlush                  = 'flus',
             kWhatPerformSeek            = 'prSk',
         };
@@ -137,20 +143,20 @@ namespace VE {
             SHUT_DOWN,
         };
 
-        // --- Member variables ---
+        // --- Member variables (NuPlayer style) ---
         std::weak_ptr<Listener> mListener;
 
         // Source - handles media demuxing (similar to GenericSource)
         std::shared_ptr<VEDemux> mSource;
         std::shared_ptr<ALooper> mSourceLooper;
 
-        // Decoders
+        // Decoders (NuPlayer uses mAudioDecoder, mVideoDecoder)
         std::shared_ptr<VEAudioDecoder> mAudioDecoder;
         std::shared_ptr<ALooper> mAudioDecoderLooper;
         std::shared_ptr<VEVideoDecoder> mVideoDecoder;
         std::shared_ptr<ALooper> mVideoDecoderLooper;
 
-        // Renderer - handles audio/video output and sync
+        // Renderer - handles audio/video output and sync (NuPlayer uses mRenderer)
         std::shared_ptr<VEAudioRender> mAudioRenderer;
         std::shared_ptr<ALooper> mAudioRendererLooper;
         std::shared_ptr<VEVideoDisplay> mVideoRenderer;
@@ -165,7 +171,7 @@ namespace VE {
         // Media info
         std::shared_ptr<VEMediaInfo> mMediaInfo;
 
-        // Data source path
+        // Data source path/URL
         std::string mDataSourcePath;
 
         // Surface info
@@ -173,7 +179,7 @@ namespace VE {
         int mSurfaceWidth = 0;
         int mSurfaceHeight = 0;
 
-        // Playback state
+        // Playback state (NuPlayer style)
         bool mStarted = false;
         bool mPaused = false;
         bool mPausedByClient = false;
@@ -195,6 +201,9 @@ namespace VE {
 
         // Looping
         bool mLooping = false;
+        
+        // Playback speed
+        float mPlaybackRate = 1.0f;
 
         // Timestamps
         int64_t mPendingAudioAccessUnitTimeUs = -1;

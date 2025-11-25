@@ -3,6 +3,7 @@
 //
 // VEPlayerDriver - NuPlayerDriver-style wrapper for VEPlayer
 // Provides thread-safe interface and state machine management
+// Reference: frameworks/av/media/libmediaplayerservice/nuplayer/NuPlayerDriver.h
 //
 
 #ifndef LZPLAYER_VEPLAYERDRIVER_H
@@ -33,13 +34,20 @@ public:
  * 
  * This class provides:
  * 1. Thread-safe wrapper around VEPlayer
- * 2. State machine management (similar to NuPlayerDriver)
+ * 2. State machine management (aligned with NuPlayerDriver)
  * 3. Synchronous/Asynchronous operation support
  * 4. Event notification to client
+ * 
+ * State machine (from NuPlayerDriver):
+ * IDLE -> SET_DATASOURCE_PENDING -> UNPREPARED
+ * UNPREPARED -> PREPARING -> PREPARED
+ * PREPARED -> RUNNING <-> PAUSED
+ * RUNNING/PAUSED -> STOPPED
+ * Any state -> RESET_IN_PROGRESS -> IDLE
  */
 class VEPlayerDriver {
 public:
-    // Player states (aligned with Android MediaPlayer states)
+    // Player states (aligned exactly with NuPlayerDriver::State)
     enum State {
         STATE_IDLE,
         STATE_SET_DATASOURCE_PENDING,
@@ -57,36 +65,40 @@ public:
     VEPlayerDriver();
     ~VEPlayerDriver();
 
-    // --- Client interface ---
+    // --- Client interface (aligned with NuPlayerDriver) ---
     VEResult setListener(const std::shared_ptr<MediaPlayerListener> &listener);
     
-    // Data source
-    VEResult setDataSource(const std::string &path);
+    // Data source (NuPlayerDriver::setDataSource)
+    VEResult setDataSource(const std::string &url);
     
-    // Surface
-    VEResult setVideoSurfaceTexture(VENativeWindow win, int width, int height);
+    // Video surface (NuPlayerDriver::setVideoSurfaceTexture)
+    VEResult setVideoSurfaceTexture(VENativeWindow surfaceTexture, int width, int height);
     
-    // Prepare
+    // Prepare (NuPlayerDriver::prepare/prepareAsync)
     VEResult prepare();
     VEResult prepareAsync();
     
-    // Playback control
+    // Playback control (NuPlayerDriver::start/pause/stop/reset)
     VEResult start();
     VEResult pause();
     VEResult stop();
     VEResult reset();
     
-    // Seek
+    // Seek (NuPlayerDriver::seekTo)
+    // mode: SEEK_PREVIOUS_SYNC = 0, SEEK_NEXT_SYNC = 1, SEEK_CLOSEST_SYNC = 2, SEEK_CLOSEST = 3
     VEResult seekTo(int64_t msec, int mode = 0);
     
-    // Properties
-    int64_t getCurrentPosition();
-    int64_t getDuration();
-    VEResult setLooping(bool looping);
+    // Properties (NuPlayerDriver getters/setters)
+    VEResult getCurrentPosition(int64_t *msec);
+    VEResult getDuration(int64_t *msec);
+    VEResult setLooping(bool loop);
+    bool isLooping();
     VEResult setPlaybackSettings(float rate);
+    VEResult getPlaybackSettings(float *rate);
 
     // Get current state
     State getState() const;
+    bool isPlaying();
 
     // Legacy interface compatibility
     VEResult setSurface(VENativeWindow win, int width, int height) {
@@ -94,6 +106,16 @@ public:
     }
     VEResult setSpeedRate(float speed) {
         return setPlaybackSettings(speed);
+    }
+    int64_t getCurrentPosition() {
+        int64_t msec = 0;
+        getCurrentPosition(&msec);
+        return msec;
+    }
+    int64_t getDuration() {
+        int64_t msec = 0;
+        getDuration(&msec);
+        return msec;
     }
 
 private:
@@ -114,7 +136,8 @@ private:
     void onPlayerNotify(int msg, int ext1, int ext2, const void *obj);
     
     // Internal helpers
-    void notifyListener_l(int msg, int ext1, int ext2, const void *obj = nullptr);
+    void notifySeekComplete_l();
+    void notifyListener_l(int msg, int ext1 = 0, int ext2 = 0, const void *obj = nullptr);
     bool isValidStateForOperation_l(const char *operation) const;
 
     // Member variables
@@ -126,9 +149,12 @@ private:
     bool mLooping;
     bool mAutoLoop;
     
-    // Duration and position
+    // Duration and position (in microseconds internally, milliseconds externally)
     int64_t mDurationUs;
     int64_t mPositionUs;
+    
+    // Start time for position calculation
+    int64_t mStartupSeekTimeUs;
     
     // Seeking state
     bool mSeeking;
@@ -144,6 +170,10 @@ private:
     
     // Playback rate
     float mPlaybackRate;
+    
+    // Number of frames dropped
+    int64_t mNumFramesTotal;
+    int64_t mNumFramesDropped;
 };
 
 } // namespace VE
