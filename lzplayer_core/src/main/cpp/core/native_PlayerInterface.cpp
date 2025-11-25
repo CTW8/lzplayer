@@ -107,39 +107,30 @@ namespace VE {
     }
 //-----------------------------------------------------------------------------------
 
-    // Store player instance with shared_ptr for proper lifecycle management
-    static std::shared_ptr<VEPlayerDriver> getPlayer(jlong handle) {
-        // Note: For now we use raw pointer, but in production should use ref counting
-        return nullptr;
-    }
-
     jlong createNativeHandle(JNIEnv *env, jclass clazz) {
         ALOGD("%s %d called", __FUNCTION__, __LINE__);
         
-        // Create player driver - note: we need to manage lifecycle carefully
-        auto player = std::make_shared<VEPlayerDriver>();
+        // Create player driver with raw pointer - caller is responsible for calling nativeRelease
+        VEPlayerDriver *player = new VEPlayerDriver();
 
         jclass clazzNativeLib;
 
         clazzNativeLib = env->FindClass("com/example/lzplayer_core/NativeLib");
         if (clazzNativeLib == NULL) {
+            delete player;
             return -1;
         }
 
         jNativeCallback = env->GetStaticMethodID(clazz, "postEventFromNative",
                                                  "(Ljava/lang/Object;IIDLjava/lang/Object;)V");
         if (jNativeCallback == NULL) {
+            delete player;
             return -1;
         }
 
         env->DeleteLocalRef(clazzNativeLib);
 
-        // Store as raw pointer - caller is responsible for calling nativeRelease
-        VEPlayerDriver* rawPlayer = player.get();
-        // Keep shared_ptr alive by preventing deletion
-        new std::shared_ptr<VEPlayerDriver>(player);
-        
-        return reinterpret_cast<jlong>(rawPlayer);
+        return reinterpret_cast<jlong>(player);
     }
 
 // 初始化
@@ -226,7 +217,6 @@ namespace VE {
         VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
         CHECK_NULL();
         vePlayer->reset();
-        // Note: The shared_ptr will be properly deleted when refcount reaches 0
         delete vePlayer;
         return 0;
     }

@@ -31,8 +31,8 @@ VEPlayerDriver::VEPlayerDriver()
     mLooper->start(false);
     mLooper->registerHandler(mPlayer);
     
-    // Set this as the listener for player events
-    // Note: We use a weak reference pattern through shared_from_this()
+    // Create internal listener to bridge events from VEPlayer to VEPlayerDriver
+    mPlayerListener = std::make_shared<PlayerListener>(this);
 }
 
 VEPlayerDriver::~VEPlayerDriver() {
@@ -45,6 +45,7 @@ VEPlayerDriver::~VEPlayerDriver() {
     }
     
     mPlayer = nullptr;
+    mPlayerListener = nullptr;
 }
 
 VEResult VEPlayerDriver::setListener(const std::shared_ptr<MediaPlayerListener> &listener) {
@@ -96,7 +97,7 @@ VEResult VEPlayerDriver::prepare() {
     mState = STATE_PREPARING;
     
     // Set listener before prepare
-    mPlayer->setListener(std::dynamic_pointer_cast<VEPlayer::Listener>(shared_from_this()));
+    mPlayer->setListener(mPlayerListener);
     
     VEResult result = mPlayer->prepare();
     if (result != VE_OK) {
@@ -125,7 +126,7 @@ VEResult VEPlayerDriver::prepareAsync() {
     mState = STATE_PREPARING;
     
     // Set listener before prepare
-    mPlayer->setListener(std::dynamic_pointer_cast<VEPlayer::Listener>(shared_from_this()));
+    mPlayer->setListener(mPlayerListener);
     
     return mPlayer->prepareAsync();
 }
@@ -322,23 +323,23 @@ VEPlayerDriver::State VEPlayerDriver::getState() const {
     return mState;
 }
 
-// ============= VEPlayer::Listener Implementation =============
+// ============= Player Event Handler =============
 
-void VEPlayerDriver::notify(int msg, int ext1, int ext2, const void *obj) {
+void VEPlayerDriver::onPlayerNotify(int msg, int ext1, int ext2, const void *obj) {
     ALOGI("VEPlayerDriver::%s msg=%d ext1=%d ext2=%d", __FUNCTION__, msg, ext1, ext2);
     
     std::unique_lock<std::mutex> lock(mLock);
     
     switch (msg) {
         case VE_PLAYER_NOTIFY_EVENT_ON_PREPARED:
-            ALOGI("VEPlayerDriver::notify - PREPARED");
+            ALOGI("VEPlayerDriver::onPlayerNotify - PREPARED");
             mState = STATE_PREPARED;
             mCondition.notify_all();
             notifyListener_l(msg, ext1, ext2, obj);
             break;
             
         case VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION:
-            ALOGI("VEPlayerDriver::notify - COMPLETION");
+            ALOGI("VEPlayerDriver::onPlayerNotify - COMPLETION");
             mAtEOS = true;
             if (mLooping) {
                 // Seek to beginning for looping
@@ -351,14 +352,14 @@ void VEPlayerDriver::notify(int msg, int ext1, int ext2, const void *obj) {
             break;
             
         case VE_PLAYER_NOTIFY_EVENT_ON_ERROR:
-            ALOGE("VEPlayerDriver::notify - ERROR ext1=%d", ext1);
+            ALOGE("VEPlayerDriver::onPlayerNotify - ERROR ext1=%d", ext1);
             mState = STATE_IDLE;
             mCondition.notify_all();
             notifyListener_l(msg, ext1, ext2, obj);
             break;
             
         case VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE:
-            ALOGI("VEPlayerDriver::notify - SEEK_DONE");
+            ALOGI("VEPlayerDriver::onPlayerNotify - SEEK_DONE");
             mSeeking = false;
             mSeekInProgress = -1;
             notifyListener_l(msg, ext1, ext2, obj);
@@ -375,7 +376,7 @@ void VEPlayerDriver::notify(int msg, int ext1, int ext2, const void *obj) {
             break;
             
         default:
-            ALOGW("VEPlayerDriver::notify - Unknown msg: %d", msg);
+            ALOGW("VEPlayerDriver::onPlayerNotify - Unknown msg: %d", msg);
             notifyListener_l(msg, ext1, ext2, obj);
             break;
     }

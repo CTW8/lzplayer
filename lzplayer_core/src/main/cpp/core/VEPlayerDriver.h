@@ -37,8 +37,7 @@ public:
  * 3. Synchronous/Asynchronous operation support
  * 4. Event notification to client
  */
-class VEPlayerDriver : public VEPlayer::Listener,
-                       public std::enable_shared_from_this<VEPlayerDriver> {
+class VEPlayerDriver {
 public:
     // Player states (aligned with Android MediaPlayer states)
     enum State {
@@ -98,8 +97,21 @@ public:
     }
 
 private:
-    // VEPlayer::Listener implementation
-    void notify(int msg, int ext1, int ext2, const void *obj) override;
+    // Internal listener class that bridges VEPlayer events to VEPlayerDriver
+    class PlayerListener : public VEPlayer::Listener {
+    public:
+        explicit PlayerListener(VEPlayerDriver *driver) : mDriver(driver) {}
+        void notify(int msg, int ext1, int ext2, const void *obj) override {
+            if (mDriver) {
+                mDriver->onPlayerNotify(msg, ext1, ext2, obj);
+            }
+        }
+    private:
+        VEPlayerDriver *mDriver;
+    };
+    
+    // Called by PlayerListener
+    void onPlayerNotify(int msg, int ext1, int ext2, const void *obj);
     
     // Internal helpers
     void notifyListener_l(int msg, int ext1, int ext2, const void *obj = nullptr);
@@ -125,22 +137,14 @@ private:
     // Player and looper
     std::shared_ptr<VEPlayer> mPlayer;
     std::shared_ptr<ALooper> mLooper;
+    std::shared_ptr<PlayerListener> mPlayerListener;
     
     // Client listener
     std::weak_ptr<MediaPlayerListener> mListener;
     
     // Playback rate
     float mPlaybackRate;
-
-    DISALLOW_EVIL_CONSTRUCTORS(VEPlayerDriver);
 };
-
-// Macro definition for disallowing copy/assign
-#ifndef DISALLOW_EVIL_CONSTRUCTORS
-#define DISALLOW_EVIL_CONSTRUCTORS(name) \
-    name(const name&) = delete; \
-    name& operator=(const name&) = delete;
-#endif
 
 } // namespace VE
 
