@@ -1,6 +1,9 @@
 //
 // Created by 李振 on 2024/7/25.
 //
+// VEPlayerDriver - NuPlayerDriver-style wrapper for VEPlayer
+// Provides thread-safe interface and state machine management
+//
 
 #ifndef LZPLAYER_VEPLAYERDRIVER_H
 #define LZPLAYER_VEPLAYERDRIVER_H
@@ -8,72 +11,137 @@
 #include "VEPlayer.h"
 #include "platform/VEPlatform.h"
 #include "interface/IVideoRender.h"
+#include "thread/ALooper.h"
+#include <mutex>
+#include <condition_variable>
+#include <memory>
 
 namespace VE {
-    class MediaPlayerListener {
-    public:
-        virtual void notify(int msg, int ext1, double ext2, const void *obj) = 0;
+
+/**
+ * MediaPlayerListener - Interface for player event callbacks
+ * Similar to Android's IMediaPlayerClient
+ */
+class MediaPlayerListener {
+public:
+    virtual void notify(int msg, int ext1, int ext2, const void *obj) = 0;
+    virtual ~MediaPlayerListener() = default;
+};
+
+/**
+ * VEPlayerDriver - NuPlayerDriver-style player driver
+ * 
+ * This class provides:
+ * 1. Thread-safe wrapper around VEPlayer
+ * 2. State machine management (similar to NuPlayerDriver)
+ * 3. Synchronous/Asynchronous operation support
+ * 4. Event notification to client
+ */
+class VEPlayerDriver : public VEPlayer::Listener,
+                       public std::enable_shared_from_this<VEPlayerDriver> {
+public:
+    // Player states (aligned with Android MediaPlayer states)
+    enum State {
+        STATE_IDLE,
+        STATE_SET_DATASOURCE_PENDING,
+        STATE_UNPREPARED,
+        STATE_PREPARING,
+        STATE_PREPARED,
+        STATE_RUNNING,
+        STATE_PAUSED,
+        STATE_RESET_IN_PROGRESS,
+        STATE_STOPPED,
+        STATE_STOPPED_AND_PREPARING,
+        STATE_STOPPED_AND_PREPARED,
     };
 
-    class VEPlayerDriver {
-    public:
-        VEPlayerDriver();
+    VEPlayerDriver();
+    ~VEPlayerDriver();
 
-        ~VEPlayerDriver();
+    // --- Client interface ---
+    VEResult setListener(const std::shared_ptr<MediaPlayerListener> &listener);
+    
+    // Data source
+    VEResult setDataSource(const std::string &path);
+    
+    // Surface
+    VEResult setVideoSurfaceTexture(VENativeWindow win, int width, int height);
+    
+    // Prepare
+    VEResult prepare();
+    VEResult prepareAsync();
+    
+    // Playback control
+    VEResult start();
+    VEResult pause();
+    VEResult stop();
+    VEResult reset();
+    
+    // Seek
+    VEResult seekTo(int64_t msec, int mode = 0);
+    
+    // Properties
+    int64_t getCurrentPosition();
+    int64_t getDuration();
+    VEResult setLooping(bool looping);
+    VEResult setPlaybackSettings(float rate);
 
-        VEResult setDataSource(std::string path);
+    // Get current state
+    State getState() const;
 
-        VEResult setSurface(VENativeWindow win, int width, int height);
+    // Legacy interface compatibility
+    VEResult setSurface(VENativeWindow win, int width, int height) {
+        return setVideoSurfaceTexture(win, width, height);
+    }
+    VEResult setSpeedRate(float speed) {
+        return setPlaybackSettings(speed);
+    }
 
-        VEResult prepare();
+private:
+    // VEPlayer::Listener implementation
+    void notify(int msg, int ext1, int ext2, const void *obj) override;
+    
+    // Internal helpers
+    void notifyListener_l(int msg, int ext1, int ext2, const void *obj = nullptr);
+    bool isValidStateForOperation_l(const char *operation) const;
 
-        VEResult prepareAsync();
+    // Member variables
+    mutable std::mutex mLock;
+    std::condition_variable mCondition;
+    
+    State mState;
+    bool mAtEOS;
+    bool mLooping;
+    bool mAutoLoop;
+    
+    // Duration and position
+    int64_t mDurationUs;
+    int64_t mPositionUs;
+    
+    // Seeking state
+    bool mSeeking;
+    int64_t mSeekInProgress;
+    
+    // Player and looper
+    std::shared_ptr<VEPlayer> mPlayer;
+    std::shared_ptr<ALooper> mLooper;
+    
+    // Client listener
+    std::weak_ptr<MediaPlayerListener> mListener;
+    
+    // Playback rate
+    float mPlaybackRate;
 
-        VEResult start();
+    DISALLOW_EVIL_CONSTRUCTORS(VEPlayerDriver);
+};
 
-        VEResult stop();
+// Macro definition for disallowing copy/assign
+#ifndef DISALLOW_EVIL_CONSTRUCTORS
+#define DISALLOW_EVIL_CONSTRUCTORS(name) \
+    name(const name&) = delete; \
+    name& operator=(const name&) = delete;
+#endif
 
-        VEResult pause();
+} // namespace VE
 
-        VEResult seekTo(double timestampMs);
-
-        VEResult reset();
-
-        int64_t getDuration();
-
-        VEResult setLooping(bool looping);
-
-        VEResult setSpeedRate(float speed);
-
-        VEResult setListener(std::shared_ptr<MediaPlayerListener> listener);
-
-    private:
-        enum media_player_states {
-            MEDIA_PLAYER_STATE_ERROR = 0,
-            MEDIA_PLAYER_IDLE = 1 << 0,
-            MEDIA_PLAYER_INITIALIZED = 1 << 1,
-            MEDIA_PLAYER_PREPARING = 1 << 2,
-            MEDIA_PLAYER_PREPARED = 1 << 3,
-            MEDIA_PLAYER_STARTED = 1 << 4,
-            MEDIA_PLAYER_PAUSED = 1 << 5,
-            MEDIA_PLAYER_STOPPED = 1 << 6,
-            MEDIA_PLAYER_PLAYBACK_COMPLETE = 1 << 7
-        };
-
-        int currentState;
-        std::shared_ptr<ALooper> mPlayerLooper = nullptr;
-        std::shared_ptr<VEPlayer> mPlayer;
-        std::shared_ptr<MediaPlayerListener> mListener;
-
-        bool mEnableLooping = false;
-
-        bool mIsSeeking = false;
-
-        std::mutex mMutex;
-        std::condition_variable mCond;
-
-        void notifyListener(int msg, int ext1, double ext2, const void *obj);
-    };
-
-}
 #endif //LZPLAYER_VEPLAYERDRIVER_H
