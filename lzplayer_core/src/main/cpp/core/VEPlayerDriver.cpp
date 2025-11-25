@@ -17,7 +17,6 @@ VEPlayerDriver::VEPlayerDriver()
       mAutoLoop(false),
       mDurationUs(-1),
       mPositionUs(-1),
-      mStartupSeekTimeUs(-1),
       mSeeking(false),
       mSeekInProgress(-1),
       mPlaybackRate(1.0f),
@@ -173,7 +172,7 @@ VEResult VEPlayerDriver::start() {
             break;
             
         case STATE_RUNNING:
-            // Already running, return OK
+            // Already started and running, no need to start again
             return VE_OK;
             
         default:
@@ -261,7 +260,6 @@ VEResult VEPlayerDriver::reset() {
     // Reset all internal state
     mDurationUs = -1;
     mPositionUs = -1;
-    mStartupSeekTimeUs = -1;
     mLooping = false;
     mPlaybackRate = 1.0f;
     mAtEOS = false;

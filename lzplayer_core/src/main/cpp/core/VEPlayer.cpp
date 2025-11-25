@@ -341,8 +341,8 @@ void VEPlayer::onPrepareAsync() {
         ALOGI("VEPlayer::%s - Video decoder and renderer created", __FUNCTION__);
     }
     
-    // Notify prepared
-    notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_PREPARED, 0, 0);
+    // Notify prepared (NuPlayer style)
+    finishPrepare();
     
     ALOGI("VEPlayer::%s - Prepare complete", __FUNCTION__);
 }

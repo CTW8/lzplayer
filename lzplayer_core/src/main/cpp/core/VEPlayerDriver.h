@@ -153,9 +153,6 @@ private:
     int64_t mDurationUs;
     int64_t mPositionUs;
     
-    // Start time for position calculation
-    int64_t mStartupSeekTimeUs;
-    
     // Seeking state
     bool mSeeking;
     int64_t mSeekInProgress;
