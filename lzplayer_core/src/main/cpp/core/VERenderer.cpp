@@ -201,8 +201,8 @@ void VERenderer::onOpenAudioSink(const std::shared_ptr<AMessage> &msg) {
     config.sampleFormat = mAudioFormat;
 
     // Set up callback for audio drain
-    auto selfShared = std::dynamic_pointer_cast<VERenderer>(shared_from_this());
-    auto wSelf = std::weak_ptr<VERenderer>(selfShared);
+    // Use static_pointer_cast since VERenderer inherits from AHandler which has enable_shared_from_this
+    auto wSelf = std::weak_ptr<VERenderer>(std::static_pointer_cast<VERenderer>(shared_from_this()));
     config.onCallback = [wSelf]() -> int {
         if (auto self = wSelf.lock()) {
             auto msg = std::make_shared<AMessage>(VERenderer::kWhatDrainAudioQueue, self);
