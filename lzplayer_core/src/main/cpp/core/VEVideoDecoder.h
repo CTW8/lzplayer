@@ -9,7 +9,7 @@
 #include "VEFrameQueue.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
-#include "VEDemux.h"
+#include "VESource.h"
 #include "IVEComponent.h"
 #include "VEBundle.h"
 
@@ -29,7 +29,7 @@ namespace VE {
     public:
         ~VEVideoDecoder();
 
-        VEResult prepare(std::shared_ptr<VEDemux> demux);
+        VEResult prepare(std::shared_ptr<VESource> source);
 
         VEResult prepare(VEBundle params) override;
 
@@ -88,7 +88,7 @@ namespace VE {
         AVCodecContext *mVideoCtx = nullptr;
         std::shared_ptr<VEMediaInfo> mMediaInfo = nullptr;
         std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
-        std::shared_ptr<VEDemux> mDemux = nullptr;
+        std::shared_ptr<VESource> mSource = nullptr;
         bool mIsEOS = false;
 
         std::mutex mMutex;               // 保护共享变量

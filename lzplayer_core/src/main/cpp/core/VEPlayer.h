@@ -3,7 +3,8 @@
 
 #include <string>
 #include <android/native_window_jni.h>
-#include "VEDemux.h"
+#include "VESource.h"
+#include "VELocalSource.h"
 #include "VEAudioDecoder.h"
 #include "VEVideoDecoder.h"
 #include "VEPacket.h"
@@ -149,8 +150,8 @@ namespace VE {
         VEResult onSurfaceChanged(ANativeWindow *win,int viewWidth,int viewHeight);
 
         pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
-        std::shared_ptr<VEDemux> mDemux = nullptr;
-        std::shared_ptr<ALooper> mDemuxLooper = nullptr;
+        std::shared_ptr<VESource> mSource = nullptr;
+        std::shared_ptr<ALooper> mSourceLooper = nullptr;
         std::shared_ptr<VEAudioDecoder> mAudioDecoder = nullptr;
         std::shared_ptr<ALooper> mAudioDecodeLooper = nullptr;
         std::shared_ptr<VEVideoDecoder> mVideoDecoder = nullptr;

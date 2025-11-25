@@ -7,7 +7,7 @@
 #include "VEPacket.h"
 #include "VEFrame.h"
 #include "VEFrameQueue.h"
-#include "VEDemux.h"
+#include "VESource.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "IVEComponent.h"
@@ -28,7 +28,7 @@ namespace VE {
 
         ~VEAudioDecoder();
 
-        VEResult prepare(std::shared_ptr<VEDemux> demux);
+        VEResult prepare(std::shared_ptr<VESource> source);
 
         VEResult start() override;
 
@@ -85,7 +85,7 @@ namespace VE {
         AVCodecContext *mAudioCtx = nullptr;
         VEMediaInfo *mMediaInfo = nullptr;
         std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
-        std::shared_ptr<VEDemux> mDemux = nullptr;
+        std::shared_ptr<VESource> mSource = nullptr;
 
         std::mutex mMutex;
         bool mIsStarted = false;
