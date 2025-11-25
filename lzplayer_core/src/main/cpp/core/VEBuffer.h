@@ -85,6 +85,49 @@ namespace VE {
         VEBuffer(const VEBuffer&) = delete;
         VEBuffer& operator=(const VEBuffer&) = delete;
 
+        // Move constructor
+        VEBuffer(VEBuffer&& other) noexcept
+            : mData(other.mData),
+              mCapacity(other.mCapacity),
+              mSize(other.mSize),
+              mOffset(other.mOffset),
+              mBufferType(other.mBufferType),
+              mFlags(other.mFlags),
+              mPts(other.mPts),
+              mDts(other.mDts),
+              mDuration(other.mDuration),
+              mMeta(std::move(other.mMeta)) {
+            other.mData = nullptr;
+            other.mCapacity = 0;
+            other.mSize = 0;
+            other.mOffset = 0;
+        }
+
+        // Move assignment
+        VEBuffer& operator=(VEBuffer&& other) noexcept {
+            if (this != &other) {
+                if (mData) {
+                    delete[] mData;
+                }
+                mData = other.mData;
+                mCapacity = other.mCapacity;
+                mSize = other.mSize;
+                mOffset = other.mOffset;
+                mBufferType = other.mBufferType;
+                mFlags = other.mFlags;
+                mPts = other.mPts;
+                mDts = other.mDts;
+                mDuration = other.mDuration;
+                mMeta = std::move(other.mMeta);
+
+                other.mData = nullptr;
+                other.mCapacity = 0;
+                other.mSize = 0;
+                other.mOffset = 0;
+            }
+            return *this;
+        }
+
         // Data access methods
         uint8_t* base() { return mData; }
         const uint8_t* base() const { return mData; }
