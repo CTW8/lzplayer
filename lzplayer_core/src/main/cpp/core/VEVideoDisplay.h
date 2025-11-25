@@ -6,6 +6,7 @@
 #define LZPLAYER_VEVIDEODISPLAY_H
 
 #include "IVideoRender.h"
+#include "platform/VEPlatform.h"
 #include "AHandler.h"
 #include "VEVideoDecoder.h"
 #include "VEAVsync.h"
@@ -33,7 +34,7 @@ namespace VE {
 
         VEResult release();
 
-        VEResult setSurface(ANativeWindow *win, int width, int height);
+        VEResult setSurface(VENativeWindow win, int width, int height);
 
         enum {
             kWhatEOS = 'veos',
@@ -90,7 +91,7 @@ namespace VE {
         int mFrameHeight = 0;
 
         bool m_IsStarted = false;
-        ANativeWindow *mWin = nullptr;
+        VENativeWindow mWin = nullptr;
     };
 
 } // VE

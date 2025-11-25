@@ -2,8 +2,11 @@
 // Created by 李振 on 2024/7/25.
 //
 
-#include <android/native_window_jni.h>
 #include "native_PlayerInterface.h"
+#include "platform/VEPlatform.h"
+
+#if VE_PLATFORM_ANDROID
+#include <android/native_window_jni.h>
 #include "utils/Log.h"
 #include "VEPlayerDriver.h"
 #include "ScopedUtfChars.h"
@@ -240,3 +243,5 @@ namespace VE {
         return vePlayer->setSpeedRate(speed);
     }
 }
+
+#endif // VE_PLATFORM_ANDROID

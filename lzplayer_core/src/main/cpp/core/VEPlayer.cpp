@@ -1,6 +1,7 @@
 #include "VEPlayer.h"
 #include "VEAudioRender.h"
 #include "VEVideoDisplay.h"
+#include "platform/VEPlatform.h"
 
 #include <utility>
 namespace VE {
@@ -24,10 +25,10 @@ namespace VE {
         return 0;
     }
 
-    VEResult VEPlayer::setDisplayOut(ANativeWindow *win, int viewWidth, int viewHeight) {
+    VEResult VEPlayer::setDisplayOut(VENativeWindow win, int viewWidth, int viewHeight) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetVideoSurface,shared_from_this());
-        msg->setPointer("window",win);
+        msg->setPointer("window", static_cast<void*>(win));
         msg->setInt32("viewWidth",viewWidth);
         msg->setInt32("viewHeight",viewHeight);
         msg->post();
@@ -146,7 +147,7 @@ namespace VE {
             }
             case kWhatSetVideoSurface: {
                 ALOGI("VEPlayer::onMessageReceived - kWhatSetVideoSurface received");
-                ANativeWindow *window = nullptr;
+                VENativeWindow window = nullptr;
                 msg->findPointer("window", (void **) &window);
                 int32_t width = 0;
                 int32_t height = 0;
@@ -362,7 +363,9 @@ namespace VE {
     VEResult VEPlayer::onRelease(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         if (mWindow) {
+#if VE_PLATFORM_ANDROID
             ANativeWindow_release(mWindow);
+#endif
             mWindow = nullptr;
         }
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
@@ -455,7 +458,7 @@ namespace VE {
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
     }
 
-    VEResult VEPlayer::onSurfaceChanged(ANativeWindow *win, int viewWidth, int viewHeight) {
+    VEResult VEPlayer::onSurfaceChanged(VENativeWindow win, int viewWidth, int viewHeight) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         mWindow = win;
         mViewWidth = viewWidth;

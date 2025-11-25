@@ -6,7 +6,9 @@
 #define LZPLAYER_VEPLAYERDRIVER_H
 
 #include "VEPlayer.h"
-#include <android/native_window_jni.h>
+#include "platform/VEPlatform.h"
+#include "interface/IVideoRender.h"
+
 namespace VE {
     class MediaPlayerListener {
     public:
@@ -21,7 +23,7 @@ namespace VE {
 
         VEResult setDataSource(std::string path);
 
-        VEResult setSurface(ANativeWindow *win, int width, int height);
+        VEResult setSurface(VENativeWindow win, int width, int height);
 
         VEResult prepare();
 

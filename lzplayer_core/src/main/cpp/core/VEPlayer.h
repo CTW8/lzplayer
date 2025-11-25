@@ -2,7 +2,14 @@
 #define __VEPLAYER__
 
 #include <string>
+#include "platform/VEPlatform.h"
+#include "interface/IVideoRender.h"
+
+#if VE_PLATFORM_ANDROID
 #include <android/native_window_jni.h>
+#include "jni.h"
+#endif
+
 #include "VEDemux.h"
 #include "VEAudioDecoder.h"
 #include "VEVideoDecoder.h"
@@ -11,7 +18,6 @@
 #include "VEPacketQueue.h"
 #include "VEFrameQueue.h"
 #include "VEError.h"
-#include "jni.h"
 #include "thread/AHandler.h"
 #include "VEVideoRender.h"
 #include "AudioOpenSLESOutput.h"
@@ -39,7 +45,8 @@ namespace VE {
         /// setDataSource
         VEResult setDataSource(std::string path);
 
-        VEResult setDisplayOut(ANativeWindow *win, int viewWidth, int viewHeight);
+        /// Set display output with platform-independent window handle
+        VEResult setDisplayOut(VENativeWindow win, int viewWidth, int viewHeight);
 
         /// prepare
         VEResult prepare();
@@ -142,7 +149,7 @@ namespace VE {
 
         VEResult onRelease(std::shared_ptr<AMessage> msg);
 
-        VEResult onSurfaceChanged(ANativeWindow *win,int viewWidth,int viewHeight);
+        VEResult onSurfaceChanged(VENativeWindow win, int viewWidth, int viewHeight);
 
         VEResult onVideoRenderEvent(std::shared_ptr<AMessage> msg);
         VEResult onAudioRenderEvent(std::shared_ptr<AMessage> msg);
@@ -177,7 +184,7 @@ namespace VE {
 
         bool mEnableLoop = false;
 
-        ANativeWindow *mWindow = nullptr;
+        VENativeWindow mWindow = nullptr;
         int mViewWidth = 0;
         int mViewHeight = 0;
 

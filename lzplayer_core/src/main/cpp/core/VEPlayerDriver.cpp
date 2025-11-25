@@ -85,7 +85,7 @@ namespace VE {
         return -1;
     }
 
-    VEResult VEPlayerDriver::setSurface(ANativeWindow *win, int width, int height) {
+    VEResult VEPlayerDriver::setSurface(VENativeWindow win, int width, int height) {
         std::lock_guard<std::mutex> lk(mMutex);
         if (mPlayer->setDisplayOut(win, width, height) == 0) {
             return 0;
