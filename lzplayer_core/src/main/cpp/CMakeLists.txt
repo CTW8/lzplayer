@@ -151,10 +151,17 @@ elseif(VE_PLATFORM_MACOS OR VE_PLATFORM_IOS)
     find_package(PkgConfig)
     if(PkgConfig_FOUND)
         pkg_check_modules(FFMPEG libavformat libavcodec libavutil libswscale libswresample libavfilter)
+        if(FFMPEG_FOUND)
+            target_include_directories(lzplayer_core PUBLIC ${FFMPEG_INCLUDE_DIRS})
+            target_link_libraries(lzplayer_core ${FFMPEG_LIBRARIES})
+        else()
+            message(WARNING "FFmpeg not found. Some features may not work.")
+        endif()
+    else()
+        message(WARNING "PkgConfig not found. FFmpeg detection skipped.")
     endif()
     
     target_link_libraries(lzplayer_core
-            ${FFMPEG_LIBRARIES}
             "-framework Foundation"
             "-framework CoreMedia"
             "-framework AVFoundation"
@@ -168,6 +175,24 @@ elseif(VE_PLATFORM_WINDOWS)
             ${CMAKE_CURRENT_LIST_DIR}/platform/windows
             )
     
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++11")
+    # FFmpeg on Windows (requires manual setup or vcpkg)
+    # Set FFMPEG_ROOT environment variable or use vcpkg
+    if(DEFINED ENV{FFMPEG_ROOT})
+        set(FFMPEG_ROOT $ENV{FFMPEG_ROOT})
+        target_include_directories(lzplayer_core PUBLIC ${FFMPEG_ROOT}/include)
+        target_link_directories(lzplayer_core PUBLIC ${FFMPEG_ROOT}/lib)
+        target_link_libraries(lzplayer_core
+                avformat
+                avcodec
+                avutil
+                swscale
+                swresample
+                avfilter
+        )
+    else()
+        message(WARNING "FFMPEG_ROOT not set. FFmpeg will not be linked on Windows.")
+    endif()
+    
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
 endif()
 

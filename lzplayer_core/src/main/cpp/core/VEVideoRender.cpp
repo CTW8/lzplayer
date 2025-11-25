@@ -458,8 +458,12 @@ void main() {
         glDisableVertexAttribArray(positionLoc);
         glDisableVertexAttribArray(texCoordLoc);
 #else
+        // Non-Android platform: Placeholder for platform-specific rendering
+        // Actual implementations should be added in platform/linux/, platform/windows/, etc.
+        // For now, just update frame dimensions for progress tracking
         mFrameWidth = frame->getFrame()->width;
         mFrameHeight = frame->getFrame()->height;
+        ALOGI("VEVideoRender::%s - Platform rendering not yet implemented", __FUNCTION__);
 #endif
 
         if (mNotify) {

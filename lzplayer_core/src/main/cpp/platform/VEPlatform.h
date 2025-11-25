@@ -63,25 +63,9 @@
 
 namespace VE {
 
-// Forward declaration of platform-specific window handle
-// Each platform will define its own type
-struct NativeWindowHandle;
-
-// Platform-independent window wrapper
-class VEWindow {
-public:
-    virtual ~VEWindow() = default;
-    
-    // Get native handle - platform specific implementation
-    virtual void* getNativeHandle() const = 0;
-    
-    // Get window dimensions
-    virtual int getWidth() const = 0;
-    virtual int getHeight() const = 0;
-    
-    // Set window dimensions
-    virtual void setSize(int width, int height) = 0;
-};
+// Note: VENativeWindow is defined in interface/IVideoRender.h as the primary
+// platform-independent window type for video rendering.
+// This file provides platform detection macros and common definitions.
 
 } // namespace VE
 
