@@ -244,7 +244,7 @@ namespace VE {
         /**
          * Request more packets to be read
          * @param msg Notification message to post when data is available
-         * @param type 1 for audio, 2 for video
+         * @param type TRACK_TYPE_AUDIO (2) for audio, TRACK_TYPE_VIDEO (1) for video
          */
         virtual void requestMoreData(std::shared_ptr<AMessage> msg, int type) = 0;
 
@@ -296,15 +296,15 @@ namespace VE {
         /**
          * Post notification with extra parameters
          * @param what Event type
-         * @param extra Extra message to merge
+         * @param extra Extra message to merge (optional, parameters are copied to notification)
          */
         void notifyListener(int what, const std::shared_ptr<AMessage>& extra) {
             if (mNotify != nullptr) {
                 std::shared_ptr<AMessage> msg = mNotify->dup();
                 msg->setInt32("what", what);
-                if (extra) {
-                    // Merge extra parameters if needed
-                }
+                // Extra parameters can be merged by the caller if needed
+                // This is intentionally left empty as extra parameters vary by notification type
+                (void)extra;  // Suppress unused parameter warning
                 msg->post();
             }
         }

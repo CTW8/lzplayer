@@ -290,7 +290,8 @@ namespace VE {
         ret = mSource->read(true, packet);
         if (ret == VE_NOT_ENOUGH_DATA) {
             ALOGI("VEAudioDecoder::onDecode not enough data");
-            mSource->requestMoreData(std::make_shared<AMessage>(kWhatDecode, shared_from_this()), 1);
+            // Use VETrackInfo::TRACK_TYPE_AUDIO (2) for audio
+            mSource->requestMoreData(std::make_shared<AMessage>(kWhatDecode, shared_from_this()), 2);
             return VE_NOT_ENOUGH_DATA;
         }
 

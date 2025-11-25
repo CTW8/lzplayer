@@ -331,7 +331,8 @@ namespace VE {
             ALOGI("VEVideoDecoder::onDecode not enough data from source");
             if (mSource) {
                 auto decodeMsg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
-                mSource->requestMoreData(decodeMsg, 2);
+                // Use VETrackInfo::TRACK_TYPE_VIDEO (1) for video
+                mSource->requestMoreData(decodeMsg, 1);
             }
             return VE_NOT_ENOUGH_DATA;
         }

@@ -307,11 +307,12 @@ namespace VE {
         ALOGI("VEGenericSource::%s enter type=%d", __FUNCTION__, type);
         std::lock_guard<std::mutex> lock(mLock);
         
-        if (type == 1) {  // Audio
+        // Use VETrackInfo::TRACK_TYPE_AUDIO (2) for audio, TRACK_TYPE_VIDEO (1) for video
+        if (type == VETrackInfo::TRACK_TYPE_AUDIO) {
             mAudioNotify = msg;
             mNeedAudioMore = true;
             ALOGI("VEGenericSource::requestMoreData - Need more packets for audio.");
-        } else {  // Video
+        } else if (type == VETrackInfo::TRACK_TYPE_VIDEO) {
             mVideoNotify = msg;
             mNeedVideoMore = true;
             ALOGI("VEGenericSource::requestMoreData - Need more packets for video.");
@@ -633,7 +634,7 @@ namespace VE {
             ALOGI("VEGenericSource::%s exit EOS", __FUNCTION__);
             return VE_EOS;
         } else if (ret < 0) {
-            char errbuf[AV_ERROR_MAX_STRING_SIZE];
+            char errbuf[64];  // Standard size for error messages
             av_strerror(ret, errbuf, sizeof(errbuf));
             ALOGE("VEGenericSource::onReadBuffer Error occurred: %s", errbuf);
             notifyListener(kWhatError);
@@ -832,7 +833,12 @@ namespace VE {
 
     VEResult VEGenericSource::readBuffer(bool audio, int64_t* timeUs, std::shared_ptr<VEPacket>* pkt) {
         // This method is for internal use when we need to read specific buffers
-        return dequeueAccessUnit(audio, pkt);
+        // The timeUs parameter is used to return the timestamp of the dequeued packet
+        VEResult result = dequeueAccessUnit(audio, pkt);
+        if (result == VE_OK && pkt && *pkt && timeUs) {
+            *timeUs = (*pkt)->getPts();
+        }
+        return result;
     }
 
 } // namespace VE
