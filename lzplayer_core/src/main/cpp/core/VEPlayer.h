@@ -4,7 +4,7 @@
 #include <string>
 #include <android/native_window_jni.h>
 #include "VESource.h"
-#include "VELocalSource.h"
+#include "VEGenericSource.h"
 #include "VEAudioDecoder.h"
 #include "VEVideoDecoder.h"
 #include "VEPacket.h"

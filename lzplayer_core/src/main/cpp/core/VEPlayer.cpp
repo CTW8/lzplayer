@@ -1,7 +1,7 @@
 #include "VEPlayer.h"
 #include "VEAudioRender.h"
 #include "VEVideoDisplay.h"
-#include "VELocalSource.h"
+#include "VEGenericSource.h"
 
 #include <utility>
 namespace VE {
@@ -205,8 +205,8 @@ namespace VE {
         mSourceLooper->setName("source_thread");
         mSourceLooper->start(false);
 
-        // Create local file source (following NuPlayerSource pattern)
-        mSource = std::make_shared<VELocalSource>();
+        // Create generic source (following NuPlayerSource pattern)
+        mSource = std::make_shared<VEGenericSource>();
         mSourceLooper->registerHandler(mSource);
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;

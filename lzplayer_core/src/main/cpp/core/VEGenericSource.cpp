@@ -1,9 +1,9 @@
 //
 // Created for lzplayer demux redesign following NuPlayerSource pattern
-// VELocalSource: Concrete implementation for local file playback
+// VEGenericSource: Concrete implementation for local file playback
 //
 
-#include "VELocalSource.h"
+#include "VEGenericSource.h"
 #include "Log.h"
 
 extern "C" {
@@ -14,24 +14,24 @@ extern "C" {
 
 namespace VE {
 
-    VELocalSource::VELocalSource() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEGenericSource::VEGenericSource() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         mAudioCodecParams = nullptr;
         mVideoCodecParams = nullptr;
         mFormatContext = nullptr;
         mAudioStartPts = -1;
         mVideoStartPts = -1;
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
     }
 
-    VELocalSource::~VELocalSource() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEGenericSource::~VEGenericSource() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         close();
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
     }
 
-    VEResult VELocalSource::prepareAsync(const std::string& path) {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEResult VEGenericSource::prepareAsync(const std::string& path) {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
         msg->setString("filePath", path);
 
@@ -39,56 +39,56 @@ namespace VE {
         msg->postAndAwaitResponse(&response);
         int32_t ret;
         response->findInt32("ret", &ret);
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return ret;
     }
 
-    void VELocalSource::start() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    void VEGenericSource::start() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
         msg->post();
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
     }
 
-    void VELocalSource::stop() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    void VEGenericSource::stop() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStop, shared_from_this());
         msg->post();
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
     }
 
-    void VELocalSource::pause() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    void VEGenericSource::pause() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPause, shared_from_this());
         msg->post();
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
     }
 
-    void VELocalSource::resume() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    void VEGenericSource::resume() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatResume, shared_from_this());
         msg->post();
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
     }
 
-    VEResult VELocalSource::read(bool isAudio, std::shared_ptr<VEPacket>& packet) {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
-        ALOGD("VELocalSource::read audio queue size: %d, video queue size: %d",
+    VEResult VEGenericSource::read(bool isAudio, std::shared_ptr<VEPacket>& packet) {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
+        ALOGD("VEGenericSource::read audio queue size: %d, video queue size: %d",
               mAudioPacketQueue->getDataSize(), mVideoPacketQueue->getDataSize());
 
         if (isAudio) {
-            ALOGD("VELocalSource::read mAudioPacketQueue size:%d", mAudioPacketQueue->getDataSize());
+            ALOGD("VEGenericSource::read mAudioPacketQueue size:%d", mAudioPacketQueue->getDataSize());
             if (mAudioPacketQueue->getDataSize() == 0) {
-                ALOGD("VELocalSource::read audio queue wait!!");
-                ALOGI("VELocalSource::%s exit", __FUNCTION__);
+                ALOGD("VEGenericSource::read audio queue wait!!");
+                ALOGI("VEGenericSource::%s exit", __FUNCTION__);
                 return VE_NOT_ENOUGH_DATA;
             }
             packet = mAudioPacketQueue->get();
         } else {
-            ALOGD("VELocalSource::read mVideoPacketQueue size:%d", mVideoPacketQueue->getDataSize());
+            ALOGD("VEGenericSource::read mVideoPacketQueue size:%d", mVideoPacketQueue->getDataSize());
             if (mVideoPacketQueue->getDataSize() == 0) {
-                ALOGD("VELocalSource::read video queue wait!!");
-                ALOGI("VELocalSource::%s exit", __FUNCTION__);
+                ALOGD("VEGenericSource::read video queue wait!!");
+                ALOGI("VEGenericSource::%s exit", __FUNCTION__);
                 return VE_NOT_ENOUGH_DATA;
             }
             packet = mVideoPacketQueue->get();
@@ -103,12 +103,12 @@ namespace VE {
             msg->post();
         }
 
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
-    VEResult VELocalSource::seekTo(int64_t posMs) {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEResult VEGenericSource::seekTo(int64_t posMs) {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
         msg->setInt64("posMs", posMs);
         std::shared_ptr<AMessage> response;
@@ -116,12 +116,12 @@ namespace VE {
 
         int32_t ret = VE_OK;
         response->findInt32("ret", &ret);
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return ret;
     }
 
-    VEResult VELocalSource::close() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEResult VEGenericSource::close() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         if (mFormatContext) {
             avformat_close_input(&mFormatContext);
             mFormatContext = nullptr;
@@ -138,12 +138,12 @@ namespace VE {
         }
 
         mIsPrepared = false;
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
-    std::shared_ptr<VEMediaInfo> VELocalSource::getMediaInfo() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    std::shared_ptr<VEMediaInfo> VEGenericSource::getMediaInfo() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         std::shared_ptr<VEMediaInfo> info = std::make_shared<VEMediaInfo>();
 
         info->channels = mChannel;
@@ -162,41 +162,41 @@ namespace VE {
         info->mVideoTimeBase = mVideoTimeBase;
         info->mVStartTime = mVStartTime;
 
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return info;
     }
 
-    int64_t VELocalSource::getDuration() {
+    int64_t VEGenericSource::getDuration() {
         return static_cast<int64_t>(mDuration);
     }
 
-    uint32_t VELocalSource::getFlags() {
+    uint32_t VEGenericSource::getFlags() {
         // Local files support all seek operations
         return FLAG_CAN_PAUSE | FLAG_CAN_SEEK | FLAG_CAN_SEEK_BACKWARD | FLAG_CAN_SEEK_FORWARD;
     }
 
-    void VELocalSource::requestMoreData(std::shared_ptr<AMessage> msg, int type) {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    void VEGenericSource::requestMoreData(std::shared_ptr<AMessage> msg, int type) {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         if (type == 1) {
             mAudioNotify = msg;
             mNeedAudioMore = true;
-            ALOGI("VELocalSource::requestMoreData - Need more packets for audio.");
+            ALOGI("VEGenericSource::requestMoreData - Need more packets for audio.");
         } else {
             mVideoNotify = msg;
             mNeedVideoMore = true;
-            ALOGI("VELocalSource::requestMoreData - Need more packets for video.");
+            ALOGI("VEGenericSource::requestMoreData - Need more packets for video.");
         }
 
         if (!mIsStarted) {
             mIsStarted = true;
-            ALOGI("VELocalSource::requestMoreData - Starting to read packets.");
+            ALOGI("VEGenericSource::requestMoreData - Starting to read packets.");
             std::make_shared<AMessage>(kWhatRead, shared_from_this())->post();
         }
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
     }
 
-    void VELocalSource::onMessageReceived(const std::shared_ptr<AMessage>& msg) {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    void VEGenericSource::onMessageReceived(const std::shared_ptr<AMessage>& msg) {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         switch (msg->what()) {
             case kWhatPrepare: {
                 std::string path;
@@ -245,10 +245,10 @@ namespace VE {
             }
             case kWhatRead: {
                 if (!mIsStarted) {
-                    ALOGD("VELocalSource::%s kWhatRead !mIsStarted not run!!!", __FUNCTION__);
+                    ALOGD("VEGenericSource::%s kWhatRead !mIsStarted not run!!!", __FUNCTION__);
                     break;
                 }
-                ALOGD("VELocalSource::%s kWhatRead run", __FUNCTION__);
+                ALOGD("VEGenericSource::%s kWhatRead run", __FUNCTION__);
                 if (onRead() == VE_OK) {
                     std::shared_ptr<AMessage> readMsg = std::make_shared<AMessage>(kWhatRead,
                                                                                    shared_from_this());
@@ -261,15 +261,15 @@ namespace VE {
                 break;
             }
         }
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
     }
 
-    VEResult VELocalSource::onPrepare(const std::string& path) {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEResult VEGenericSource::onPrepare(const std::string& path) {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         
         if (path.empty()) {
-            ALOGE("VELocalSource::%s open file failed - empty path", __FUNCTION__);
-            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            ALOGE("VEGenericSource::%s open file failed - empty path", __FUNCTION__);
+            ALOGI("VEGenericSource::%s exit", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }
 
@@ -277,16 +277,16 @@ namespace VE {
 
         // Open input file
         if (avformat_open_input(&mFormatContext, mFilePath.c_str(), nullptr, nullptr) != 0) {
-            ALOGE("VELocalSource::onPrepare Error: Couldn't open input file.");
-            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            ALOGE("VEGenericSource::onPrepare Error: Couldn't open input file.");
+            ALOGI("VEGenericSource::%s exit", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }
 
         // Find stream info
         if (avformat_find_stream_info(mFormatContext, nullptr) < 0) {
-            ALOGE("VELocalSource::onPrepare Error: Couldn't find stream information.");
+            ALOGE("VEGenericSource::onPrepare Error: Couldn't find stream information.");
             avformat_close_input(&mFormatContext);
-            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            ALOGI("VEGenericSource::%s exit", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }
 
@@ -329,70 +329,70 @@ namespace VE {
         // Notify that source is prepared
         notifyListener(kWhatPrepared);
 
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
-    VEResult VELocalSource::onStart() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEResult VEGenericSource::onStart() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         mIsEOS = false;
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead, shared_from_this());
         msg->post();
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
-    VEResult VELocalSource::onStop() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEResult VEGenericSource::onStop() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         mIsStarted = false;
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
-    VEResult VELocalSource::onPause() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEResult VEGenericSource::onPause() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         mIsStarted = false;
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
-    VEResult VELocalSource::onResume() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEResult VEGenericSource::onResume() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         mIsStarted = true;
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead, shared_from_this());
         msg->post();
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
-    VEResult VELocalSource::onRead() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEResult VEGenericSource::onRead() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
 
         if (mAudioPacketQueue->getDataSize() >= AUDIO_QUEUE_SIZE) {
-            ALOGD("VELocalSource::onRead Audio queue is full, stopping read.");
+            ALOGD("VEGenericSource::onRead Audio queue is full, stopping read.");
             mIsStarted = false;
-            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            ALOGI("VEGenericSource::%s exit", __FUNCTION__);
             return VE_NO_MEMORY;
         }
 
         if (mVideoPacketQueue->getDataSize() >= VIDEO_QUEUE_SIZE) {
-            ALOGD("VELocalSource::onRead Video queue is full, stopping read.");
+            ALOGD("VEGenericSource::onRead Video queue is full, stopping read.");
             mIsStarted = false;
-            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            ALOGI("VEGenericSource::%s exit", __FUNCTION__);
             return VE_NO_MEMORY;
         }
 
         std::shared_ptr<VEPacket> packet = std::make_shared<VEPacket>();
         if (!packet) {
-            ALOGD("VELocalSource::onRead Could not allocate VEPacket");
-            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            ALOGD("VEGenericSource::onRead Could not allocate VEPacket");
+            ALOGI("VEGenericSource::%s exit", __FUNCTION__);
             return VE_OK;
         }
 
         int ret = av_read_frame(mFormatContext, packet->getPacket());
         if (ret == AVERROR_EOF) {
             // End of stream reached
-            ALOGI("VELocalSource::onRead End of Stream (EOS) reached.");
+            ALOGI("VEGenericSource::onRead End of Stream (EOS) reached.");
             packet->setPacketType(E_PACKET_TYPE_EOF);
             putPacket(packet, true);
 
@@ -403,12 +403,12 @@ namespace VE {
 
             notifyListener(kWhatEOS);
 
-            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            ALOGI("VEGenericSource::%s exit", __FUNCTION__);
             return VE_EOS;
         } else if (ret < 0) {
-            ALOGE("VELocalSource::onRead Error occurred: %s", av_err2str(ret));
+            ALOGE("VEGenericSource::onRead Error occurred: %s", av_err2str(ret));
             notifyListener(kWhatError);
-            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            ALOGI("VEGenericSource::%s exit", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }
 
@@ -430,7 +430,7 @@ namespace VE {
             packet->setDts(dts);
             packet->getPacket()->pts = packet->getPts();
             packet->getPacket()->dts = packet->getDts();
-            ALOGD("VELocalSource::onRead Audio packet pts: %" PRId64 ", dts: %" PRId64,
+            ALOGD("VEGenericSource::onRead Audio packet pts: %" PRId64 ", dts: %" PRId64,
                   packet->getPts(), packet->getDts());
             putPacket(packet, true);
         } else if (packet->getPacket()->stream_index == mVideoIndex) {
@@ -443,34 +443,34 @@ namespace VE {
             packet->setDts(dts);
             packet->getPacket()->pts = packet->getPts();
             packet->getPacket()->dts = packet->getDts();
-            ALOGD("VELocalSource::onRead Video packet pts: %" PRId64 ", dts: %" PRId64,
+            ALOGD("VEGenericSource::onRead Video packet pts: %" PRId64 ", dts: %" PRId64,
                   packet->getPts(), packet->getDts());
             putPacket(packet, false);
         } else {
-            ALOGD("VELocalSource::onRead Packet from unused stream");
+            ALOGD("VEGenericSource::onRead Packet from unused stream");
         }
 
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
-    VEResult VELocalSource::onSeek(int64_t posMs) {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEResult VEGenericSource::onSeek(int64_t posMs) {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         
         if (!mFormatContext) {
-            ALOGE("VELocalSource::onSeek Error: File not opened.");
-            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            ALOGE("VEGenericSource::onSeek Error: File not opened.");
+            ALOGI("VEGenericSource::%s exit", __FUNCTION__);
             return VE_INVALID_PARAMS;
         }
 
         // Check if we have a valid video stream to seek
         if (mVideoIndex < 0 || mVideoIndex >= static_cast<int>(mFormatContext->nb_streams)) {
-            ALOGE("VELocalSource::onSeek Error: Invalid video stream index.");
-            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            ALOGE("VEGenericSource::onSeek Error: Invalid video stream index.");
+            ALOGI("VEGenericSource::%s exit", __FUNCTION__);
             return VE_INVALID_PARAMS;
         }
 
-        ALOGD("VELocalSource::onSeek posMs: %" PRId64, posMs);
+        ALOGD("VEGenericSource::onSeek posMs: %" PRId64, posMs);
 
         // Convert milliseconds to target timestamp
         int64_t targetPts = posMs * 1000;
@@ -485,69 +485,69 @@ namespace VE {
         int ret = avformat_seek_file(mFormatContext, mVideoIndex, INT64_MIN, seekTarget, INT64_MAX,
                                      AVSEEK_FLAG_BACKWARD);
         if (ret < 0) {
-            ALOGE("VELocalSource::onSeek Error: Couldn't seek using avformat_seek_file.");
-            ALOGI("VELocalSource::%s exit", __FUNCTION__);
+            ALOGE("VEGenericSource::onSeek Error: Couldn't seek using avformat_seek_file.");
+            ALOGI("VEGenericSource::%s exit", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }
 
         // Clear packet queues
         resetQueues();
 
-        ALOGD("VELocalSource::onSeek Successful to posMs: %" PRId64, posMs);
+        ALOGD("VEGenericSource::onSeek Successful to posMs: %" PRId64, posMs);
 
         notifyListener(kWhatSeekDone);
 
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
-    VEResult VELocalSource::onClose() {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    VEResult VEGenericSource::onClose() {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         close();
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
-    void VELocalSource::putPacket(std::shared_ptr<VEPacket> packet, bool isAudio) {
-        ALOGI("VELocalSource::%s enter", __FUNCTION__);
+    void VEGenericSource::putPacket(std::shared_ptr<VEPacket> packet, bool isAudio) {
+        ALOGI("VEGenericSource::%s enter", __FUNCTION__);
         
         if (!isAudio) {
             if (!mVideoPacketQueue->put(packet)) {
-                ALOGD("VELocalSource::putPacket Video queue is full, stopping read.");
+                ALOGD("VEGenericSource::putPacket Video queue is full, stopping read.");
                 mIsStarted = false;
             } else {
-                ALOGD("VELocalSource::putPacket Video queue mNeedVideoMore:%d", mNeedVideoMore);
+                ALOGD("VEGenericSource::putPacket Video queue mNeedVideoMore:%d", mNeedVideoMore);
                 std::lock_guard<std::mutex> lk(mMutexVideo);
 
                 if (mNeedVideoMore) {
                     mNeedVideoMore = false;
                     if (mVideoNotify) {
-                        ALOGD("VELocalSource::putPacket Video queue post notify");
+                        ALOGD("VEGenericSource::putPacket Video queue post notify");
                         mVideoNotify->post();
                     }
                 }
             }
         } else {
             if (!mAudioPacketQueue->put(packet)) {
-                ALOGD("VELocalSource::putPacket Audio queue is full, stopping read.");
+                ALOGD("VEGenericSource::putPacket Audio queue is full, stopping read.");
                 mIsStarted = false;
             } else {
-                ALOGD("VELocalSource::putPacket Audio queue mNeedAudioMore:%d", mNeedAudioMore);
+                ALOGD("VEGenericSource::putPacket Audio queue mNeedAudioMore:%d", mNeedAudioMore);
                 std::lock_guard<std::mutex> lk(mMutexAudio);
                 if (mNeedAudioMore) {
                     mNeedAudioMore = false;
                     if (mAudioNotify) {
-                        ALOGD("VELocalSource::putPacket Audio queue post notify");
+                        ALOGD("VEGenericSource::putPacket Audio queue post notify");
                         mAudioNotify->post();
                     }
                 }
             }
         }
         
-        ALOGI("VELocalSource::%s exit", __FUNCTION__);
+        ALOGI("VEGenericSource::%s exit", __FUNCTION__);
     }
 
-    void VELocalSource::resetQueues() {
+    void VEGenericSource::resetQueues() {
         if (mAudioPacketQueue) {
             mAudioPacketQueue->clear();
         }

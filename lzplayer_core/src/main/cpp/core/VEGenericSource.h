@@ -1,10 +1,10 @@
 //
 // Created for lzplayer demux redesign following NuPlayerSource pattern
-// VELocalSource: Concrete implementation for local file playback (similar to GenericSource)
+// VEGenericSource: Concrete implementation for local file playback (similar to NuPlayer's GenericSource)
 //
 
-#ifndef LZPLAYER_VELOCALSOURCE_H
-#define LZPLAYER_VELOCALSOURCE_H
+#ifndef LZPLAYER_VEGENERICSOURCE_H
+#define LZPLAYER_VEGENERICSOURCE_H
 
 #include "VESource.h"
 #include <mutex>
@@ -20,13 +20,13 @@ extern "C" {
 namespace VE {
 
     /**
-     * Local file source implementation
+     * Generic source implementation (similar to NuPlayer's GenericSource)
      * Handles reading and demuxing local media files using FFmpeg
      */
-    class VELocalSource : public VESource {
+    class VEGenericSource : public VESource {
     public:
-        VELocalSource();
-        ~VELocalSource() override;
+        VEGenericSource();
+        ~VEGenericSource() override;
 
         // VESource interface implementation
         VEResult prepareAsync(const std::string& path) override;
@@ -128,4 +128,4 @@ namespace VE {
 
 } // namespace VE
 
-#endif // LZPLAYER_VELOCALSOURCE_H
+#endif // LZPLAYER_VEGENERICSOURCE_H
