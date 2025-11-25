@@ -34,6 +34,7 @@ namespace VE {
         VE_INVALID_PARAMS = (VE_UNKNOWN_ERROR + 18),
         VE_EOS = (VE_UNKNOWN_ERROR + 19),
         VE_ERROR_EAGAIN = (VE_UNKNOWN_ERROR + 20),
+        VE_INVALID_STATE = (VE_UNKNOWN_ERROR + 21),  // Invalid player state for operation
     };
 
     typedef int32_t VEResult;

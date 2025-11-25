@@ -2,9 +2,14 @@
 #define __VE_OPENGLES_RENDER__
 
 #include "IVideoRender.h"
+#include "platform/VEPlatform.h"
+
+#if VE_PLATFORM_ANDROID
 #include <GLES3/gl3.h>
 #include <EGL/egl.h>
 #include <android/native_window.h>
+#endif
+
 #include "glm/fwd.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
@@ -19,11 +24,12 @@ namespace VE {
 
         // IVideoRender接口实现
         VEResult initialize(VEBundle params) override;
-        VEResult changeSurface(ANativeWindow *win,int viewWidth,int viewHeight) override;
+        VEResult changeSurface(VENativeWindow win, int viewWidth, int viewHeight) override;
         VEResult renderFrame(const std::shared_ptr<VEFrame> &frame) override;
         VEResult uninitialize() override;
 
     private:
+#if VE_PLATFORM_ANDROID
         // EGL相关方法
         int initializeEGL(ANativeWindow *win);
         void destroyEGL();
@@ -77,6 +83,7 @@ namespace VE {
         // Shader源码
         static const char *VERTEX_SHADER_SOURCE;
         static const char *FRAGMENT_SHADER_SOURCE;
+#endif
     };
 
 } // namespace VE

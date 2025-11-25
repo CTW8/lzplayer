@@ -1,6 +1,6 @@
-# LZ Player - Android Video Player
+# LZ Player - Cross-Platform Video Player
 
-一个基于自定义VEPlayer引擎的Android视频播放器应用。
+一个基于自定义VEPlayer引擎的跨平台视频播放器应用。核心使用C++实现，架构参考Android NuPlayer设计，但摆脱平台依赖。
 
 ## 🎉 项目状态：BUILD SUCCESSFUL ✅
 
@@ -12,8 +12,53 @@
 - ✅ 依赖版本冲突
 - ✅ 字符串空指针引用问题
 - ✅ MainActivity内部类结构优化
+- ✅ 跨平台架构重构
 
 **最终状态**: 应用已成功构建并安装到设备，所有模块正常工作！
+
+## 🌍 跨平台架构
+
+### 核心设计理念
+本项目采用平台抽象层设计，核心代码与平台解耦：
+
+- **解码**: 使用 FFmpeg avcodec 进行音视频解码
+- **数据源**: 使用 FFmpeg avformat 进行媒体解复用
+- **视频渲染**: 使用 OpenGL ES 进行跨平台视频渲染
+- **消息处理**: 采用 NuPlayer 风格的 AHandler/ALooper 消息驱动架构
+
+### 平台支持
+| 平台 | 状态 | 渲染 | 音频 |
+|------|------|------|------|
+| Android | ✅ 完全支持 | OpenGL ES 3.0 | OpenSL ES |
+| Linux | 🚧 规划中 | OpenGL | ALSA/PulseAudio |
+| macOS | 🚧 规划中 | OpenGL | Core Audio |
+| iOS | 🚧 规划中 | OpenGL ES | Core Audio |
+| Windows | 🚧 规划中 | OpenGL | WASAPI |
+
+### 平台抽象层
+```
+lzplayer_core/src/main/cpp/
+├── core/              # 平台无关核心代码
+│   ├── VEPlayer       # 主播放器控制器
+│   ├── VEDemux        # FFmpeg avformat 解复用
+│   ├── VEVideoDecoder # FFmpeg avcodec 视频解码
+│   ├── VEAudioDecoder # FFmpeg avcodec 音频解码
+│   └── VEAVsync       # 音视频同步
+├── interface/         # 跨平台接口定义
+│   ├── IVideoRender   # 视频渲染接口
+│   ├── IAudioRender   # 音频渲染接口
+│   └── IMediaSource   # 媒体源接口
+├── platform/          # 平台特定实现
+│   ├── VEPlatform.h   # 平台检测和通用类型
+│   ├── android/       # Android平台实现
+│   │   ├── renders/   # OpenGL ES渲染
+│   │   └── decoders/  # MediaCodec硬解码
+│   └── linux/         # Linux平台实现(规划中)
+└── thread/            # 消息处理框架
+    ├── AHandler       # 消息处理器
+    ├── ALooper        # 消息循环
+    └── AMessage       # 消息对象
+```
 
 ## 功能特性
 
@@ -26,10 +71,11 @@
 - **Surface渲染**: 硬件加速视频渲染
 
 ### 🏗️ 技术架构
-- **VEPlayer**: 自定义C++视频播放引擎
+- **VEPlayer**: 自定义C++视频播放引擎 (NuPlayer风格)
+- **FFmpeg**: avformat解复用 + avcodec软解码
+- **OpenGL ES**: 跨平台视频渲染
+- **AHandler/ALooper**: 消息驱动异步架构
 - **MediaSelector**: Kotlin编写的媒体文件选择器
-- **Surface渲染**: 使用SurfaceView进行视频渲染
-- **多线程**: 异步播放和进度更新
 
 ## 项目结构
 

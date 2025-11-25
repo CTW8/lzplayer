@@ -5,6 +5,9 @@
 #ifndef LZPLAYER_NATIVE_PLAYERINTERFACE_H
 #define LZPLAYER_NATIVE_PLAYERINTERFACE_H
 
+#include "platform/VEPlatform.h"
+
+#if VE_PLATFORM_ANDROID
 #include <jni.h>
 
 namespace VE {
@@ -34,4 +37,6 @@ namespace VE {
     }
 #endif
 }
+#endif // VE_PLATFORM_ANDROID
+
 #endif //LZPLAYER_NATIVE_PLAYERINTERFACE_H

@@ -2,13 +2,19 @@
 #define __VE_VIDEO_RENDER__
 
 #include <memory>
+#include "platform/VEPlatform.h"
+#include "interface/IVideoRender.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
+
+#if VE_PLATFORM_ANDROID
 #include <jni.h>
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 #include <android/native_window_jni.h>
 #include "VEJvmOnLoad.h"
+#endif
+
 #include "VEVideoDecoder.h"
 #include <string>
 #include <iostream>
@@ -24,7 +30,7 @@ namespace VE {
 
         ~VEVideoRender();
 
-        VEResult prepare(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width, int height,int fps);
+        VEResult prepare(std::shared_ptr<VEVideoDecoder> decoder, VENativeWindow win, int width, int height, int fps);
 
         VEResult prepare(VEBundle params);
 
@@ -36,7 +42,7 @@ namespace VE {
 
         VEResult release();
 
-        VEResult setSurface(ANativeWindow *win, int width, int height);
+        VEResult setSurface(VENativeWindow win, int width, int height);
 
         VEResult seekTo(double timestamp);
 
@@ -52,7 +58,7 @@ namespace VE {
     private:
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
-        VEResult onPrepare(ANativeWindow *win);
+        VEResult onPrepare(VENativeWindow win);
 
         VEResult onStart();
 
@@ -70,11 +76,13 @@ namespace VE {
 
         VEResult onSetSpeedRate(double speed);
 
+#if VE_PLATFORM_ANDROID
         GLuint loadShader(GLenum type, const char *shaderSrc);
 
         GLuint createProgram(const char *vertexSource, const char *fragmentSource);
 
         bool createTexture();
+#endif
 
         enum {
             kWhatInit = 'init',
@@ -89,12 +97,13 @@ namespace VE {
         };
 
     private:
-        ANativeWindow *mWin = nullptr;
+        VENativeWindow mWin = nullptr;
         bool mIsStarted = false;
 
         std::shared_ptr<VEVideoDecoder> mVDec = nullptr;
         std::shared_ptr<AMessage> mNotify = nullptr;
 
+#if VE_PLATFORM_ANDROID
         GLuint mTextures[3]{};
         GLuint mProgram{};
         GLuint mVAO{}, mVBO{};
@@ -102,6 +111,7 @@ namespace VE {
         EGLSurface eglSurface = EGL_NO_SURFACE;
         EGLContext eglContext = EGL_NO_CONTEXT;
         EGLConfig eglConfig = nullptr;
+#endif
 
         int mViewWidth = 0;
         int mViewHeight = 0;

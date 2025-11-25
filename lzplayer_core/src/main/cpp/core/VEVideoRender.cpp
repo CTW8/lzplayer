@@ -1,13 +1,20 @@
 #include "VEVideoRender.h"
+#include "platform/VEPlatform.h"
+
+#if VE_PLATFORM_ANDROID
 #include "VEJvmOnLoad.h"
 #include "glm/fwd.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 #include "glm/ext/matrix_projection.hpp"
+#endif
+
 #include "VEPlayer.h"
 #include "VEAVsync.h"
 
 namespace VE {
+
+#if VE_PLATFORM_ANDROID
     const char *vertexShaderSource = R"(
 #version 300 es
 layout(location = 0) in vec4 aPosition;
@@ -38,6 +45,7 @@ void main() {
         fragColor = vec4(r, g, b, 1.0);
 }
 )";
+#endif // VE_PLATFORM_ANDROID
 
     void VEVideoRender::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         switch (msg->what()) {
@@ -112,12 +120,12 @@ void main() {
     }
 
     VEResult
-    VEVideoRender::prepare(std::shared_ptr<VEVideoDecoder> decoder, ANativeWindow *win, int width,
+    VEVideoRender::prepare(std::shared_ptr<VEVideoDecoder> decoder, VENativeWindow win, int width,
                            int height, int fps) {
         try {
             std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit,
                                                                        shared_from_this());
-            msg->setPointer("win", win);
+            msg->setPointer("win", static_cast<void*>(win));
             msg->setInt32("width", width);
             msg->setInt32("height", height);
             msg->setInt32("fps", fps);
@@ -133,7 +141,7 @@ void main() {
     VEResult VEVideoRender::prepare(VEBundle params) {
 
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
-        msg->setPointer("win", params.get<ANativeWindow *>("surface"));
+        msg->setPointer("win", static_cast<void*>(params.get<VENativeWindow>("surface")));
         msg->setInt32("width", params.get<int>("width"));
         msg->setInt32("height", params.get<int>("height"));
         msg->setInt32("fps", params.get<int>("fps"));
@@ -172,8 +180,9 @@ void main() {
         }
     }
 
-    VEResult VEVideoRender::onPrepare(ANativeWindow *win) {
+    VEResult VEVideoRender::onPrepare(VENativeWindow win) {
         ALOGI("VEVideoRender::%s", __FUNCTION__);
+#if VE_PLATFORM_ANDROID
         JNIEnv *env = AttachCurrentThreadEnv();
         // 获取默认的 EGL 显示设备
         eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -228,7 +237,10 @@ void main() {
         glViewport(0, 0, mViewWidth, mViewHeight);
         glClearColor(0.f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-
+#else
+        // Non-Android platform: placeholder for platform-specific initialization
+        ALOGI("VEVideoRender::%s - Platform not supported yet", __FUNCTION__);
+#endif
         return VE_OK;
     }
 
@@ -267,6 +279,7 @@ void main() {
             return UNKNOWN_ERROR;
         }
 
+#if VE_PLATFORM_ANDROID
         // 检查EGL状态
         if (eglDisplay == EGL_NO_DISPLAY || eglSurface == EGL_NO_SURFACE ||
             eglContext == EGL_NO_CONTEXT) {
@@ -285,6 +298,7 @@ void main() {
                 return UNKNOWN_ERROR;
             }
         }
+#endif
 
         int32_t isDrop = false;
         msg->findInt32("drop", &isDrop);
@@ -306,6 +320,7 @@ void main() {
             return UNKNOWN_ERROR;
         }
 
+#if VE_PLATFORM_ANDROID
         // 清屏
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -442,20 +457,29 @@ void main() {
         // 禁用顶点属性数组
         glDisableVertexAttribArray(positionLoc);
         glDisableVertexAttribArray(texCoordLoc);
+#else
+        // Non-Android platform: Placeholder for platform-specific rendering
+        // Actual implementations should be added in platform/linux/, platform/windows/, etc.
+        // For now, just update frame dimensions for progress tracking
+        mFrameWidth = frame->getFrame()->width;
+        mFrameHeight = frame->getFrame()->height;
+        ALOGI("VEVideoRender::%s - Platform rendering not yet implemented", __FUNCTION__);
+#endif
 
         if (mNotify) {
-            std::shared_ptr<AMessage> msg = mNotify->dup();
-            msg->setInt32("type", kWhatProgress);
-            msg->setInt64("progress", static_cast<int64_t>(frame->getPts()));
-            msg->post();
+            std::shared_ptr<AMessage> notifyMsg = mNotify->dup();
+            notifyMsg->setInt32("type", kWhatProgress);
+            notifyMsg->setInt64("progress", static_cast<int64_t>(frame->getPts()));
+            notifyMsg->post();
             ALOGI("VEVideoRender::%s - Notifying progress: %" PRId64 "  what:%d", __FUNCTION__,
-                  frame->getPts(), msg->what());
+                  frame->getPts(), notifyMsg->what());
         }
         ALOGI("VEVideoRender::%s exit timestamp:%" PRId64, __FUNCTION__, frame->getPts());
         return VE_OK;
     }
 
 
+#if VE_PLATFORM_ANDROID
 // 加载和编译着色器
     GLuint VEVideoRender::loadShader(GLenum type, const char *shaderSrc) {
         GLuint shader = glCreateShader(type);
@@ -544,6 +568,7 @@ void main() {
         }
         return true;
     }
+#endif // VE_PLATFORM_ANDROID
 
     VEResult VEVideoRender::pause() {
         try {
@@ -621,12 +646,12 @@ void main() {
         return VE_OK;
     }
 
-    VEResult VEVideoRender::setSurface(ANativeWindow *win, int width, int height) {
+    VEResult VEVideoRender::setSurface(VENativeWindow win, int width, int height) {
         // 检查对象是否已经被shared_ptr管理
         try {
             std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSurfaceChanged,
                                                                        shared_from_this());
-            msg->setPointer("win", win);
+            msg->setPointer("win", static_cast<void*>(win));
             msg->setInt32("width", width);
             msg->setInt32("height", height);
             msg->post();
@@ -644,7 +669,7 @@ void main() {
 
     VEResult VEVideoRender::onSurfaceChanged(std::shared_ptr<AMessage> msg) {
         ALOGI("VEVideoRender::onSurfaceChanged enter");
-        ANativeWindow *newWin;
+        VENativeWindow newWin;
         msg->findPointer("win", (void **) &newWin);
         int newWidth, newHeight;
         msg->findInt32("width", &newWidth);
@@ -653,6 +678,7 @@ void main() {
         ALOGI("VEVideoRender::onSurfaceChanged - new surface: %p, size: %dx%d", (void*)newWin, newWidth,
               newHeight);
 
+#if VE_PLATFORM_ANDROID
         if (eglDisplay == EGL_NO_DISPLAY) {
             ALOGE("VEVideoRender::onSurfaceChanged EGL display is not initialized");
             return UNKNOWN_ERROR;
@@ -702,6 +728,12 @@ void main() {
             EGLint error = eglGetError();
             ALOGE("VEVideoRender::onSurfaceChanged eglSwapBuffers failed, error: 0x%x", error);
         }
+#else
+        // Update view size for non-Android platforms
+        mWin = newWin;
+        mViewWidth = newWidth;
+        mViewHeight = newHeight;
+#endif
 
         ALOGI("VEVideoRender::onSurfaceChanged exit successfully, viewport: %dx%d", mViewWidth,
               mViewHeight);

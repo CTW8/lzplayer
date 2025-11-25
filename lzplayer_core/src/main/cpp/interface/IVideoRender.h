@@ -2,27 +2,46 @@
 #define __I_VIDEO_RENDERER__
 
 #include <memory>
-#include <android/native_window_jni.h>
+#include "platform/VEPlatform.h"
 #include "core/VEFrame.h"
 #include "../thread/AMessage.h"
 #include "core/VEFrame.h"
 #include "VEBundle.h"
 #include "VEError.h"
 
+#if VE_PLATFORM_ANDROID
+#include <android/native_window_jni.h>
+#endif
+
 namespace VE {
+
+    // Platform-independent native window type
+#if VE_PLATFORM_ANDROID
+    typedef ANativeWindow* VENativeWindow;
+#elif VE_PLATFORM_LINUX
+    typedef void* VENativeWindow;  // X11 Window or Wayland surface
+#elif VE_PLATFORM_WINDOWS
+    typedef void* VENativeWindow;  // HWND
+#elif VE_PLATFORM_MACOS || VE_PLATFORM_IOS
+    typedef void* VENativeWindow;  // CALayer or UIView
+#else
+    typedef void* VENativeWindow;
+#endif
+
     class IVideoRender {
     public:
         virtual ~IVideoRender() = default;
 
-        // 初始化渲染器，platformData 可用于传递平台特定的数据（如窗口句柄、Surface等）
+        // Initialize renderer with platform-specific data (window handle, Surface, etc.)
         virtual VEResult initialize(VEBundle params) = 0;
 
-        virtual VEResult changeSurface(ANativeWindow *win,int viewWidth,int viewHeight) = 0;
+        // Change the rendering surface/window
+        virtual VEResult changeSurface(VENativeWindow win, int viewWidth, int viewHeight) = 0;
 
-        // 提交一帧进行渲染
+        // Submit a frame for rendering
         virtual VEResult renderFrame(const std::shared_ptr<VEFrame> &frame) = 0;
 
-        // 释放渲染器资源
+        // Release renderer resources
         virtual VEResult uninitialize() = 0;
     };
 }

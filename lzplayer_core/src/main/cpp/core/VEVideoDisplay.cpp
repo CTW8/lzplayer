@@ -6,6 +6,7 @@
 #include "VEVideoDecoder.h"
 #include "VEGLESVideoRenderer.h"
 #include "VEDef.h"
+#include "platform/VEPlatform.h"
 
 namespace VE {
     VEVideoDisplay::VEVideoDisplay(const std::shared_ptr<AMessage> &notify,
@@ -20,8 +21,8 @@ namespace VE {
     VEResult VEVideoDisplay::prepare(VEBundle params) {
         ALOGI("VEVideoDisplay::%s enter",__FUNCTION__ );
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
-        ANativeWindow *win = params.get<ANativeWindow *>("surface");
-        msg->setPointer("win", win);
+        VENativeWindow win = params.get<VENativeWindow>("surface");
+        msg->setPointer("win", static_cast<void*>(win));
         msg->setInt32("width", params.get<int>("width"));
         msg->setInt32("height", params.get<int>("height"));
         msg->setInt32("fps", params.get<int>("fps"));
@@ -326,7 +327,7 @@ namespace VE {
 
     VEResult VEVideoDisplay::onSurfaceChanged(std::shared_ptr<AMessage> msg) {
         if(m_pVideoRender != nullptr){
-            ANativeWindow *newWin;
+            VENativeWindow newWin;
             msg->findPointer("win", (void **) &newWin);
             int newWidth, newHeight;
             msg->findInt32("width", &newWidth);
@@ -340,13 +341,13 @@ namespace VE {
         return 0;
     }
 
-    VEResult VEVideoDisplay::setSurface(ANativeWindow *win, int width, int height) {
+    VEResult VEVideoDisplay::setSurface(VENativeWindow win, int width, int height) {
         // 检查对象是否已经被shared_ptr管理
         ALOGI("VEVideoDisplay::setSurface enter");
         try {
             std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSurfaceChanged,
                                                                        shared_from_this());
-            msg->setPointer("win", win);
+            msg->setPointer("win", static_cast<void*>(win));
             msg->setInt32("width", width);
             msg->setInt32("height", height);
             msg->post();

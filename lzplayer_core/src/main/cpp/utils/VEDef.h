@@ -18,6 +18,7 @@ namespace VE {
 
 
 #define VE_PLAYER_ERROR                         0x2000
+#define VE_PLAYER_ERROR_UNKNOWN                             (VE_PLAYER_ERROR + 0)
 #define VE_PLAYER_ERROR_OPEN_DEMUX_FAILED                   (VE_PLAYER_ERROR + 1)
 
 

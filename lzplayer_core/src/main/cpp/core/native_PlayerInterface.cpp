@@ -2,8 +2,11 @@
 // Created by 李振 on 2024/7/25.
 //
 
-#include <android/native_window_jni.h>
 #include "native_PlayerInterface.h"
+#include "platform/VEPlatform.h"
+
+#if VE_PLATFORM_ANDROID
+#include <android/native_window_jni.h>
 #include "utils/Log.h"
 #include "VEPlayerDriver.h"
 #include "ScopedUtfChars.h"
@@ -16,14 +19,16 @@ namespace VE {
     jmethodID jNativeCallback;
 
 //-----------------------------------------------------------------------------------
-// ref-counted object for callbacks
+// JNIMediaPlayerListener - Bridges VE player events to Java callbacks
+// Similar to JNIMediaPlayerListener in Android's MediaPlayer JNI
+//-----------------------------------------------------------------------------------
     class JNIMediaPlayerListener : public MediaPlayerListener {
     public:
         JNIMediaPlayerListener(JNIEnv *env, jobject thiz, jobject weak_thiz);
 
         ~JNIMediaPlayerListener();
 
-        virtual void notify(int msg, int ext1, double ext2, const void *obj = NULL);
+        virtual void notify(int msg, int ext1, int ext2, const void *obj = NULL) override;
 
     private:
         JNIMediaPlayerListener();
@@ -56,46 +61,47 @@ namespace VE {
         env->DeleteGlobalRef(mClass);
     }
 
-    void JNIMediaPlayerListener::notify(int msg, int ext1, double ext2, const void *obj) {
+    void JNIMediaPlayerListener::notify(int msg, int ext1, int ext2, const void *obj) {
         JNIEnv *env = AttachCurrentThreadEnv();
+        double ext2Double = static_cast<double>(ext2);
+        
         switch (msg) {
-            case VE_PLAYER_NOTIFY_EVENT_ON_EOS: {
-                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2, NULL);
+            case VE_PLAYER_NOTIFY_EVENT_ON_EOS:
+            case VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION: {
+                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2Double, NULL);
                 break;
             }
             case VE_PLAYER_NOTIFY_EVENT_ON_ERROR: {
-
                 if (obj != nullptr) {
                     const std::string &objString = *reinterpret_cast<const std::string *>(obj);
-
-                    // 转换为 jstring
                     jstring jStr = env->NewStringUTF(objString.c_str());
-
-                    // 调用 Java 方法
-                    env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2,
-                                              jStr);
-
-                    // 释放 jstring 资源
+                    env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2Double, jStr);
                     env->DeleteLocalRef(jStr);
                 } else {
-                    ALOGE("Null pointer passed for obj");
+                    env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2Double, NULL);
                 }
                 break;
             }
             case VE_PLAYER_NOTIFY_EVENT_ON_INFO: {
-                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2, NULL);
+                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2Double, NULL);
                 break;
             }
             case VE_PLAYER_NOTIFY_EVENT_ON_PREPARED: {
-                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2, NULL);
+                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2Double, NULL);
                 break;
             }
             case VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS: {
-                ALOGD("VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS ext2:%f", ext2);
-                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2, NULL);
+                ALOGD("VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS ext2:%d", ext2);
+                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2Double, NULL);
+                break;
+            }
+            case VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE: {
+                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2Double, NULL);
                 break;
             }
             default:
+                ALOGW("JNIMediaPlayerListener::notify - Unknown msg: %d", msg);
+                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2Double, NULL);
                 break;
         }
     }
@@ -103,19 +109,22 @@ namespace VE {
 
     jlong createNativeHandle(JNIEnv *env, jclass clazz) {
         ALOGD("%s %d called", __FUNCTION__, __LINE__);
+        
+        // Create player driver with raw pointer - caller is responsible for calling nativeRelease
         VEPlayerDriver *player = new VEPlayerDriver();
-
 
         jclass clazzNativeLib;
 
         clazzNativeLib = env->FindClass("com/example/lzplayer_core/NativeLib");
         if (clazzNativeLib == NULL) {
+            delete player;
             return -1;
         }
 
         jNativeCallback = env->GetStaticMethodID(clazz, "postEventFromNative",
                                                  "(Ljava/lang/Object;IIDLjava/lang/Object;)V");
         if (jNativeCallback == NULL) {
+            delete player;
             return -1;
         }
 
@@ -177,7 +186,7 @@ namespace VE {
         return vePlayer->pause();
     }
 
-// 暂停播放
+// 恢复播放
     jint nativeResume(JNIEnv *env, jobject obj, jlong handle) {
         ALOGD("nativeResume called with handle: %ld", handle);
         VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
@@ -198,7 +207,8 @@ namespace VE {
         ALOGD("nativeSeekTo called with handle: %ld, timestamp: %f", handle, timestamp);
         VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
         CHECK_NULL();
-        return vePlayer->seekTo(timestamp);
+        // Convert timestamp from milliseconds to int64_t
+        return vePlayer->seekTo(static_cast<int64_t>(timestamp));
     }
 
 // 释放资源
@@ -206,6 +216,7 @@ namespace VE {
         ALOGD("nativeRelease called with handle: %ld", handle);
         VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
         CHECK_NULL();
+        vePlayer->reset();
         delete vePlayer;
         return 0;
     }
@@ -240,3 +251,5 @@ namespace VE {
         return vePlayer->setSpeedRate(speed);
     }
 }
+
+#endif // VE_PLATFORM_ANDROID

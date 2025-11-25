@@ -3,6 +3,9 @@
 //
 
 #include "VEJvmOnLoad.h"
+#include "platform/VEPlatform.h"
+
+#if VE_PLATFORM_ANDROID
 #include <jni.h>
 
 #include "native_PlayerInterface.h"
@@ -79,3 +82,5 @@ JNIEnv *AttachCurrentThreadEnvWithName(const char *threadName) {
     gJvm->AttachCurrentThread(&env, &args);
     return env;
 }
+
+#endif // VE_PLATFORM_ANDROID

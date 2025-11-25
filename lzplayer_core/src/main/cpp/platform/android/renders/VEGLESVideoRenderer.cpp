@@ -1,4 +1,7 @@
 #include "VEGLESVideoRenderer.h"
+#include "platform/VEPlatform.h"
+
+#if VE_PLATFORM_ANDROID
 #include "VEJvmOnLoad.h"
 
 namespace VE {
@@ -593,3 +596,5 @@ void main() {
     }
 
 } // namespace VE
+
+#endif // VE_PLATFORM_ANDROID
