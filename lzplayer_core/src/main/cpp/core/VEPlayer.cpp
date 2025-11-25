@@ -1,6 +1,7 @@
 #include "VEPlayer.h"
 #include "VEAudioRender.h"
 #include "VEVideoDisplay.h"
+#include "VEGenericSource.h"
 
 #include <utility>
 namespace VE {
@@ -200,24 +201,30 @@ namespace VE {
         }
         mPath = path;
 
-        mDemuxLooper = std::make_shared<ALooper>();
-        mDemuxLooper->setName("demux_thread");
-        mDemuxLooper->start(false);
+        mSourceLooper = std::make_shared<ALooper>();
+        mSourceLooper->setName("source_thread");
+        mSourceLooper->start(false);
 
-        mDemux = std::make_shared<VEDemux>();
-        mDemuxLooper->registerHandler(mDemux);
+        // Create generic source (following NuPlayerSource pattern)
+        mSource = std::make_shared<VEGenericSource>();
+        mSourceLooper->registerHandler(mSource);
+        
+        // Set data source (NuPlayer pattern: setDataSource before prepareAsync)
+        mSource->setDataSource(mPath);
+        
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        if (mDemux->open(mPath) != VE_OK) {
+        // Call prepareAsync without path (NuPlayer pattern: path already set via setDataSource)
+        if (mSource->prepareAsync() != VE_OK) {
             //notify error
-            onErrorCallback(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
+            onErrorCallback(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "source open failed!!");
         }
 
-        mMediaInfo = mDemux->getFileInfo();
+        mMediaInfo = mSource->getMediaInfo();
         mAVSync = std::make_shared<VEAVsync>();
 
         mRenderNotifyMsg = std::make_shared<AMessage>(kWhatRenderEvent, shared_from_this());
@@ -229,7 +236,7 @@ namespace VE {
 
             mAudioDecoder = std::make_shared<VEAudioDecoder>();
             mAudioDecodeLooper->registerHandler(mAudioDecoder);
-            mAudioDecoder->prepare(mDemux);
+            mAudioDecoder->prepare(mSource);
 
             mAudioOutputLooper = std::make_shared<ALooper>();
             mAudioOutputLooper->setName("audio_render");
@@ -252,7 +259,7 @@ namespace VE {
 
             mVideoDecoder = std::make_shared<VEVideoDecoder>();
             mVideoDecodeLooper->registerHandler(mVideoDecoder);
-            mVideoDecoder->prepare(mDemux);
+            mVideoDecoder->prepare(mSource);
 
             mVideoRenderLooper = std::make_shared<ALooper>();
             mVideoRenderLooper->setName("video_render");
@@ -288,7 +295,7 @@ namespace VE {
         mVideoDecoder->start();
         mAudioDecoder->start();
 
-        mDemux->start();
+        mSource->start();
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
@@ -301,7 +308,7 @@ namespace VE {
         mVideoDecoder->stop();
         mAudioDecoder->stop();
 
-        mDemux->stop();
+        mSource->stop();
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
@@ -312,7 +319,7 @@ namespace VE {
         mAudioOutput->pause();
         mVideoDecoder->pause();
         mAudioDecoder->pause();
-        mDemux->pause();
+        mSource->pause();
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
@@ -321,11 +328,14 @@ namespace VE {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         double timestampMs;
         if (msg->findDouble("timestampMs", &timestampMs)) {
+            ALOGD("VEPlayer::onSeek timestampMs:%f", timestampMs);
             mVideoRender->seekTo(timestampMs);
             mAudioOutput->seekTo(timestampMs);
             mVideoDecoder->seekTo(timestampMs);
             mAudioDecoder->seekTo(timestampMs);
-            mDemux->seek(timestampMs);
+            // Convert milliseconds to microseconds for source (NuPlayer uses microseconds)
+            int64_t seekTimeUs = static_cast<int64_t>(timestampMs * 1000);
+            mSource->seekTo(seekTimeUs, VESource::SEEK_PREVIOUS_SYNC);
             //从这里发出时不对的，应该在精准seek解码后渲染完成后发出
             onSeekComplateCallback();
         }
@@ -337,7 +347,7 @@ namespace VE {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         mVideoDecoder->flush();
         mAudioDecoder->flush();
-        mDemux->seek(0);
+        mSource->seekTo(0, VESource::SEEK_PREVIOUS_SYNC);
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }

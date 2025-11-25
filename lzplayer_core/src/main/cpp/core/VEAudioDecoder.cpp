@@ -20,9 +20,9 @@ namespace VE {
         release();
     }
 
-    VEResult VEAudioDecoder::prepare(std::shared_ptr<VEDemux> demux) {
+    VEResult VEAudioDecoder::prepare(std::shared_ptr<VESource> source) {
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
-        msg->setObject("demux", demux);
+        msg->setObject("source", source);
         msg->post();
         return 0;
     }
@@ -123,11 +123,11 @@ namespace VE {
     VEResult VEAudioDecoder::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGI("VEAudioDecoder::%s enter", __FUNCTION__);
         std::shared_ptr<void> tmp;
-        msg->findObject("demux", &tmp);
+        msg->findObject("source", &tmp);
 
         mFrameQueue = std::make_shared<VEFrameQueue>(AUDIO_FRAME_QUEUE_SIZE);
-        mDemux = std::static_pointer_cast<VEDemux>(tmp);
-        std::shared_ptr<VEMediaInfo> info = mDemux->getFileInfo();
+        mSource = std::static_pointer_cast<VESource>(tmp);
+        std::shared_ptr<VEMediaInfo> info = mSource->getMediaInfo();
         if (info == nullptr) {
             return -1;
         }
@@ -287,10 +287,11 @@ namespace VE {
         } while (ret != AVERROR(EAGAIN));
 
         std::shared_ptr<VEPacket> packet;
-        ret = mDemux->read(true, packet);
+        ret = mSource->read(true, packet);
         if (ret == VE_NOT_ENOUGH_DATA) {
             ALOGI("VEAudioDecoder::onDecode not enough data");
-            mDemux->needMorePacket(std::make_shared<AMessage>(kWhatDecode, shared_from_this()), 1);
+            // Use VETrackInfo::TRACK_TYPE_AUDIO (2) for audio
+            mSource->requestMoreData(std::make_shared<AMessage>(kWhatDecode, shared_from_this()), 2);
             return VE_NOT_ENOUGH_DATA;
         }
 

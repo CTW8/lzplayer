@@ -32,26 +32,26 @@ namespace VE {
         // 不直接释放资源，统一在 release / onRelease 中处理
     }
 
-    VEResult VEVideoDecoder::prepare(std::shared_ptr<VEDemux> demux) {
+    VEResult VEVideoDecoder::prepare(std::shared_ptr<VESource> source) {
         ALOGI("VEVideoDecoder::prepare enter");
-        if (!demux) {
-            ALOGE("VEVideoDecoder::prepare demux is null");
+        if (!source) {
+            ALOGE("VEVideoDecoder::prepare source is null");
             return VE_INVALID_PARAMS;
         }
         auto msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
-        msg->setObject("demux", demux);
+        msg->setObject("source", source);
         msg->post();
         return VE_OK;
     }
 
     VEResult VEVideoDecoder::prepare(VEBundle params) {
-        std::shared_ptr<VEDemux> demux = params.get<std::shared_ptr<VEDemux>>("demux");
-        if (!demux) {
-            ALOGE("VEVideoDecoder::prepare demux is null");
+        std::shared_ptr<VESource> source = params.get<std::shared_ptr<VESource>>("source");
+        if (!source) {
+            ALOGE("VEVideoDecoder::prepare source is null");
             return VE_INVALID_PARAMS;
         }
         auto msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
-        msg->setObject("demux", demux);
+        msg->setObject("source", source);
         msg->post();
         return 0;
     }
@@ -189,14 +189,14 @@ namespace VE {
     VEResult VEVideoDecoder::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGI("VEVideoDecoder::onPrepare enter");
         std::shared_ptr<void> tmp;
-        if (!msg->findObject("demux", &tmp)) {
-            ALOGE("VEVideoDecoder::onPrepare demux not found in message");
+        if (!msg->findObject("source", &tmp)) {
+            ALOGE("VEVideoDecoder::onPrepare source not found in message");
             return VE_INVALID_PARAMS;
         }
 
-        mDemux = std::static_pointer_cast<VEDemux>(tmp);
-        if (!mDemux) {
-            ALOGE("VEVideoDecoder::onPrepare demux cast failed");
+        mSource = std::static_pointer_cast<VESource>(tmp);
+        if (!mSource) {
+            ALOGE("VEVideoDecoder::onPrepare source cast failed");
             return VE_INVALID_PARAMS;
         }
 
@@ -206,7 +206,7 @@ namespace VE {
             return VE_UNKNOWN_ERROR;
         }
 
-        mMediaInfo = mDemux->getFileInfo();
+        mMediaInfo = mSource->getMediaInfo();
         if (!mMediaInfo || !mMediaInfo->mVideoCodecParams) {
             ALOGE("VEVideoDecoder::onPrepare invalid media info or video codec params");
             return VE_INVALID_PARAMS;
@@ -326,12 +326,13 @@ namespace VE {
         } while (ret != AVERROR(EAGAIN));
 
         std::shared_ptr<VEPacket> packet;
-        ret = mDemux->read(false, packet);
+        ret = mSource->read(false, packet);
         if (ret == VE_NOT_ENOUGH_DATA) {
-            ALOGI("VEVideoDecoder::onDecode not enough data from demux");
-            if (mDemux) {
+            ALOGI("VEVideoDecoder::onDecode not enough data from source");
+            if (mSource) {
                 auto decodeMsg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
-                mDemux->needMorePacket(decodeMsg, 2);
+                // Use VETrackInfo::TRACK_TYPE_VIDEO (1) for video
+                mSource->requestMoreData(decodeMsg, 1);
             }
             return VE_NOT_ENOUGH_DATA;
         }
@@ -368,7 +369,7 @@ namespace VE {
             mFrameQueue.reset();
         }
         mMediaInfo.reset();
-        mDemux.reset();
+        mSource.reset();
         mNotifyMore.reset();
 
         return VE_OK;
