@@ -35,5 +35,9 @@ enum {
     VE_ERROR_EAGAIN        = (VE_UNKNOWN_ERROR + 20),
 };
 
+#define DISALLOW_EVIL_CONSTRUCTORS(name) \
+    name(const name &); \
+    name &operator=(const name &) /* NOLINT */
+
 typedef int32_t VEResult;
 #endif //LZPLAYER_VEERROR_H
