@@ -43,7 +43,7 @@ struct MediaSource{
     virtual status_t stop() = 0;
 
     // Returns the format of the data output by this media source.
-    virtual sp<MetaData> getFormat() = 0;
+    virtual std::shared_ptr<MetaData> getFormat() = 0;
 
     // Options that modify read() behaviour. The default is to
     // a) not request a seek

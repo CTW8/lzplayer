@@ -348,7 +348,7 @@ public:
 
     bool hasData(uint32_t key) const;
 
-    String8 toString() const;
+    std::string toString() const;
     void dumpToLog() const;
 
 private:

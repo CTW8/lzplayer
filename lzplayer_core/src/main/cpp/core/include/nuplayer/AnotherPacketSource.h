@@ -17,23 +17,27 @@
 #ifndef ANOTHER_PACKET_SOURCE_H_
 
 #define ANOTHER_PACKET_SOURCE_H_
-
-#include <media/stagefright/MediaSource.h>
-
-#include "ATSParser.h"
+#include <mutex>
+#include <list>
+#include <unordered_map>
+#include <condition_variable>
+#include "Errors.h"
+#include "AMessage.h"
+#include "MetaData.h"
+#include "MediaSource.h"
 
 namespace android {
 
 struct ABuffer;
 
 struct AnotherPacketSource : public MediaSource {
-    explicit AnotherPacketSource(const sp<MetaData> &meta);
+    explicit AnotherPacketSource(const std::shared_ptr<MetaData> &meta);
 
-    void setFormat(const sp<MetaData> &meta);
+    void setFormat(const std::shared_ptr<MetaData> &meta);
 
     virtual status_t start(MetaData *params = NULL);
     virtual status_t stop();
-    virtual sp<MetaData> getFormat();
+    virtual std::shared_ptr<MetaData> getFormat();
 
     virtual status_t read(
             MediaBufferBase **buffer, const ReadOptions *options = NULL);
@@ -59,28 +63,28 @@ struct AnotherPacketSource : public MediaSource {
 
     status_t nextBufferTime(int64_t *timeUs);
 
-    void queueAccessUnit(const sp<ABuffer> &buffer);
+    void queueAccessUnit(const std::shared_ptr<ABuffer> &buffer);
 
     void queueDiscontinuity(
             ATSParser::DiscontinuityType type,
-            const sp<AMessage> &extra,
+            const std::shared_ptr<AMessage> &extra,
             bool discard);
 
     void signalEOS(status_t result);
 
-    status_t dequeueAccessUnit(sp<ABuffer> *buffer);
-    void requeueAccessUnit(const sp<ABuffer> &buffer);
+    status_t dequeueAccessUnit(std::shared_ptr<ABuffer> *buffer);
+    void requeueAccessUnit(const std::shared_ptr<ABuffer> &buffer);
 
     bool isFinished(int64_t duration) const;
 
     void enable(bool enable);
 
-    sp<AMessage> getLatestEnqueuedMeta();
-    sp<AMessage> getLatestDequeuedMeta();
-    sp<AMessage> getMetaAfterLastDequeued(int64_t delayUs);
+    std::shared_ptr<AMessage> getLatestEnqueuedMeta();
+    std::shared_ptr<AMessage> getLatestDequeuedMeta();
+    std::shared_ptr<AMessage> getMetaAfterLastDequeued(int64_t delayUs);
 
-    void trimBuffersAfterMeta(const sp<AMessage> &meta);
-    sp<AMessage> trimBuffersBeforeMeta(const sp<AMessage> &meta);
+    void trimBuffersAfterMeta(const std::shared_ptr<AMessage> &meta);
+    std::shared_ptr<AMessage> trimBuffersBeforeMeta(const std::shared_ptr<AMessage> &meta);
 
 protected:
     virtual ~AnotherPacketSource();
@@ -103,21 +107,21 @@ private:
     // discontinuity markers. There should always be at least _ONE_
     // discontinuity segment, hence the various CHECKs in
     // AnotherPacketSource.cpp for non-empty()-ness.
-    List<DiscontinuitySegment> mDiscontinuitySegments;
+    std::list<DiscontinuitySegment> mDiscontinuitySegments;
 
-    Mutex mLock;
-    Condition mCondition;
+    std::mutex mLock;
+    std::condition_variable mCondition;
 
     bool mIsAudio;
     bool mIsVideo;
     bool mEnabled;
-    sp<MetaData> mFormat;
+    std::shared_ptr<MetaData> mFormat;
     int64_t mLastQueuedTimeUs;
     int64_t mEstimatedBufferDurationUs;
-    List<sp<ABuffer> > mBuffers;
+    std::list<std::shared_ptr<ABuffer> > mBuffers;
     status_t mEOSResult;
-    sp<AMessage> mLatestEnqueuedMeta;
-    sp<AMessage> mLatestDequeuedMeta;
+    std::shared_ptr<AMessage> mLatestEnqueuedMeta;
+    std::shared_ptr<AMessage> mLatestDequeuedMeta;
 
     bool wasFormatChange(int32_t discontinuityType) const;
 

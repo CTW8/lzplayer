@@ -47,7 +47,7 @@ ABuffer::ABuffer(void *data, size_t capacity)
 // static
 std::shared_ptr<ABuffer> ABuffer::CreateAsCopy(const void *data, size_t capacity)
 {
-    std::shared_ptr<ABuffer> res = new ABuffer(capacity);
+    std::shared_ptr<ABuffer> res = std::make_shared<ABuffer>(capacity);
     if (res->base() == NULL) {
         return NULL;
     }

@@ -20,13 +20,11 @@
 
 #include "NuPlayer.h"
 
-#include <media/IStreamSource.h>
-
 namespace android {
 
 class MemoryDealer;
 
-struct NuPlayer::NuPlayerStreamListener : public BnStreamListener {
+struct NuPlayer::NuPlayerStreamListener{
     NuPlayerStreamListener(
             const std::shared_ptr<IStreamSource> &source,
             const std::shared_ptr<AHandler> &targetHandler);

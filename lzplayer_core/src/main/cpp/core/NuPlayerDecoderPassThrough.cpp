@@ -24,14 +24,6 @@
 #include "NuPlayerRenderer.h"
 #include "NuPlayerSource.h"
 
-#include <mediadrm/ICrypto.h>
-#include <media/MediaCodecBuffer.h>
-#include <media/stagefright/foundation/ABuffer.h>
-#include <media/stagefright/foundation/ADebug.h>
-#include <media/stagefright/foundation/AMessage.h>
-#include <media/stagefright/MediaErrors.h>
-#include <mpeg2ts/ATSParser.h>
-
 namespace android {
 
 // TODO optimize buffer size for power consumption
@@ -40,9 +32,9 @@ static const size_t kAggregateBufferSizeBytes = 24 * 1024;
 static const size_t kMaxCachedBytes = 200000;
 
 NuPlayer::DecoderPassThrough::DecoderPassThrough(
-        const sp<AMessage> &notify,
-        const sp<Source> &source,
-        const sp<Renderer> &renderer)
+        const std::shared_ptr<AMessage> &notify,
+        const std::shared_ptr<Source> &source,
+        const std::shared_ptr<Renderer> &renderer)
     : DecoderBase(notify),
       mSource(source),
       mRenderer(renderer),
@@ -58,7 +50,7 @@ NuPlayer::DecoderPassThrough::DecoderPassThrough(
 NuPlayer::DecoderPassThrough::~DecoderPassThrough() {
 }
 
-void NuPlayer::DecoderPassThrough::onConfigure(const sp<AMessage> &format) {
+void NuPlayer::DecoderPassThrough::onConfigure(const std::shared_ptr<AMessage> &format) {
     ALOGV("[%s] onConfigure", mComponentName.c_str());
     mCachedBytes = 0;
     mPendingBuffersToDrain = 0;
@@ -81,18 +73,18 @@ void NuPlayer::DecoderPassThrough::onConfigure(const sp<AMessage> &format) {
     }
 }
 
-void NuPlayer::DecoderPassThrough::onSetParameters(const sp<AMessage> &/*params*/) {
+void NuPlayer::DecoderPassThrough::onSetParameters(const std::shared_ptr<AMessage> &/*params*/) {
     ALOGW("onSetParameters() called unexpectedly");
 }
 
 void NuPlayer::DecoderPassThrough::onSetRenderer(
-        const sp<Renderer> &renderer) {
+        const std::shared_ptr<Renderer> &renderer) {
     // renderer can't be changed during offloading
     ALOGW_IF(renderer != mRenderer,
             "ignoring request to change renderer");
 }
 
-bool NuPlayer::DecoderPassThrough::isStaleReply(const sp<AMessage> &msg) {
+bool NuPlayer::DecoderPassThrough::isStaleReply(const std::shared_ptr<AMessage> &msg) {
     int32_t generation;
     CHECK(msg->findInt32("generation", &generation));
     return generation != mBufferGeneration;
@@ -111,7 +103,7 @@ bool NuPlayer::DecoderPassThrough::isDoneFetching() const {
 bool NuPlayer::DecoderPassThrough::doRequestBuffers() {
     status_t err = OK;
     while (!isDoneFetching()) {
-        sp<AMessage> msg = new AMessage();
+        std::shared_ptr<AMessage> msg = new AMessage();
 
         err = fetchInputData(msg);
         if (err != OK) {
@@ -125,7 +117,7 @@ bool NuPlayer::DecoderPassThrough::doRequestBuffers() {
             && mSource->feedMoreTSData() == OK;
 }
 
-status_t NuPlayer::DecoderPassThrough::dequeueAccessUnit(sp<ABuffer> *accessUnit) {
+status_t NuPlayer::DecoderPassThrough::dequeueAccessUnit(std::shared_ptr<ABuffer> *accessUnit) {
     status_t err;
 
     // Did we save an accessUnit earlier because of a discontinuity?
@@ -152,9 +144,9 @@ status_t NuPlayer::DecoderPassThrough::dequeueAccessUnit(sp<ABuffer> *accessUnit
     return err;
 }
 
-sp<ABuffer> NuPlayer::DecoderPassThrough::aggregateBuffer(
-        const sp<ABuffer> &accessUnit) {
-    sp<ABuffer> aggregate;
+std::shared_ptr<ABuffer> NuPlayer::DecoderPassThrough::aggregateBuffer(
+        const std::shared_ptr<ABuffer> &accessUnit) {
+    std::shared_ptr<ABuffer> aggregate;
 
     if (accessUnit == NULL) {
         // accessUnit is saved to mPendingAudioAccessUnit
@@ -211,8 +203,8 @@ sp<ABuffer> NuPlayer::DecoderPassThrough::aggregateBuffer(
     return aggregate;
 }
 
-status_t NuPlayer::DecoderPassThrough::fetchInputData(sp<AMessage> &reply) {
-    sp<ABuffer> accessUnit;
+status_t NuPlayer::DecoderPassThrough::fetchInputData(std::shared_ptr<AMessage> &reply) {
+    std::shared_ptr<ABuffer> accessUnit;
 
     do {
         status_t err = dequeueAccessUnit(&accessUnit);
@@ -239,7 +231,7 @@ status_t NuPlayer::DecoderPassThrough::fetchInputData(sp<AMessage> &reply) {
                         formatChange, timeChange);
 
                 if (formatChange || timeChange) {
-                    sp<AMessage> msg = mNotify->dup();
+                    std::shared_ptr<AMessage> msg = mNotify->dup();
                     msg->setInt32("what", kWhatInputDiscontinuity);
                     // will perform seamless format change,
                     // only notify NuPlayer to scan sources
@@ -279,12 +271,12 @@ status_t NuPlayer::DecoderPassThrough::fetchInputData(sp<AMessage> &reply) {
 }
 
 void NuPlayer::DecoderPassThrough::onInputBufferFetched(
-        const sp<AMessage> &msg) {
+        const std::shared_ptr<AMessage> &msg) {
     if (mReachedEOS) {
         return;
     }
 
-    sp<ABuffer> buffer;
+    std::shared_ptr<ABuffer> buffer;
     bool hasBuffer = msg->findBuffer("buffer", &buffer);
     if (buffer == NULL) {
         int32_t streamErr = ERROR_END_OF_STREAM;
@@ -303,7 +295,7 @@ void NuPlayer::DecoderPassThrough::onInputBufferFetched(
         return;
     }
 
-    sp<AMessage> extra;
+    std::shared_ptr<AMessage> extra;
     if (buffer->meta()->findMessage("extra", &extra) && extra != NULL) {
         int64_t resumeAtMediaTimeUs;
         if (extra->findInt64(
@@ -336,11 +328,11 @@ void NuPlayer::DecoderPassThrough::onInputBufferFetched(
         return;
     }
 
-    sp<AMessage> reply = new AMessage(kWhatBufferConsumed, this);
+    std::shared_ptr<AMessage> reply = std::make_shared<AMessage>(kWhatBufferConsumed, this);
     reply->setInt32("generation", mBufferGeneration);
     reply->setInt32("size", bufferSize);
 
-    sp<MediaCodecBuffer> mcBuffer = new MediaCodecBuffer(nullptr, buffer);
+    std::shared_ptr<MediaCodecBuffer> mcBuffer = std::make_shared<MediaCodecBuffer>(nullptr, buffer);
     mcBuffer->meta()->setInt64("timeUs", timeUs);
 
     mRenderer->queueBuffer(true /* audio */, mcBuffer, reply);
@@ -364,7 +356,7 @@ void NuPlayer::DecoderPassThrough::onResume(bool notifyComplete) {
     onRequestInputBuffers();
 
     if (notifyComplete) {
-        sp<AMessage> notify = mNotify->dup();
+        std::shared_ptr<AMessage> notify = mNotify->dup();
         notify->setInt32("what", kWhatResumeCompleted);
         notify->post();
     }
@@ -391,7 +383,7 @@ void NuPlayer::DecoderPassThrough::onFlush() {
     doFlush(true /* notifyComplete */);
 
     mPaused = true;
-    sp<AMessage> notify = mNotify->dup();
+    std::shared_ptr<AMessage> notify = mNotify->dup();
     notify->setInt32("what", kWhatFlushCompleted);
     notify->post();
 
@@ -402,7 +394,7 @@ void NuPlayer::DecoderPassThrough::onShutdown(bool notifyComplete) {
     mSkipRenderingUntilMediaTimeUs = -1;
 
     if (notifyComplete) {
-        sp<AMessage> notify = mNotify->dup();
+        std::shared_ptr<AMessage> notify = mNotify->dup();
         notify->setInt32("what", kWhatShutdownCompleted);
         notify->post();
     }
@@ -410,7 +402,7 @@ void NuPlayer::DecoderPassThrough::onShutdown(bool notifyComplete) {
     mReachedEOS = true;
 }
 
-void NuPlayer::DecoderPassThrough::onMessageReceived(const sp<AMessage> &msg) {
+void NuPlayer::DecoderPassThrough::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     ALOGV("[%s] onMessage: %s", mComponentName.c_str(),
             msg->debugString().c_str());
 

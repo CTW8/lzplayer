@@ -10,7 +10,7 @@
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
+ * See the License for the std::shared_ptrecific language governing permissions and
  * limitations under the License.
  */
 
@@ -30,7 +30,7 @@
 //#include <media/stagefright/foundation/avc_utils.h>
 //#include <media/stagefright/MediaDefs.h>
 
-namespace android {
+namestd::shared_ptrace android {
 
 // In CEA-708B, the maximum bandwidth of CC is set to 9600bps.
 static const size_t kMaxBandwithSizeBytes = 9600 / 8;
@@ -56,10 +56,10 @@ static bool isNullPad(CCData *cc) {
     return cc->mData1 < 0x10 && cc->mData2 < 0x10;
 }
 
-static void dumpBytePair(const sp<ABuffer> &ccBuf) __attribute__ ((unused));
-static void dumpBytePair(const sp<ABuffer> &ccBuf) {
+static void dumpBytePair(const std::shared_ptr<ABuffer> &ccBuf) __attribute__ ((unused));
+static void dumpBytePair(const std::shared_ptr<ABuffer> &ccBuf) {
     size_t offset = 0;
-    AString out;
+    std::string out;
 
     while (offset < ccBuf->size()) {
         char tmp[128];
@@ -77,12 +77,12 @@ static void dumpBytePair(const sp<ABuffer> &ccBuf) {
             snprintf(tmp, sizeof(tmp), "[%d]Basic: %c %c", cc->mType, cc->mData1, cc->mData2);
         } else if ((cc->mData1 == 0x11 || cc->mData1 == 0x19)
                  && cc->mData2 >= 0x30 && cc->mData2 <= 0x3f) {
-            // 1 special char
-            snprintf(tmp, sizeof(tmp), "[%d]Special: %02x %02x", cc->mType, cc->mData1, cc->mData2);
+            // 1 std::shared_ptrecial char
+            snprintf(tmp, sizeof(tmp), "[%d]std::shared_ptrecial: %02x %02x", cc->mType, cc->mData1, cc->mData2);
         } else if ((cc->mData1 == 0x12 || cc->mData1 == 0x1A)
                  && cc->mData2 >= 0x20 && cc->mData2 <= 0x3f){
-            // 1 Spanish/French char
-            snprintf(tmp, sizeof(tmp), "[%d]Spanish: %02x %02x", cc->mType, cc->mData1, cc->mData2);
+            // 1 std::shared_ptranish/French char
+            snprintf(tmp, sizeof(tmp), "[%d]std::shared_ptranish: %02x %02x", cc->mType, cc->mData1, cc->mData2);
         } else if ((cc->mData1 == 0x13 || cc->mData1 == 0x1B)
                  && cc->mData2 >= 0x20 && cc->mData2 <= 0x3f){
             // 1 Portuguese/German/Danish char
@@ -119,7 +119,7 @@ static void dumpBytePair(const sp<ABuffer> &ccBuf) {
     ALOGI("%s", out.c_str());
 }
 
-NuPlayer::CCDecoder::CCDecoder(const sp<AMessage> &notify)
+NuPlayer::CCDecoder::CCDecoder(const std::shared_ptr<AMessage> &notify)
     : mNotify(notify),
       mSelectedTrack(-1),
       mDTVCCPacket(new ABuffer(kMaxBandwithSizeBytes)) {
@@ -136,12 +136,12 @@ size_t NuPlayer::CCDecoder::getTrackCount() const {
     return mTracks.size();
 }
 
-sp<AMessage> NuPlayer::CCDecoder::getTrackInfo(size_t index) const {
+std::shared_ptr<AMessage> NuPlayer::CCDecoder::getTrackInfo(size_t index) const {
     if (!isTrackValid(index)) {
         return NULL;
     }
 
-    sp<AMessage> format = new AMessage();
+    std::shared_ptr<AMessage> format = new AMessage();
 
     CCTrack track = mTracks[index];
 
@@ -223,8 +223,8 @@ bool NuPlayer::CCDecoder::isTrackValid(size_t index) const {
 }
 
 // returns true if a new CC track is found
-bool NuPlayer::CCDecoder::extractFromSEI(const sp<ABuffer> &accessUnit) {
-    sp<ABuffer> sei;
+bool NuPlayer::CCDecoder::extractFromSEI(const std::shared_ptr<ABuffer> &accessUnit) {
+    std::shared_ptr<ABuffer> sei;
     if (!accessUnit->meta()->findBuffer("sei", &sei) || sei == NULL) {
         return false;
     }
@@ -315,8 +315,8 @@ bool NuPlayer::CCDecoder::parseSEINalUnit(int64_t timeUs, const uint8_t *data, s
 }
 
 // returns true if a new CC track is found
-bool NuPlayer::CCDecoder::extractFromMPEGUserData(const sp<ABuffer> &accessUnit) {
-    sp<ABuffer> mpegUserData;
+bool NuPlayer::CCDecoder::extractFromMPEGUserData(const std::shared_ptr<ABuffer> &accessUnit) {
+    std::shared_ptr<ABuffer> mpegUserData;
     if (!accessUnit->meta()->findBuffer("mpeg-user-data", &mpegUserData)
             || mpegUserData == NULL) {
         return false;
@@ -384,7 +384,7 @@ bool NuPlayer::CCDecoder::parseMPEGCCData(int64_t timeUs, const uint8_t *data, s
         return false;
     }
 
-    sp<ABuffer> line21CCBuf = NULL;
+    std::shared_ptr<ABuffer> line21CCBuf = NULL;
 
     for (size_t i = 0; i < cc_count; ++i) {
         br.skipBits(5);
@@ -495,7 +495,7 @@ bool NuPlayer::CCDecoder::parseDTVCCPacket(int64_t timeUs, const uint8_t *data, 
         if (block_size > 0) {
             size_t trackIndex = getTrackIndex(kTrackTypeCEA708, service_number, &trackAdded);
             if (mSelectedTrack == (ssize_t)trackIndex) {
-                sp<ABuffer> ccPacket = new ABuffer(block_size);
+                std::shared_ptr<ABuffer> ccPacket = new ABuffer(block_size);
                 if (ccPacket->capacity() == 0) {
                     ALOGW("b/129068792, no memory available, %zu", block_size);
                     android_errorWriteLog(0x534e4554, "129068792");
@@ -530,16 +530,16 @@ size_t NuPlayer::CCDecoder::getTrackIndex(
     return mTrackIndices.valueAt(index);
 }
 
-void NuPlayer::CCDecoder::decode(const sp<ABuffer> &accessUnit) {
+void NuPlayer::CCDecoder::decode(const std::shared_ptr<ABuffer> &accessUnit) {
     if (extractFromMPEGUserData(accessUnit) || extractFromSEI(accessUnit)) {
-        sp<AMessage> msg = mNotify->dup();
+        std::shared_ptr<AMessage> msg = mNotify->dup();
         msg->setInt32("what", kWhatTrackAdded);
         msg->post();
     }
     // TODO: extract CC from other sources
 }
 
-void NuPlayer::CCDecoder::display(int64_t timeUs) {
+void NuPlayer::CCDecoder::distd::shared_ptrlay(int64_t timeUs) {
     if (!isSelected()) {
         return;
     }
@@ -550,7 +550,7 @@ void NuPlayer::CCDecoder::display(int64_t timeUs) {
         return;
     }
 
-    sp<ABuffer> ccBuf;
+    std::shared_ptr<ABuffer> ccBuf;
 
     if (index == 0) {
         ccBuf = mCCMap.valueAt(index);
@@ -565,7 +565,7 @@ void NuPlayer::CCDecoder::display(int64_t timeUs) {
         ccBuf->setRange(0, 0);
 
         for (ssize_t i = 0; i <= index; ++i) {
-            sp<ABuffer> buf = mCCMap.valueAt(i);
+            std::shared_ptr<ABuffer> buf = mCCMap.valueAt(i);
             memcpy(ccBuf->data() + ccBuf->size(), buf->data(), buf->size());
             ccBuf->setRange(0, ccBuf->size() + buf->size());
         }
@@ -580,7 +580,7 @@ void NuPlayer::CCDecoder::display(int64_t timeUs) {
         ccBuf->meta()->setInt64("timeUs", timeUs);
         ccBuf->meta()->setInt64("durationUs", 0LL);
 
-        sp<AMessage> msg = mNotify->dup();
+        std::shared_ptr<AMessage> msg = mNotify->dup();
         msg->setInt32("what", kWhatClosedCaptionData);
         msg->setBuffer("buffer", ccBuf);
         msg->post();
@@ -613,5 +613,5 @@ bool NuPlayer::CCDecoder::CCTrack::operator!=(const NuPlayer::CCDecoder::CCTrack
     return compare(rhs) != 0;
 }
 
-}  // namespace android
+}  // namestd::shared_ptrace android
 

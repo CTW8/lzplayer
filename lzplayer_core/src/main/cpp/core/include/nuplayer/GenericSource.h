@@ -17,14 +17,11 @@
 #ifndef GENERIC_SOURCE_H_
 
 #define GENERIC_SOURCE_H_
-
+#include <unordered_map>
+#include <list>
+#include <memory>
 #include "NuPlayer.h"
 #include "NuPlayerSource.h"
-
-#include <android-base/unique_fd.h>
-#include <media/mediaplayer.h>
-#include <media/stagefright/MediaBuffer.h>
-#include <mpeg2ts/ATSParser.h>
 
 namespace android {
 
@@ -43,17 +40,17 @@ struct NuCachedSource2;
 struct NuPlayer::GenericSource : public NuPlayer::Source,
                                  public MediaBufferObserver // Modular DRM
 {
-    GenericSource(const sp<AMessage> &notify, bool uidValid, uid_t uid,
-                  const sp<MediaClock> &mediaClock);
+    GenericSource(const std::shared_ptr<AMessage> &notify, bool uidValid, uid_t uid,
+                  const std::shared_ptr<MediaClock> &mediaClock);
 
     status_t setDataSource(
-            const sp<IMediaHTTPService> &httpService,
+            const std::shared_ptr<IMediaHTTPService> &httpService,
             const char *url,
-            const KeyedVector<String8, String8> *headers);
+            const std::unordered_map<std::string, std::string> *headers);
 
     status_t setDataSource(int fd, int64_t offset, int64_t length);
 
-    status_t setDataSource(const sp<DataSource>& dataSource);
+    status_t setDataSource(const std::shared_ptr<DataSource>& dataSource);
 
     virtual status_t getBufferingSettings(
             BufferingSettings* buffering /* nonnull */) override;
@@ -70,13 +67,13 @@ struct NuPlayer::GenericSource : public NuPlayer::Source,
 
     virtual status_t feedMoreTSData();
 
-    virtual sp<MetaData> getFileFormatMeta() const;
+    virtual std::shared_ptr<MetaData> getFileFormatMeta() const;
 
-    virtual status_t dequeueAccessUnit(bool audio, sp<ABuffer> *accessUnit);
+    virtual status_t dequeueAccessUnit(bool audio, std::shared_ptr<ABuffer> *accessUnit);
 
     virtual status_t getDuration(int64_t *durationUs);
     virtual size_t getTrackCount() const;
-    virtual sp<AMessage> getTrackInfo(size_t trackIndex) const;
+    virtual std::shared_ptr<AMessage> getTrackInfo(size_t trackIndex) const;
     virtual ssize_t getSelectedTrack(media_track_type type) const;
     virtual status_t selectTrack(size_t trackIndex, bool select, int64_t timeUs);
     virtual status_t seekTo(
@@ -89,7 +86,7 @@ struct NuPlayer::GenericSource : public NuPlayer::Source,
     virtual void signalBufferReturned(MediaBufferBase *buffer);
 
     virtual status_t prepareDrm(
-            const uint8_t uuid[16], const Vector<uint8_t> &drmSessionId, sp<ICrypto> *outCrypto);
+            const uint8_t uuid[16], const std::vector<uint8_t> &drmSessionId, std::shared_ptr<ICrypto> *outCrypto);
 
     virtual status_t releaseDrm();
 
@@ -97,9 +94,9 @@ struct NuPlayer::GenericSource : public NuPlayer::Source,
 protected:
     virtual ~GenericSource();
 
-    virtual void onMessageReceived(const sp<AMessage> &msg);
+    virtual void onMessageReceived(const std::shared_ptr<AMessage> &msg);
 
-    virtual sp<MetaData> getFormatMeta(bool audio);
+    virtual std::shared_ptr<MetaData> getFormatMeta(bool audio);
 
 private:
     enum {
@@ -120,11 +117,11 @@ private:
 
     struct Track {
         size_t mIndex;
-        sp<IMediaSource> mSource;
-        sp<AnotherPacketSource> mPackets;
+        std::shared_ptr<IMediaSource> mSource;
+        std::shared_ptr<AnotherPacketSource> mPackets;
     };
 
-    Vector<sp<IMediaSource> > mSources;
+    std::vector<std::shared_ptr<IMediaSource> > mSources;
     Track mAudioTrack;
     int64_t mAudioTimeUs;
     int64_t mAudioLastDequeueTimeUs;
@@ -150,29 +147,29 @@ private:
     bool mIsStreaming;
     bool mUIDValid;
     uid_t mUID;
-    const sp<MediaClock> mMediaClock;
-    sp<IMediaHTTPService> mHTTPService;
-    AString mUri;
-    KeyedVector<String8, String8> mUriHeaders;
+    const std::shared_ptr<MediaClock> mMediaClock;
+    std::shared_ptr<IMediaHTTPService> mHTTPService;
+    std::string mUri;
+    std::unordered_map<std::string, std::string> mUriHeaders;
     base::unique_fd mFd;
     int64_t mOffset;
     int64_t mLength;
 
     bool mDisconnected;
-    sp<DataSource> mDataSource;
-    sp<NuCachedSource2> mCachedSource;
-    sp<DataSource> mHttpSource;
-    sp<MetaData> mFileMeta;
+    std::shared_ptr<DataSource> mDataSource;
+    std::shared_ptr<NuCachedSource2> mCachedSource;
+    std::shared_ptr<DataSource> mHttpSource;
+    std::shared_ptr<MetaData> mFileMeta;
     bool mStarted;
     bool mPreparing;
     int64_t mBitrate;
     uint32_t mPendingReadBufferTypes;
-    sp<ABuffer> mGlobalTimedText;
+    std::shared_ptr<ABuffer> mGlobalTimedText;
 
-    mutable Mutex mLock;
-    mutable Mutex mDisconnectLock; // Protects mDataSource, mHttpSource and mDisconnected
+    mutable std::mutex mLock;
+    mutable std::mutex mDisconnectLock; // Protects mDataSource, mHttpSource and mDisconnected
 
-    sp<ALooper> mLooper;
+    std::shared_ptr<ALooper> mLooper;
 
     void resetDataSource();
 
@@ -184,29 +181,29 @@ private:
     void finishPrepareAsync();
     status_t startSources();
 
-    void onSeek(const sp<AMessage>& msg);
+    void onSeek(const std::shared_ptr<AMessage>& msg);
     status_t doSeek(int64_t seekTimeUs, MediaPlayerSeekMode mode);
 
     void onPrepareAsync();
 
     void fetchTextData(
             uint32_t what, media_track_type type,
-            int32_t curGen, const sp<AnotherPacketSource>& packets, const sp<AMessage>& msg);
+            int32_t curGen, const std::shared_ptr<AnotherPacketSource>& packets, const std::shared_ptr<AMessage>& msg);
 
     void sendGlobalTextData(
             uint32_t what,
-            int32_t curGen, sp<AMessage> msg);
+            int32_t curGen, std::shared_ptr<AMessage> msg);
 
     void sendTextData(
             uint32_t what, media_track_type type,
-            int32_t curGen, const sp<AnotherPacketSource>& packets, const sp<AMessage>& msg);
+            int32_t curGen, const std::shared_ptr<AnotherPacketSource>& packets, const std::shared_ptr<AMessage>& msg);
 
-    sp<ABuffer> mediaBufferToABuffer(
+    std::shared_ptr<ABuffer> mediaBufferToABuffer(
             MediaBufferBase *mbuf,
             media_track_type trackType);
 
     void postReadBuffer(media_track_type trackType);
-    void onReadBuffer(const sp<AMessage>& msg);
+    void onReadBuffer(const std::shared_ptr<AMessage>& msg);
     // When |mode| is MediaPlayerSeekMode::SEEK_CLOSEST, the buffer read shall
     // include an item indicating skipping rendering all buffers with timestamp
     // earlier than |seekTimeUs|.
@@ -227,7 +224,7 @@ private:
 
     void sendCacheStats();
 
-    sp<MetaData> getFormatMeta_l(bool audio);
+    std::shared_ptr<MetaData> getFormatMeta_l(bool audio);
     int32_t getDataGeneration(media_track_type type) const;
 
     // Modular DRM
@@ -235,7 +232,7 @@ private:
     bool mIsDrmProtected;
     // releaseDrm has been processed.
     bool mIsDrmReleased;
-    Vector<String8> mMimes;
+    std::vector<std::string> mMimes;
 
     status_t checkDrmInfo();
 

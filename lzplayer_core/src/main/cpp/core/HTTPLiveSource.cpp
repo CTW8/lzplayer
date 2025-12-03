@@ -19,18 +19,8 @@
 #include <utils/Log.h>
 
 #include "HTTPLiveSource.h"
-#include "LiveDataSource.h"
-
-#include <media/IMediaHTTPService.h>
-#include <media/stagefright/foundation/ABuffer.h>
-#include <media/stagefright/foundation/ADebug.h>
-#include <media/stagefright/foundation/AMessage.h>
-#include <media/stagefright/MediaErrors.h>
-#include <media/stagefright/MetaData.h>
-#include <media/stagefright/MediaDefs.h>
-#include <media/stagefright/Utils.h>
-#include <mpeg2ts/AnotherPacketSource.h>
-
+#include "AMessage.h"
+#include "AHandler.h"
 // default buffer prepare/ready/underflow marks
 static const int kReadyMarkMs     = 5000;  // 5 seconds
 static const int kPrepareMarkMs   = 1500;  // 1.5 seconds
@@ -38,10 +28,10 @@ static const int kPrepareMarkMs   = 1500;  // 1.5 seconds
 namespace android {
 
 NuPlayer::HTTPLiveSource::HTTPLiveSource(
-        const sp<AMessage> &notify,
-        const sp<IMediaHTTPService> &httpService,
+        const std::shared_ptr<AMessage> &notify,
+        const std::shared_ptr<IMediaHTTPService> &httpService,
         const char *url,
-        const KeyedVector<String8, String8> *headers)
+        const std::unordered_map<std::string, std::string> *headers)
     : Source(notify),
       mHTTPService(httpService),
       mURL(url),
@@ -58,7 +48,7 @@ NuPlayer::HTTPLiveSource::HTTPLiveSource(
         mExtraHeaders = *headers;
 
         ssize_t index =
-            mExtraHeaders.indexOfKey(String8("x-hide-urls-from-log"));
+            mExtraHeaders.indexOfKey(std::string("x-hide-urls-from-log"));
 
         if (index >= 0) {
             mFlags |= kFlagIncognito;
@@ -107,7 +97,7 @@ void NuPlayer::HTTPLiveSource::prepareAsync() {
         mLiveLooper->registerHandler(this);
     }
 
-    sp<AMessage> notify = new AMessage(kWhatSessionNotify, this);
+    std::shared_ptr<AMessage> notify = std::make_shared<AMessage>(kWhatSessionNotify, this);
 
     mLiveSession = new LiveSession(
             notify,
@@ -124,8 +114,8 @@ void NuPlayer::HTTPLiveSource::prepareAsync() {
 void NuPlayer::HTTPLiveSource::start() {
 }
 
-sp<MetaData> NuPlayer::HTTPLiveSource::getFormatMeta(bool audio) {
-    sp<MetaData> meta;
+std::shared_ptr<MetaData> NuPlayer::HTTPLiveSource::getFormatMeta(bool audio) {
+    std::shared_ptr<MetaData> meta;
     if (mLiveSession != NULL) {
         mLiveSession->getStreamFormatMeta(
                 audio ? LiveSession::STREAMTYPE_AUDIO
@@ -136,8 +126,8 @@ sp<MetaData> NuPlayer::HTTPLiveSource::getFormatMeta(bool audio) {
     return meta;
 }
 
-sp<AMessage> NuPlayer::HTTPLiveSource::getFormat(bool audio) {
-    sp<MetaData> meta;
+std::shared_ptr<AMessage> NuPlayer::HTTPLiveSource::getFormat(bool audio) {
+    std::shared_ptr<MetaData> meta;
     status_t err = -EWOULDBLOCK;
     if (mLiveSession != NULL) {
         err = mLiveSession->getStreamFormatMeta(
@@ -146,9 +136,9 @@ sp<AMessage> NuPlayer::HTTPLiveSource::getFormat(bool audio) {
                 &meta);
     }
 
-    sp<AMessage> format;
+    std::shared_ptr<AMessage> format;
     if (err == -EWOULDBLOCK) {
-        format = new AMessage();
+        format = std::make_shared<AMessage>();
         format->setInt32("err", err);
         return format;
     }
@@ -164,7 +154,7 @@ status_t NuPlayer::HTTPLiveSource::feedMoreTSData() {
 }
 
 status_t NuPlayer::HTTPLiveSource::dequeueAccessUnit(
-        bool audio, sp<ABuffer> *accessUnit) {
+        bool audio, std::shared_ptr<ABuffer> *accessUnit) {
     return mLiveSession->dequeueAccessUnit(
             audio ? LiveSession::STREAMTYPE_AUDIO
                   : LiveSession::STREAMTYPE_VIDEO,
@@ -179,7 +169,7 @@ size_t NuPlayer::HTTPLiveSource::getTrackCount() const {
     return mLiveSession->getTrackCount();
 }
 
-sp<AMessage> NuPlayer::HTTPLiveSource::getTrackInfo(size_t trackIndex) const {
+std::shared_ptr<AMessage> NuPlayer::HTTPLiveSource::getTrackInfo(size_t trackIndex) const {
     return mLiveSession->getTrackInfo(trackIndex);
 }
 
@@ -225,7 +215,7 @@ status_t NuPlayer::HTTPLiveSource::selectTrack(size_t trackIndex, bool select, i
         generation++;
         if (postFetchMsg) {
             int32_t what = isSub ? kWhatFetchSubtitleData : kWhatFetchMetaData;
-            sp<AMessage> msg = new AMessage(what, this);
+            std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(what, this);
             msg->setInt32("generation", generation);
             msg->post();
         }
@@ -246,7 +236,7 @@ status_t NuPlayer::HTTPLiveSource::seekTo(int64_t seekTimeUs, MediaPlayerSeekMod
 }
 
 void NuPlayer::HTTPLiveSource::pollForRawData(
-        const sp<AMessage> &msg, int32_t currentGeneration,
+        const std::shared_ptr<AMessage> &msg, int32_t currentGeneration,
         LiveSession::StreamType fetchType, int32_t pushWhat) {
 
     int32_t generation;
@@ -256,10 +246,10 @@ void NuPlayer::HTTPLiveSource::pollForRawData(
         return;
     }
 
-    sp<ABuffer> buffer;
+    std::shared_ptr<ABuffer> buffer;
     while (mLiveSession->dequeueAccessUnit(fetchType, &buffer) == OK) {
 
-        sp<AMessage> notify = dupNotify();
+        std::shared_ptr<AMessage> notify = dupNotify();
         notify->setInt32("what", pushWhat);
         notify->setBuffer("buffer", buffer);
 
@@ -288,7 +278,7 @@ void NuPlayer::HTTPLiveSource::pollForRawData(
     msg->post(1000000LL);
 }
 
-void NuPlayer::HTTPLiveSource::onMessageReceived(const sp<AMessage> &msg) {
+void NuPlayer::HTTPLiveSource::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     switch (msg->what()) {
         case kWhatSessionNotify:
         {
@@ -326,7 +316,7 @@ void NuPlayer::HTTPLiveSource::onMessageReceived(const sp<AMessage> &msg) {
     }
 }
 
-void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
+void NuPlayer::HTTPLiveSource::onSessionNotify(const std::shared_ptr<AMessage> &msg) {
     int32_t what;
     CHECK(msg->findInt32("what", &what));
 
@@ -334,7 +324,7 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
         case LiveSession::kWhatPrepared:
         {
             // notify the current size here if we have it, otherwise report an initial size of (0,0)
-            sp<AMessage> format = getFormat(false /* audio */);
+            std::shared_ptr<AMessage> format = getFormat(false /* audio */);
             int32_t width;
             int32_t height;
             if (format != NULL &&
@@ -380,10 +370,10 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
             bool audio = changedMask & LiveSession::STREAMTYPE_AUDIO;
             bool video = changedMask & LiveSession::STREAMTYPE_VIDEO;
 
-            sp<AMessage> reply;
+            std::shared_ptr<AMessage> reply;
             CHECK(msg->findMessage("reply", &reply));
 
-            sp<AMessage> notify = dupNotify();
+            std::shared_ptr<AMessage> notify = dupNotify();
             notify->setInt32("what", kWhatQueueDecoderShutdown);
             notify->setInt32("audio", audio);
             notify->setInt32("video", video);
@@ -394,7 +384,7 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
 
         case LiveSession::kWhatBufferingStart:
         {
-            sp<AMessage> notify = dupNotify();
+            std::shared_ptr<AMessage> notify = dupNotify();
             notify->setInt32("what", kWhatPauseOnBufferingStart);
             notify->post();
             break;
@@ -402,7 +392,7 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
 
         case LiveSession::kWhatBufferingEnd:
         {
-            sp<AMessage> notify = dupNotify();
+            std::shared_ptr<AMessage> notify = dupNotify();
             notify->setInt32("what", kWhatResumeOnBufferingEnd);
             notify->post();
             break;
@@ -411,7 +401,7 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
 
         case LiveSession::kWhatBufferingUpdate:
         {
-            sp<AMessage> notify = dupNotify();
+            std::shared_ptr<AMessage> notify = dupNotify();
             int32_t percentage;
             CHECK(msg->findInt32("percentage", &percentage));
             notify->setInt32("what", kWhatBufferingUpdate);
@@ -425,7 +415,7 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
             if (!mHasMetadata) {
                 mHasMetadata = true;
 
-                sp<AMessage> notify = dupNotify();
+                std::shared_ptr<AMessage> notify = dupNotify();
                 // notification without buffer triggers MEDIA_INFO_METADATA_UPDATE
                 notify->setInt32("what", kWhatTimedMetaData);
                 notify->post();

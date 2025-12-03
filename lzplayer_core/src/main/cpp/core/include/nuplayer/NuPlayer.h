@@ -23,7 +23,7 @@
 #include "AHandler.h"
 
 struct AMessage;
-namespace VE {
+namespace android {
 
 struct ABuffer;
 struct AVSyncSettings;
@@ -109,7 +109,7 @@ protected:
     virtual void onMessageReceived(const std::shared_ptr<AMessage> &msg);
 
 public:
-    struct NuPlayerStreamListener;
+    struct NuPlayerStreamstd::listener;
     struct Source;
 
 private:
@@ -196,7 +196,7 @@ private:
 
     int64_t mPreviousSeekTimeUs;
 
-    List<std::shared_ptr<Action> > mDeferredActions;
+    std::list<std::shared_ptr<Action>> mDeferredActions;
 
     bool mAudioEOS;
     bool mVideoEOS;
@@ -295,7 +295,7 @@ private:
             const std::shared_ptr<AMessage> &inputFormat,
             const std::shared_ptr<AMessage> &outputFormat = NULL);
 
-    void notifyListener(int msg, int ext1, int ext2, const Parcel *in = NULL);
+    void notifystd::listener(int msg, int ext1, int ext2, const Parcel *in = NULL);
 
     void handleFlushComplete(bool audio, bool isDecoder);
     void finishFlushIfPossible();

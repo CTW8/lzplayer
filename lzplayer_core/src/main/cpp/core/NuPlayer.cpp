@@ -26,6 +26,7 @@
 #include "AHandler.h"
 
 #include "NuPlayer.h"
+#include "mediaplayer_common.h"
 
 #include "HTTPLiveSource.h"
 #include "NuPlayerCCDecoder.h"
@@ -187,7 +188,6 @@ NuPlayer::NuPlayer(pid_t pid, const std::shared_ptr<MediaClock> &mediaClock)
       mPaused(false),
       mPausedByClient(true),
       mPausedForBuffering(false),
-      mIsDrmProtected(false),
       mDataSourceType(DATA_SOURCE_TYPE_NONE) {
     CHECK(mediaClock != NULL);
     clearFlushComplete();
@@ -213,7 +213,7 @@ void NuPlayer::setDataSourceAsync(const std::shared_ptr<IStreamSource> &source) 
 
     std::shared_ptr<AMessage> notify = std::make_shared<AMessage>(kWhatSourceNotify, this);
 
-    msg->setObject("source", new StreamingSource(notify, source));
+    msg->setObject("source", std::make_shared<StreamingSource>(notify, source));
     msg->post();
     mDataSourceType = DATA_SOURCE_TYPE_STREAM;
 }
@@ -238,7 +238,7 @@ static bool IsHTTPLiveURL(const char *url) {
 void NuPlayer::setDataSourceAsync(
         const std::shared_ptr<IMediaHTTPService> &httpService,
         const char *url,
-        const KeyedVector<std::string, std::string> *headers) {
+        const std::unordered_map<std::string, std::string> *headers) {
 
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetDataSource, this);
     size_t len = strlen(url);
@@ -247,11 +247,11 @@ void NuPlayer::setDataSourceAsync(
 
     std::shared_ptr<Source> source;
     if (IsHTTPLiveURL(url)) {
-        source = new HTTPLiveSource(notify, httpService, url, headers);
+        source = std::make_shared<HTTPLiveSource>(notify, httpService, url, headers);
         ALOGV("setDataSourceAsync HTTPLiveSource %s", url);
         mDataSourceType = DATA_SOURCE_TYPE_HTTP_LIVE;
     } else if (!strncasecmp(url, "rtsp://", 7)) {
-        source = new RTSPSource(
+        source = std::make_shared<RTSPSource>(
                 notify, httpService, url, headers, mUIDValid, mUID);
         ALOGV("setDataSourceAsync RTSPSource %s", url);
         mDataSourceType = DATA_SOURCE_TYPE_RTSP;
@@ -259,7 +259,7 @@ void NuPlayer::setDataSourceAsync(
                 || !strncasecmp(url, "https://", 8))
                     && ((len >= 4 && !strcasecmp(".sdp", &url[len - 4]))
                     || strstr(url, ".sdp?"))) {
-        source = new RTSPSource(
+        source = std::make_shared<RTSPSource>(
                 notify, httpService, url, headers, mUIDValid, mUID, true);
         ALOGV("setDataSourceAsync RTSPSource http/https/.sdp %s", url);
         mDataSourceType = DATA_SOURCE_TYPE_RTSP;
@@ -267,7 +267,7 @@ void NuPlayer::setDataSourceAsync(
         ALOGV("setDataSourceAsync GenericSource %s", url);
 
         std::shared_ptr<GenericSource> genericSource =
-                new GenericSource(notify, mUIDValid, mUID, mMediaClock);
+                std::make_shared<GenericSource>(notify, mUIDValid, mUID, mMediaClock);
 
         status_t err = genericSource->setDataSource(httpService, url, headers);
 
@@ -290,7 +290,7 @@ void NuPlayer::setDataSourceAsync(int fd, int64_t offset, int64_t length) {
     std::shared_ptr<AMessage> notify = std::make_shared<AMessage>(kWhatSourceNotify, this);
 
     std::shared_ptr<GenericSource> source =
-            new GenericSource(notify, mUIDValid, mUID, mMediaClock);
+            std::make_shared<GenericSource>(notify, mUIDValid, mUID, mMediaClock);
 
     ALOGV("setDataSourceAsync fd %d/%lld/%lld source: %p",
             fd, (long long)offset, (long long)length, source.get());
@@ -311,7 +311,7 @@ void NuPlayer::setDataSourceAsync(const std::shared_ptr<DataSource> &dataSource)
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetDataSource, this);
     std::shared_ptr<AMessage> notify = std::make_shared<AMessage>(kWhatSourceNotify, this);
 
-    std::shared_ptr<GenericSource> source = new GenericSource(notify, mUIDValid, mUID, mMediaClock);
+    std::shared_ptr<GenericSource> source = std::make_shared<GenericSource>(notify, mUIDValid, mUID, mMediaClock);
     status_t err = source->setDataSource(dataSource);
 
     if (err != OK) {
@@ -354,7 +354,7 @@ void NuPlayer::setDataSourceAsync(const std::string& rtpParams) {
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetDataSource, this);
 
     std::shared_ptr<AMessage> notify = std::make_shared<AMessage>(kWhatSourceNotify, this);
-    std::shared_ptr<Source> source = new RTPSource(notify, rtpParams);
+    std::shared_ptr<Source> source = std::make_shared<RTPSource>(notify, rtpParams);
 
     msg->setObject("source", source);
     msg->post();
@@ -454,7 +454,7 @@ void NuPlayer::pause() {
 void NuPlayer::resetAsync() {
     std::shared_ptr<Source> source;
     {
-        Mutex::Autolock autoLock(mSourceLock);
+        std::lock_guard<std::mutex> autoLock(mSourceLock);
         source = mSource;
     }
 
@@ -499,7 +499,7 @@ void NuPlayer::writeTrackInfo(
         return;
     }
 
-    AString mime;
+    std::string mime;
     if (!format->findString("mime", &mime)) {
         // Java MediaPlayer only uses mimetype for subtitle and timedtext tracks.
         // If we can't find the mimetype here it means that we wouldn't be needing
@@ -515,7 +515,7 @@ void NuPlayer::writeTrackInfo(
         }
     }
 
-    AString lang;
+    std::string lang;
     if (!format->findString("language", &lang)) {
         ALOGE("no language");
         return;
@@ -550,7 +550,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             std::shared_ptr<RefBase> obj;
             CHECK(msg->findObject("source", &obj));
             if (obj != NULL) {
-                Mutex::Autolock autoLock(mSourceLock);
+                std::lock_guard<std::mutex> autoLock(mSourceLock);
                 mSource = static_cast<Source *>(obj.get());
             } else {
                 err = UNKNOWN_ERROR;
@@ -577,7 +577,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             } else {
                 err = INVALID_OPERATION;
             }
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
             if (err == OK) {
                 writeToAMessage(response, buffering);
             }
@@ -600,7 +600,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             } else {
                 err = INVALID_OPERATION;
             }
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
             response->setInt32("err", err);
             response->postReply(replyID);
             break;
@@ -645,7 +645,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                 writeTrackInfo(reply, mCCDecoder->getTrackInfo(i));
             }
 
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
             response->postReply(replyID);
             break;
         }
@@ -677,7 +677,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             CHECK(msg->findPointer("reply", (void**)&reply));
             reply->writeInt32(selectedTrack);
 
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
             response->setInt32("err", err);
 
             std::shared_ptr<AReplyToken> replyID;
@@ -729,7 +729,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                 }
             }
 
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
             response->setInt32("err", err);
 
             response->postReply(replyID);
@@ -747,8 +747,8 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             }
 
             int64_t durationUs;
-            if (mDriver != NULL && mSource->getDuration(&durationUs) == OK) {
-                std::shared_ptr<NuPlayerDriver> driver = mDriver.promote();
+            if (mDriver != nullptr && mSource->getDuration(&durationUs) == OK) {
+                std::shared_ptr<NuPlayerDriver> driver = mDriver.lock();
                 if (driver != NULL) {
                     driver->notifyDuration(durationUs);
                 }
@@ -781,11 +781,11 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             }
 
             mDeferredActions.push_back(
-                    new FlushDecoderAction(
+                    std::make_shared<FlushDecoderAction>(
                             (obj != NULL ? FLUSH_CMD_FLUSH : FLUSH_CMD_NONE) /* audio */,
                                            FLUSH_CMD_SHUTDOWN /* video */));
 
-            mDeferredActions.push_back(new SetSurfaceAction(surface));
+            mDeferredActions.push_back(std::make_shared<SetSurfaceAction>(surface));
 
             if (obj != NULL) {
                 if (mStarted) {
@@ -796,7 +796,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                     int64_t currentPositionUs = 0;
                     if (getCurrentPosition(&currentPositionUs) == OK) {
                         mDeferredActions.push_back(
-                                new SeekAction(currentPositionUs,
+                                std::make_shared<SeekAction>(currentPositionUs,
                                         MediaPlayerSeekMode::SEEK_PREVIOUS_SYNC /* mode */));
                     }
                 }
@@ -804,13 +804,13 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                 // If there is a new surface texture, instantiate decoders
                 // again if possible.
                 mDeferredActions.push_back(
-                        new SimpleAction(&NuPlayer::performScanSources));
+                        std::make_shared<SimpleAction>(&NuPlayer::performScanSources));
 
                 // After a flush without shutdown, decoder is paused.
                 // Don't resume it until source seek is done, otherwise it could
                 // start pulling stale data too soon.
                 mDeferredActions.push_back(
-                        new ResumeDecoderAction(false /* needNotify */));
+                        std::make_shared<ResumeDecoderAction>(false /* needNotify */));
             }
 
             processDeferredActions();
@@ -908,7 +908,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                 mVideoDecoder->setParameters(params);
             }
 
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
             response->setInt32("err", err);
             response->postReply(replyID);
             break;
@@ -931,7 +931,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                     rate.mSpeed = 0.f;
                 }
             }
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
             if (err == OK) {
                 writeToAMessage(response, rate);
             }
@@ -957,7 +957,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                 mSyncSettings = sync;
                 mVideoFpsHint = videoFpsHint;
             }
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
             response->setInt32("err", err);
             response->postReply(replyID);
             break;
@@ -977,7 +977,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                     mVideoFpsHint = videoFps;
                 }
             }
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
             if (err == OK) {
                 writeToAMessage(response, sync, videoFps);
             }
@@ -1086,13 +1086,13 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
 
                 if (formatChange) {
                     mDeferredActions.push_back(
-                            new FlushDecoderAction(
+                            std::make_shared<FlushDecoderAction>(
                                 audio ? FLUSH_CMD_SHUTDOWN : FLUSH_CMD_NONE,
                                 audio ? FLUSH_CMD_NONE : FLUSH_CMD_SHUTDOWN));
                 }
 
                 mDeferredActions.push_back(
-                        new SimpleAction(
+                        std::make_shared<SimpleAction>(
                                 &NuPlayer::performScanSources));
 
                 processDeferredActions();
@@ -1126,7 +1126,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             } else if (what == DecoderBase::kWhatShutdownCompleted) {
                 ALOGV("%s shutdown completed", audio ? "audio" : "video");
                 if (audio) {
-                    Mutex::Autolock autoLock(mDecoderLock);
+                    std::lock_guard<std::mutex> autoLock(mDecoderLock);
                     mAudioDecoder.clear();
                     mAudioDecoderError = false;
                     ++mAudioDecoderGeneration;
@@ -1134,7 +1134,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                     CHECK_EQ((int)mFlushingAudio, (int)SHUTTING_DOWN_DECODER);
                     mFlushingAudio = SHUT_DOWN;
                 } else {
-                    Mutex::Autolock autoLock(mDecoderLock);
+                    std::lock_guard<std::mutex> autoLock(mDecoderLock);
                     mVideoDecoder.clear();
                     mVideoDecoderError = false;
                     ++mVideoDecoderGeneration;
@@ -1171,7 +1171,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                 switch (*flushing) {
                     case NONE:
                         mDeferredActions.push_back(
-                                new FlushDecoderAction(
+                                std::make_shared<FlushDecoderAction>(
                                     audio ? FLUSH_CMD_SHUTDOWN : FLUSH_CMD_NONE,
                                     audio ? FLUSH_CMD_NONE : FLUSH_CMD_SHUTDOWN));
                         processDeferredActions();
@@ -1327,12 +1327,12 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             updateRebufferingTimer(true /* stopping */, true /* exiting */);
 
             mDeferredActions.push_back(
-                    new FlushDecoderAction(
+                    std::make_shared<FlushDecoderAction>(
                         FLUSH_CMD_SHUTDOWN /* audio */,
                         FLUSH_CMD_SHUTDOWN /* video */));
 
             mDeferredActions.push_back(
-                    new SimpleAction(&NuPlayer::performReset));
+                    std::make_shared<SimpleAction>(&NuPlayer::performReset));
 
             processDeferredActions();
             break;
@@ -1378,17 +1378,17 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
             }
 
             mDeferredActions.push_back(
-                    new FlushDecoderAction(FLUSH_CMD_FLUSH /* audio */,
+                    std::make_shared<FlushDecoderAction>(FLUSH_CMD_FLUSH /* audio */,
                                            FLUSH_CMD_FLUSH /* video */));
 
             mDeferredActions.push_back(
-                    new SeekAction(seekTimeUs, (MediaPlayerSeekMode)mode));
+                    std::make_shared<SeekAction>(seekTimeUs, (MediaPlayerSeekMode)mode));
 
             // After a flush without shutdown, decoder is paused.
             // Don't resume it until source seek is done, otherwise it could
             // start pulling stale data too soon.
             mDeferredActions.push_back(
-                    new ResumeDecoderAction(needNotify));
+                    std::make_shared<ResumeDecoderAction>(needNotify));
 
             processDeferredActions();
             break;
@@ -1417,7 +1417,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         {
             status_t status = onPrepareDrm(msg);
 
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
             response->setInt32("status", status);
             std::shared_ptr<AReplyToken> replyID;
             CHECK(msg->senderAwaitsResponse(&replyID));
@@ -1429,7 +1429,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
         {
             status_t status = onReleaseDrm();
 
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
             response->setInt32("status", status);
             std::shared_ptr<AReplyToken> replyID;
             CHECK(msg->senderAwaitsResponse(&replyID));
@@ -1577,8 +1577,8 @@ void NuPlayer::onStart(int64_t startPositionUs, MediaPlayerSeekMode mode) {
     std::shared_ptr<AMessage> notify = std::make_shared<AMessage>(kWhatRendererNotify, this);
     ++mRendererGeneration;
     notify->setInt32("generation", mRendererGeneration);
-    mRenderer = new Renderer(mAudioSink, mMediaClock, notify, flags);
-    mRendererLooper = new ALooper;
+    mRenderer = std::make_shared<Renderer>(mAudioSink, mMediaClock, notify, flags);
+    mRendererLooper = std::make_shared<ALooper>();
     mRendererLooper->setName("NuPlayerRenderer");
     mRendererLooper->start(false, false, ANDROID_PRIORITY_AUDIO);
     mRendererLooper->registerHandler(mRenderer);
@@ -1609,7 +1609,7 @@ void NuPlayer::onStart(int64_t startPositionUs, MediaPlayerSeekMode mode) {
 }
 
 void NuPlayer::startPlaybackTimer(const char *where) {
-    Mutex::Autolock autoLock(mPlayingTimeLock);
+    std::lock_guard<std::mutex> autoLock(mPlayingTimeLock);
     if (mLastStartedPlayingTimeNs == 0) {
         mLastStartedPlayingTimeNs = systemTime();
         ALOGV("startPlaybackTimer() time %20" PRId64 " (%s)",  mLastStartedPlayingTimeNs, where);
@@ -1617,7 +1617,7 @@ void NuPlayer::startPlaybackTimer(const char *where) {
 }
 
 void NuPlayer::updatePlaybackTimer(bool stopping, const char *where) {
-    Mutex::Autolock autoLock(mPlayingTimeLock);
+    std::lock_guard<std::mutex> autoLock(mPlayingTimeLock);
 
     ALOGV("updatePlaybackTimer(%s)  time %20" PRId64 " (%s)",
 	  stopping ? "stop" : "snap", mLastStartedPlayingTimeNs, where);
@@ -1642,7 +1642,7 @@ void NuPlayer::updatePlaybackTimer(bool stopping, const char *where) {
 }
 
 void NuPlayer::startRebufferingTimer() {
-    Mutex::Autolock autoLock(mPlayingTimeLock);
+    std::lock_guard<std::mutex> autoLock(mPlayingTimeLock);
     if (mLastStartedRebufferingTimeNs == 0) {
         mLastStartedRebufferingTimeNs = systemTime();
         ALOGV("startRebufferingTimer() time %20" PRId64 "",  mLastStartedRebufferingTimeNs);
@@ -1650,7 +1650,7 @@ void NuPlayer::startRebufferingTimer() {
 }
 
 void NuPlayer::updateRebufferingTimer(bool stopping, bool exitingPlayback) {
-    Mutex::Autolock autoLock(mPlayingTimeLock);
+    std::lock_guard<std::mutex> autoLock(mPlayingTimeLock);
 
     ALOGV("updateRebufferingTimer(%s)  time %20" PRId64 " (exiting %d)",
 	  stopping ? "stop" : "snap", mLastStartedRebufferingTimeNs, exitingPlayback);
@@ -1810,7 +1810,7 @@ void NuPlayer::restartAudio(
           (long long)currentPositionUs, forceNonOffload, needsToCreateAudioDecoder);
     if (mAudioDecoder != NULL) {
         mAudioDecoder->pause();
-        Mutex::Autolock autoLock(mDecoderLock);
+        std::lock_guard<std::mutex> autoLock(mDecoderLock);
         mAudioDecoder.clear();
         mAudioDecoderError = false;
         ++mAudioDecoderGeneration;
@@ -1833,15 +1833,15 @@ void NuPlayer::restartAudio(
     mRenderer->flush(true /* audio */, false /* notifyComplete */);
     if (mVideoDecoder != NULL) {
         mDeferredActions.push_back(
-                new FlushDecoderAction(FLUSH_CMD_NONE /* audio */,
+                std::make_shared<FlushDecoderAction>(FLUSH_CMD_NONE /* audio */,
                                        FLUSH_CMD_FLUSH /* video */));
         mDeferredActions.push_back(
-                new SeekAction(currentPositionUs,
+                std::make_shared<SeekAction>(currentPositionUs,
                 MediaPlayerSeekMode::SEEK_PREVIOUS_SYNC /* mode */));
         // After a flush without shutdown, decoder is paused.
         // Don't resume it until source seek is done, otherwise it could
         // start pulling stale data too soon.
-        mDeferredActions.push_back(new ResumeDecoderAction(false));
+        mDeferredActions.push_back(std::make_shared<ResumeDecoderAction(false)>);
         processDeferredActions();
     } else {
         performSeek(currentPositionUs, MediaPlayerSeekMode::SEEK_PREVIOUS_SYNC /* mode */);
@@ -1922,12 +1922,12 @@ status_t NuPlayer::instantiateDecoder(
     }
 
     if (!audio) {
-        AString mime;
+        std::string mime;
         CHECK(format->findString("mime", &mime));
 
         std::shared_ptr<AMessage> ccNotify = std::make_shared<AMessage>(kWhatClosedCaptionNotify, this);
         if (mCCDecoder == NULL) {
-            mCCDecoder = new CCDecoder(ccNotify);
+            mCCDecoder = std::make_shared<CCDecoder>(ccNotify);
         }
 
         if (mSourceFlags & Source::FLAG_SECURE) {
@@ -1944,7 +1944,7 @@ status_t NuPlayer::instantiateDecoder(
         }
     }
 
-    Mutex::Autolock autoLock(mDecoderLock);
+    std::lock_guard<std::mutex> autoLock(mDecoderLock);
 
     if (audio) {
         std::shared_ptr<AMessage> notify = std::make_shared<AMessage>(kWhatAudioNotify, this);
@@ -1959,12 +1959,12 @@ status_t NuPlayer::instantiateDecoder(
 
             const bool hasVideo = (mSource->getFormat(false /*audio */) != NULL);
             format->setInt32("has-video", hasVideo);
-            *decoder = new DecoderPassThrough(notify, mSource, mRenderer);
+            *decoder = std::make_shared<DecoderPassThrough>(notify, mSource, mRenderer);
             ALOGV("instantiateDecoder audio DecoderPassThrough  hasVideo: %d", hasVideo);
         } else {
             mSource->setOffloadAudio(false /* offload */);
 
-            *decoder = new Decoder(notify, mSource, mPID, mUID, mRenderer);
+            *decoder = std::make_shared<Decoder>(notify, mSource, mPID, mUID, mRenderer);
             ALOGV("instantiateDecoder audio Decoder");
         }
         mAudioDecoderError = false;
@@ -1973,7 +1973,7 @@ status_t NuPlayer::instantiateDecoder(
         ++mVideoDecoderGeneration;
         notify->setInt32("generation", mVideoDecoderGeneration);
 
-        *decoder = new Decoder(
+        *decoder = std::make_shared<Decoder>(
                 notify, mSource, mPID, mUID, mRenderer, mSurface, mCCDecoder);
         mVideoDecoderError = false;
 
@@ -2140,7 +2140,7 @@ void NuPlayer::flushDecoder(bool audio, bool needShutdown) {
     if (mScanSourcesPending) {
         if (!needShutdown) {
             mDeferredActions.push_back(
-                    new SimpleAction(&NuPlayer::performScanSources));
+                    std::make_shared<SimpleAction>(&NuPlayer::performScanSources));
         }
         mScanSourcesPending = false;
     }
@@ -2168,14 +2168,14 @@ void NuPlayer::queueDecoderShutdown(
     ALOGI("queueDecoderShutdown audio=%d, video=%d", audio, video);
 
     mDeferredActions.push_back(
-            new FlushDecoderAction(
+            std::make_shared<FlushDecoderAction>(
                 audio ? FLUSH_CMD_SHUTDOWN : FLUSH_CMD_NONE,
                 video ? FLUSH_CMD_SHUTDOWN : FLUSH_CMD_NONE));
 
     mDeferredActions.push_back(
-            new SimpleAction(&NuPlayer::performScanSources));
+            std::make_shared<SimpleAction>(&NuPlayer::performScanSources));
 
-    mDeferredActions.push_back(new PostMessageAction(reply));
+    mDeferredActions.push_back(std::make_shared<PostMessageAction>(reply));
 
     processDeferredActions();
 }
@@ -2249,7 +2249,7 @@ void NuPlayer::getStats(Vector<std::shared_ptr<AMessage> > *trackStats) {
 
     trackStats->clear();
 
-    Mutex::Autolock autoLock(mDecoderLock);
+    std::lock_guard<std::mutex> autoLock(mDecoderLock);
     if (mVideoDecoder != NULL) {
         trackStats->push_back(mVideoDecoder->getStats());
     }
@@ -2380,7 +2380,7 @@ void NuPlayer::performReset() {
     if (mSource != NULL) {
         mSource->stop();
 
-        Mutex::Autolock autoLock(mSourceLock);
+        std::lock_guard<std::mutex> autoLock(mSourceLock);
         mSource.clear();
     }
 
@@ -2513,7 +2513,7 @@ void NuPlayer::onSourceNotify(const std::shared_ptr<AMessage> &msg) {
             if (err != OK) {
                 // shut down potential secure codecs in case client never calls reset
                 mDeferredActions.push_back(
-                        new FlushDecoderAction(FLUSH_CMD_SHUTDOWN /* audio */,
+                        std::make_shared<FlushDecoderAction>(FLUSH_CMD_SHUTDOWN /* audio */,
                                                FLUSH_CMD_SHUTDOWN /* video */));
                 processDeferredActions();
             } else {
@@ -2804,7 +2804,7 @@ void NuPlayer::sendTimedTextData(const std::shared_ptr<ABuffer> &buffer) {
     int64_t timeUs;
     int32_t flag = TextDescriptions::IN_BAND_TEXT_3GPP;
 
-    AString mime;
+    std::string mime;
     CHECK(buffer->meta()->findString("mime", &mime));
     CHECK(strcasecmp(mime.c_str(), MEDIA_MIMETYPE_TEXT_3GPP) == 0);
 
@@ -3140,7 +3140,7 @@ std::shared_ptr<AMessage> NuPlayer::Source::getFormat(bool audio) {
         return NULL;
     }
 
-    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>;
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>();
 
     if(convertMetaDataToMessage(meta, &msg) == OK) {
         return msg;

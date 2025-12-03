@@ -77,9 +77,9 @@ NuPlayerDriver::NuPlayerDriver(pid_t pid)
       mRebufferingTimeUs(0),
       mRebufferingEvents(0),
       mRebufferingAtExit(false),
-      mLooper(new ALooper),
-      mMediaClock(new MediaClock),
-      mPlayer(new NuPlayer(pid, mMediaClock)),
+      mLooper(std::make_shared<ALooper>()),
+      mMediaClock(std::make_shared<MediaClock>()),
+      mPlayer(std::make_shared<NuPlayer>(pid, mMediaClock)),
       mPlayerFlags(0),
       mMetricsItem(NULL),
       mClientUid(-1),
@@ -719,7 +719,7 @@ status_t NuPlayerDriver::reset() {
     }
 
     if (property_get_bool("persist.debug.sf.stats", false)) {
-        std::vector<String16> args;
+        std::vector<std::string> args;
         dump(-1, args);
     }
 
@@ -932,7 +932,7 @@ void NuPlayerDriver::notifySeekComplete_l() {
 }
 
 status_t NuPlayerDriver::dump(
-        int fd, const std::vector<String16> & /* args */) const {
+        int fd, const std::vector<std::string> & /* args */) const {
 
     std::vector<std::shared_ptr<AMessage> > trackStats;
     mPlayer->getStats(&trackStats);
@@ -1043,7 +1043,7 @@ void NuPlayerDriver::notifyListener_l(
                     return;
                 }
                 if (property_get_bool("persist.debug.sf.stats", false)) {
-                    std::vector<String16> args;
+                    std::vector<std::string> args;
                     dump(-1, args);
                 }
                 mPlayer->pause();

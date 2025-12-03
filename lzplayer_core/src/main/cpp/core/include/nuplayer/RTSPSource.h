@@ -32,10 +32,10 @@ struct SDPLoader;
 
 struct NuPlayer::RTSPSource : public NuPlayer::Source {
     RTSPSource(
-            const sp<AMessage> &notify,
-            const sp<IMediaHTTPService> &httpService,
+            const std::shared_ptr<AMessage> &notify,
+            const std::shared_ptr<IMediaHTTPService> &httpService,
             const char *url,
-            const KeyedVector<String8, String8> *headers,
+            const std::unordered_map<std::string, std::string> *headers,
             bool uidValid = false,
             uid_t uid = 0,
             bool isSDP = false);
@@ -50,19 +50,19 @@ struct NuPlayer::RTSPSource : public NuPlayer::Source {
 
     virtual status_t feedMoreTSData();
 
-    virtual status_t dequeueAccessUnit(bool audio, sp<ABuffer> *accessUnit);
+    virtual status_t dequeueAccessUnit(bool audio, std::shared_ptr<ABuffer> *accessUnit);
 
     virtual status_t getDuration(int64_t *durationUs);
     virtual status_t seekTo(
             int64_t seekTimeUs,
             MediaPlayerSeekMode mode = MediaPlayerSeekMode::SEEK_PREVIOUS_SYNC) override;
 
-    void onMessageReceived(const sp<AMessage> &msg);
+    void onMessageReceived(const std::shared_ptr<AMessage> &msg);
 
 protected:
     virtual ~RTSPSource();
 
-    virtual sp<MetaData> getFormatMeta(bool audio);
+    virtual std::shared_ptr<MetaData> getFormatMeta(bool audio);
 
 private:
     enum {
@@ -86,7 +86,7 @@ private:
     };
 
     struct TrackInfo {
-        sp<AnotherPacketSource> mSource;
+        std::shared_ptr<AnotherPacketSource> mSource;
 
         int32_t mTimeScale;
         uint32_t mRTPTime;
@@ -94,46 +94,46 @@ private:
         bool mNPTMappingValid;
     };
 
-    sp<IMediaHTTPService> mHTTPService;
-    AString mURL;
-    KeyedVector<String8, String8> mExtraHeaders;
+    std::shared_ptr<IMediaHTTPService> mHTTPService;
+    std::string mURL;
+    std::unordered_map<std::string, std::string> mExtraHeaders;
     bool mUIDValid;
     uid_t mUID;
     uint32_t mFlags;
     bool mIsSDP;
     State mState;
     status_t mFinalResult;
-    sp<AReplyToken> mDisconnectReplyID;
-    Mutex mBufferingLock;
+    std::shared_ptr<AReplyToken> mDisconnectReplyID;
+    std::mutex mBufferingLock;
     bool mBuffering;
     bool mInPreparationPhase;
     bool mEOSPending;
 
-    Mutex mBufferingSettingsLock;
+    std::mutex mBufferingSettingsLock;
     BufferingSettings mBufferingSettings;
 
-    sp<ALooper> mLooper;
-    sp<MyHandler> mHandler;
-    sp<SDPLoader> mSDPLoader;
+    std::shared_ptr<ALooper> mLooper;
+    std::shared_ptr<MyHandler> mHandler;
+    std::shared_ptr<SDPLoader> mSDPLoader;
 
-    Vector<TrackInfo> mTracks;
-    sp<AnotherPacketSource> mAudioTrack;
-    sp<AnotherPacketSource> mVideoTrack;
+    std::vector<TrackInfo> mTracks;
+    std::shared_ptr<AnotherPacketSource> mAudioTrack;
+    std::shared_ptr<AnotherPacketSource> mVideoTrack;
 
-    sp<ATSParser> mTSParser;
+    std::shared_ptr<ATSParser> mTSParser;
 
     int32_t mSeekGeneration;
 
     int64_t mEOSTimeoutAudio;
     int64_t mEOSTimeoutVideo;
 
-    sp<AReplyToken> mSeekReplyID;
+    std::shared_ptr<AReplyToken> mSeekReplyID;
 
-    sp<AnotherPacketSource> getSource(bool audio);
+    std::shared_ptr<AnotherPacketSource> getSource(bool audio);
 
     void onConnected();
-    void onSDPLoaded(const sp<AMessage> &msg);
-    void onDisconnected(const sp<AMessage> &msg);
+    void onSDPLoaded(const std::shared_ptr<AMessage> &msg);
+    void onDisconnected(const std::shared_ptr<AMessage> &msg);
     void finishDisconnectIfPossible();
 
     void performSeek(int64_t seekTimeUs);
@@ -156,7 +156,7 @@ private:
 
     void postSourceEOSIfNecessary();
     void signalSourceEOS(status_t result);
-    void onSignalEOS(const sp<AMessage> &msg);
+    void onSignalEOS(const std::shared_ptr<AMessage> &msg);
 
     bool sourceNearEOS(bool audio);
     bool sourceReachedEOS(bool audio);

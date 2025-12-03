@@ -23,8 +23,8 @@
 
 
 
-#include <media/stagefright/MediaDefs.h>
-#include <media/stagefright/MetaData.h>
+#include "MediaDefs.h"
+#include "MetaData.h"
 #include <string.h>
 
 namespace android {
@@ -33,8 +33,8 @@ const int64_t kNearEOSTimeoutUs = 2000000ll; // 2 secs
 static int32_t kMaxAllowedStaleAccessUnits = 20;
 
 NuPlayer::RTPSource::RTPSource(
-        const sp<AMessage> &notify,
-        const String8& rtpParams)
+        const std::shared_ptr<AMessage> &notify,
+        const std::string& rtpParams)
     : Source(notify),
       mRTPParams(rtpParams),
       mFlags(0),
@@ -69,13 +69,13 @@ NuPlayer::RTPSource::~RTPSource() {
 
 status_t NuPlayer::RTPSource::getBufferingSettings(
             BufferingSettings* buffering /* nonnull */) {
-    Mutex::Autolock _l(mBufferingSettingsLock);
+    std::lock_guard<std::mutex> _l(mBufferingSettingsLock);
     *buffering = mBufferingSettings;
     return OK;
 }
 
 status_t NuPlayer::RTPSource::setBufferingSettings(const BufferingSettings& buffering) {
-    Mutex::Autolock _l(mBufferingSettingsLock);
+    std::lock_guard<std::mutex> _l(mBufferingSettingsLock);
     mBufferingSettings = buffering;
     return OK;
 }
@@ -103,13 +103,13 @@ void NuPlayer::RTPSource::prepareAsync() {
         if (info == NULL)
             break;
 
-        AString sdp;
+        std::string sdp;
         ASessionDescription::SDPStringFactory(sdp, info->mLocalIp,
                 info->mIsAudio, info->mLocalPort, info->mPayloadType, info->mAS, info->mCodecName,
                 NULL, info->mWidth, info->mHeight, info->mCVOExtMap);
         ALOGD("RTPSource SDP =>\n%s", sdp.c_str());
 
-        sp<ASessionDescription> desc = new ASessionDescription;
+        std::shared_ptr<ASessionDescription> desc = new ASessionDescription;
         bool isValidSdp = desc->setTo(sdp.c_str(), sdp.size());
         ALOGV("RTPSource isValidSdp => %d", isValidSdp);
 
@@ -117,7 +117,7 @@ void NuPlayer::RTPSource::prepareAsync() {
         ARTPConnection::MakeRTPSocketPair(&sockRtp, &sockRtcp, info->mLocalIp, info->mRemoteIp,
                 info->mLocalPort, info->mRemotePort, info->mSocketNetwork, info->mRtpSockOptEcn);
 
-        sp<AMessage> notify = new AMessage('accu', this);
+        std::shared_ptr<AMessage> notify = std::make_shared<AMessage>('accu', this);
 
         ALOGV("RTPSource addStream. track-index=%d", i);
         notify->setSize("trackIndex", i);
@@ -129,7 +129,7 @@ void NuPlayer::RTPSource::prepareAsync() {
         mRTPConn->setIsIPv6(info->mLocalIp);
 
         unsigned long PT;
-        AString formatDesc, formatParams;
+        std::string formatDesc, formatParams;
         // index(i) should be started from 1. 0 is reserved for [root]
         desc->getFormatType(i + 1, &PT, &formatDesc, &formatParams);
 
@@ -151,8 +151,8 @@ void NuPlayer::RTPSource::prepareAsync() {
         info->mPacketSource = new APacketSource(desc, i + 1);
 
         int32_t timeScale;
-        sp<MetaData> format = getTrackFormat(i, &timeScale);
-        sp<AnotherPacketSource> source = new AnotherPacketSource(format);
+        std::shared_ptr<MetaData> format = getTrackFormat(i, &timeScale);
+        std::shared_ptr<AnotherPacketSource> source = std::make_shared<AnotherPacketSource>(format);
 
         if (info->mIsAudio) {
             mAudioTrack = source;
@@ -187,19 +187,19 @@ void NuPlayer::RTPSource::stop() {
     if (mLooper == NULL) {
         return;
     }
-    sp<AMessage> msg = new AMessage(kWhatDisconnect, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatDisconnect, this);
 
-    sp<AMessage> dummy;
+    std::shared_ptr<AMessage> dummy;
     msg->postAndAwaitResponse(&dummy);
 }
 
 status_t NuPlayer::RTPSource::feedMoreTSData() {
-    Mutex::Autolock _l(mBufferingLock);
+    std::lock_guard<std::mutex> _l(mBufferingLock);
     return mFinalResult;
 }
 
-sp<MetaData> NuPlayer::RTPSource::getFormatMeta(bool audio) {
-    sp<AnotherPacketSource> source = getSource(audio);
+std::shared_ptr<MetaData> NuPlayer::RTPSource::getFormatMeta(bool audio) {
+    std::shared_ptr<AnotherPacketSource> source = getSource(audio);
 
     if (source == NULL) {
         return NULL;
@@ -245,9 +245,9 @@ bool NuPlayer::RTPSource::haveSufficientDataOnAllTracks() {
 }
 
 status_t NuPlayer::RTPSource::dequeueAccessUnit(
-        bool audio, sp<ABuffer> *accessUnit) {
+        bool audio, std::shared_ptr<ABuffer> *accessUnit) {
 
-    sp<AnotherPacketSource> source = getSource(audio);
+    std::shared_ptr<AnotherPacketSource> source = getSource(audio);
 
     if (mState == PAUSED) {
         ALOGV("-EWOULDBLOCK");
@@ -259,7 +259,7 @@ status_t NuPlayer::RTPSource::dequeueAccessUnit(
         if (finalResult == OK) {
             int64_t mediaDurationUs = 0;
             getDuration(&mediaDurationUs);
-            sp<AnotherPacketSource> otherSource = getSource(!audio);
+            std::shared_ptr<AnotherPacketSource> otherSource = getSource(!audio);
             status_t otherFinalResult;
 
             // If other source already signaled EOS, this source should also signal EOS
@@ -306,11 +306,11 @@ status_t NuPlayer::RTPSource::dequeueAccessUnit(
     int32_t cvo;
     if ((*accessUnit) != NULL && (*accessUnit)->meta()->findInt32("cvo", &cvo) &&
             cvo != mLastCVOUpdated) {
-        sp<AMessage> msg = new AMessage();
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>();
         msg->setInt32("payload-type", ARTPSource::RTP_CVO);
         msg->setInt32("cvo", cvo);
 
-        sp<AMessage> notify = dupNotify();
+        std::shared_ptr<AMessage> notify = dupNotify();
         notify->setInt32("what", kWhatIMSRxNotice);
         notify->setMessage("message", msg);
         notify->post();
@@ -322,7 +322,7 @@ status_t NuPlayer::RTPSource::dequeueAccessUnit(
     return finalResult;
 }
 
-sp<AnotherPacketSource> NuPlayer::RTPSource::getSource(bool audio) {
+std::shared_ptr<AnotherPacketSource> NuPlayer::RTPSource::getSource(bool audio) {
     return audio ? mAudioTrack : mVideoTrack;
 }
 
@@ -362,7 +362,7 @@ status_t NuPlayer::RTPSource::seekTo(int64_t seekTimeUs, MediaPlayerSeekMode mod
 }
 
 void NuPlayer::RTPSource::schedulePollBuffering() {
-    sp<AMessage> msg = new AMessage(kWhatPollBuffering, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPollBuffering, this);
     msg->post(kBufferingPollIntervalUs); // 1 second intervals
 }
 
@@ -375,7 +375,7 @@ bool NuPlayer::RTPSource::isRealTime() const {
     return true;
 }
 
-void NuPlayer::RTPSource::onMessageReceived(const sp<AMessage> &msg) {
+void NuPlayer::RTPSource::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     ALOGV("onMessageReceived =%d", msg->what());
 
     switch (msg->what()) {
@@ -405,7 +405,7 @@ void NuPlayer::RTPSource::onMessageReceived(const sp<AMessage> &msg) {
                 CHECK(msg->findInt32("payload-type", &payloadType));
                 msg->findInt32("feedback-type", &feedbackType);
 
-                sp<AMessage> notify = dupNotify();
+                std::shared_ptr<AMessage> notify = dupNotify();
                 notify->setInt32("what", kWhatIMSRxNotice);
                 notify->setMessage("message", msg);
                 notify->post();
@@ -418,7 +418,7 @@ void NuPlayer::RTPSource::onMessageReceived(const sp<AMessage> &msg) {
             size_t trackIndex;
             CHECK(msg->findSize("trackIndex", &trackIndex));
 
-            sp<ABuffer> accessUnit;
+            std::shared_ptr<ABuffer> accessUnit;
             if (msg->findBuffer("access-unit", &accessUnit) == false) {
                 break;
             }
@@ -434,7 +434,7 @@ void NuPlayer::RTPSource::onMessageReceived(const sp<AMessage> &msg) {
             // never removing tracks.
             TrackInfo *info = &mTracks.editItemAt(trackIndex);
 
-            sp<AnotherPacketSource> source = info->mSource;
+            std::shared_ptr<AnotherPacketSource> source = info->mSource;
             if (source != NULL) {
                 uint32_t rtpTime;
                 CHECK(accessUnit->meta()->findInt32("rtp-time", (int32_t *)&rtpTime));
@@ -464,7 +464,7 @@ void NuPlayer::RTPSource::onMessageReceived(const sp<AMessage> &msg) {
         }
         case kWhatDisconnect:
         {
-            sp<AReplyToken> replyID;
+            std::shared_ptr<AReplyToken> replyID;
             CHECK(msg->senderAwaitsResponse(&replyID));
 
             for (size_t i = 0; i < mTracks.size(); ++i) {
@@ -497,7 +497,7 @@ void NuPlayer::RTPSource::onMessageReceived(const sp<AMessage> &msg) {
             mPausing = false;
             mPauseGeneration = 0;
 
-            (new AMessage)->postReply(replyID);
+            (std::make_shared<AMessage>)->postReply(replyID);
 
             break;
         }
@@ -549,7 +549,7 @@ void NuPlayer::RTPSource::onTimeUpdate(int32_t trackIndex, uint32_t rtpTime, uin
         for (size_t i = 0; i < mTracks.size(); ++i) {
             TrackInfo *trackInfo = &mTracks.editItemAt(i);
             while (!trackInfo->mPackets.empty()) {
-                sp<ABuffer> accessUnit = *trackInfo->mPackets.begin();
+                std::shared_ptr<ABuffer> accessUnit = *trackInfo->mPackets.begin();
                 trackInfo->mPackets.erase(trackInfo->mPackets.begin());
 
                 if (addMediaTimestamp(i, trackInfo, accessUnit)) {
@@ -562,7 +562,7 @@ void NuPlayer::RTPSource::onTimeUpdate(int32_t trackIndex, uint32_t rtpTime, uin
 
 bool NuPlayer::RTPSource::addMediaTimestamp(
         int32_t trackIndex, const TrackInfo *track,
-        const sp<ABuffer> &accessUnit) {
+        const std::shared_ptr<ABuffer> &accessUnit) {
 
     uint32_t rtpTime;
     CHECK(accessUnit->meta()->findInt32(
@@ -605,8 +605,8 @@ bool NuPlayer::RTPSource::dataReceivedOnAllChannels() {
 }
 
 void NuPlayer::RTPSource::postQueueAccessUnit(
-        size_t trackIndex, const sp<ABuffer> &accessUnit) {
-    sp<AMessage> msg = new AMessage(kWhatAccessUnit, this);
+        size_t trackIndex, const std::shared_ptr<ABuffer> &accessUnit) {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatAccessUnit, this);
     msg->setInt32("what", kWhatAccessUnit);
     msg->setSize("trackIndex", trackIndex);
     msg->setBuffer("accessUnit", accessUnit);
@@ -614,14 +614,14 @@ void NuPlayer::RTPSource::postQueueAccessUnit(
 }
 
 void NuPlayer::RTPSource::postQueueEOS(size_t trackIndex, status_t finalResult) {
-    sp<AMessage> msg = new AMessage(kWhatEOS, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatEOS, this);
     msg->setInt32("what", kWhatEOS);
     msg->setSize("trackIndex", trackIndex);
     msg->setInt32("finalResult", finalResult);
     msg->post();
 }
 
-sp<MetaData> NuPlayer::RTPSource::getTrackFormat(size_t index, int32_t *timeScale) {
+std::shared_ptr<MetaData> NuPlayer::RTPSource::getTrackFormat(size_t index, int32_t *timeScale) {
     CHECK_GE(index, 0u);
     CHECK_LT(index, mTracks.size());
 
@@ -637,7 +637,7 @@ void NuPlayer::RTPSource::onConnected() {
     mState = CONNECTED;
 }
 
-void NuPlayer::RTPSource::onDisconnected(const sp<AMessage> &msg) {
+void NuPlayer::RTPSource::onDisconnected(const std::shared_ptr<AMessage> &msg) {
     if (mState == DISCONNECTED) {
         return;
     }
@@ -660,7 +660,7 @@ void NuPlayer::RTPSource::onDisconnected(const sp<AMessage> &msg) {
 
 }
 
-status_t NuPlayer::RTPSource::setParameter(const String8 &key, const String8 &value) {
+status_t NuPlayer::RTPSource::setParameter(const std::string &key, const std::string &value) {
     ALOGV("setParameter: key (%s) => value (%s)", key.string(), value.string());
 
     bool isAudioKey = key.contains("audio");
@@ -731,7 +731,7 @@ status_t NuPlayer::RTPSource::setParameter(const String8 &key, const String8 &va
     return OK;
 }
 
-status_t NuPlayer::RTPSource::setParameters(const String8 &params) {
+status_t NuPlayer::RTPSource::setParameters(const std::string &params) {
     ALOGV("setParameters: %s", params.string());
     const char *cparams = params.string();
     const char *key_start = cparams;
@@ -741,7 +741,7 @@ status_t NuPlayer::RTPSource::setParameters(const String8 &params) {
             ALOGE("Parameters %s miss a value", cparams);
             return BAD_VALUE;
         }
-        String8 key(key_start, equal_pos - key_start);
+        std::string key(key_start, equal_pos - key_start);
         TrimString(&key);
         if (key.length() == 0) {
             ALOGE("Parameters %s contains an empty key", cparams);
@@ -749,7 +749,7 @@ status_t NuPlayer::RTPSource::setParameters(const String8 &params) {
         }
         const char *value_start = equal_pos + 1;
         const char *semicolon_pos = strchr(value_start, ';');
-        String8 value;
+        std::string value;
         if (semicolon_pos == NULL) {
             value.setTo(value_start);
         } else {
@@ -782,7 +782,7 @@ void NuPlayer::RTPSource::setSocketNetwork(int64_t networkHandle) {
 
 // Trim both leading and trailing whitespace from the given string.
 //static
-void NuPlayer::RTPSource::TrimString(String8 *s) {
+void NuPlayer::RTPSource::TrimString(std::string *s) {
     size_t num_bytes = s->bytes();
     const char *data = s->string();
 
@@ -796,7 +796,7 @@ void NuPlayer::RTPSource::TrimString(String8 *s) {
         --i;
     }
 
-    s->setTo(String8(&data[leading_space], i - leading_space));
+    s->setTo(std::string(&data[leading_space], i - leading_space));
 }
 
 }  // namespace android

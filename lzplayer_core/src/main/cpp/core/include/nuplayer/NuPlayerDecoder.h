@@ -114,7 +114,7 @@ private:
     float mVideoTemporalLayerAggregateFps[kMaxNumVideoTemporalLayers];
 
     bool mResumePending;
-    AString mComponentName;
+    std::string mComponentName;
 
     void handleError(int32_t err);
     bool handleAnInputBuffer(size_t index);

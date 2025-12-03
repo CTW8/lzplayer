@@ -20,12 +20,8 @@
 
 #include "RTSPSource.h"
 
-#include <media/IMediaHTTPService.h>
-#include <media/stagefright/MediaDefs.h>
-#include <media/stagefright/MetaData.h>
-#include <media/stagefright/rtsp/MyHandler.h>
-#include <media/stagefright/rtsp/SDPLoader.h>
-#include <mpeg2ts/AnotherPacketSource.h>
+#include "MetaData.h"
+#include "AnotherPacketSource.h"
 
 namespace android {
 
@@ -38,10 +34,10 @@ static const int kPrepareMarkMs     =  3000;  // 3 seconds
 static const int kOverflowMarkMs    = 10000;  // 10 seconds
 
 NuPlayer::RTSPSource::RTSPSource(
-        const sp<AMessage> &notify,
-        const sp<IMediaHTTPService> &httpService,
+        const std::shared_ptr<AMessage> &notify,
+        const std::shared_ptr<IMediaHTTPService> &httpService,
         const char *url,
-        const KeyedVector<String8, String8> *headers,
+        const std::unordered_map<std::string, std::string> *headers,
         bool uidValid,
         uid_t uid,
         bool isSDP)
@@ -67,7 +63,7 @@ NuPlayer::RTSPSource::RTSPSource(
         mExtraHeaders = *headers;
 
         ssize_t index =
-            mExtraHeaders.indexOfKey(String8("x-hide-urls-from-log"));
+            mExtraHeaders.indexOfKey(std::string("x-hide-urls-from-log"));
 
         if (index >= 0) {
             mFlags |= kFlagIncognito;
@@ -86,13 +82,13 @@ NuPlayer::RTSPSource::~RTSPSource() {
 
 status_t NuPlayer::RTSPSource::getBufferingSettings(
             BufferingSettings* buffering /* nonnull */) {
-    Mutex::Autolock _l(mBufferingSettingsLock);
+    std::lock_guard<std::mutex> _l(mBufferingSettingsLock);
     *buffering = mBufferingSettings;
     return OK;
 }
 
 status_t NuPlayer::RTSPSource::setBufferingSettings(const BufferingSettings& buffering) {
-    Mutex::Autolock _l(mBufferingSettingsLock);
+    std::lock_guard<std::mutex> _l(mBufferingSettingsLock);
     mBufferingSettings = buffering;
     return OK;
 }
@@ -104,7 +100,7 @@ void NuPlayer::RTSPSource::prepareAsync() {
     }
 
     if (mLooper == NULL) {
-        mLooper = new ALooper;
+        mLooper = std::make_shared<ALooper>();
         mLooper->setName("rtsp");
         mLooper->start();
 
@@ -114,7 +110,7 @@ void NuPlayer::RTSPSource::prepareAsync() {
     CHECK(mHandler == NULL);
     CHECK(mSDPLoader == NULL);
 
-    sp<AMessage> notify = new AMessage(kWhatNotify, this);
+    std::shared_ptr<AMessage> notify = std::make_shared<AMessage>(kWhatNotify, this);
 
     CHECK_EQ(mState, (int)DISCONNECTED);
     mState = CONNECTING;
@@ -144,9 +140,9 @@ void NuPlayer::RTSPSource::stop() {
         return;
     }
 
-    sp<AMessage> msg = new AMessage(kWhatDisconnect, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatDisconnect, this);
 
-    sp<AMessage> dummy;
+    std::shared_ptr<AMessage> dummy;
     msg->postAndAwaitResponse(&dummy);
 
     // Close socket after posting message to RTSPSource message handler.
@@ -158,12 +154,12 @@ void NuPlayer::RTSPSource::stop() {
 }
 
 status_t NuPlayer::RTSPSource::feedMoreTSData() {
-    Mutex::Autolock _l(mBufferingLock);
+    std::lock_guard<std::mutex> _l(mBufferingLock);
     return mFinalResult;
 }
 
-sp<MetaData> NuPlayer::RTSPSource::getFormatMeta(bool audio) {
-    sp<AnotherPacketSource> source = getSource(audio);
+std::shared_ptr<MetaData> NuPlayer::RTSPSource::getFormatMeta(bool audio) {
+    std::shared_ptr<AnotherPacketSource> source = getSource(audio);
 
     if (source == NULL) {
         return NULL;
@@ -209,12 +205,12 @@ bool NuPlayer::RTSPSource::haveSufficientDataOnAllTracks() {
 }
 
 status_t NuPlayer::RTSPSource::dequeueAccessUnit(
-        bool audio, sp<ABuffer> *accessUnit) {
+        bool audio, std::shared_ptr<ABuffer> *accessUnit) {
     if (!stopBufferingIfNecessary()) {
         return -EWOULDBLOCK;
     }
 
-    sp<AnotherPacketSource> source = getSource(audio);
+    std::shared_ptr<AnotherPacketSource> source = getSource(audio);
 
     if (source == NULL) {
         return -EWOULDBLOCK;
@@ -260,9 +256,9 @@ status_t NuPlayer::RTSPSource::dequeueAccessUnit(
     return source->dequeueAccessUnit(accessUnit);
 }
 
-sp<AnotherPacketSource> NuPlayer::RTSPSource::getSource(bool audio) {
+std::shared_ptr<AnotherPacketSource> NuPlayer::RTSPSource::getSource(bool audio) {
     if (mTSParser != NULL) {
-        sp<MediaSource> source = mTSParser->getSource(
+        std::shared_ptr<MediaSource> source = mTSParser->getSource(
                 audio ? ATSParser::AUDIO : ATSParser::VIDEO);
 
         return static_cast<AnotherPacketSource *>(source.get());
@@ -302,12 +298,12 @@ status_t NuPlayer::RTSPSource::getDuration(int64_t *durationUs) {
 }
 
 status_t NuPlayer::RTSPSource::seekTo(int64_t seekTimeUs, MediaPlayerSeekMode mode) {
-    sp<AMessage> msg = new AMessage(kWhatPerformSeek, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPerformSeek, this);
     msg->setInt32("generation", ++mSeekGeneration);
     msg->setInt64("timeUs", seekTimeUs);
     msg->setInt32("mode", mode);
 
-    sp<AMessage> response;
+    std::shared_ptr<AMessage> response;
     status_t err = msg->postAndAwaitResponse(&response);
     if (err == OK && response != NULL) {
         CHECK(response->findInt32("err", &err));
@@ -328,7 +324,7 @@ void NuPlayer::RTSPSource::performSeek(int64_t seekTimeUs) {
 }
 
 void NuPlayer::RTSPSource::schedulePollBuffering() {
-    sp<AMessage> msg = new AMessage(kWhatPollBuffering, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPollBuffering, this);
     msg->post(1000000LL); // 1 second intervals
 }
 
@@ -342,7 +338,7 @@ void NuPlayer::RTSPSource::checkBuffering(
     for (size_t i = 0; i < count; ++i) {
         status_t finalResult;
         TrackInfo *info = &mTracks.editItemAt(i);
-        sp<AnotherPacketSource> src = info->mSource;
+        std::shared_ptr<AnotherPacketSource> src = info->mSource;
         if (src == NULL) {
             --numTracks;
             continue;
@@ -352,7 +348,7 @@ void NuPlayer::RTSPSource::checkBuffering(
         int64_t initialMarkUs;
         int64_t maxRebufferingMarkUs;
         {
-            Mutex::Autolock _l(mBufferingSettingsLock);
+            std::lock_guard<std::mutex> _l(mBufferingSettingsLock);
             initialMarkUs = mBufferingSettings.mInitialMarkMs * 1000LL;
             // TODO: maxRebufferingMarkUs could be larger than
             // mBufferingSettings.mResumePlaybackMarkMs * 1000ll.
@@ -426,7 +422,7 @@ void NuPlayer::RTSPSource::signalSourceEOS(status_t result) {
     const bool audio = true;
     const bool video = false;
 
-    sp<AnotherPacketSource> source = getSource(audio);
+    std::shared_ptr<AnotherPacketSource> source = getSource(audio);
     if (source != NULL) {
         source->signalEOS(result);
     }
@@ -438,7 +434,7 @@ void NuPlayer::RTSPSource::signalSourceEOS(status_t result) {
 }
 
 bool NuPlayer::RTSPSource::sourceReachedEOS(bool audio) {
-    sp<AnotherPacketSource> source = getSource(audio);
+    std::shared_ptr<AnotherPacketSource> source = getSource(audio);
     status_t finalResult;
     return (source != NULL &&
             !source->hasBufferAvailable(&finalResult) &&
@@ -446,13 +442,13 @@ bool NuPlayer::RTSPSource::sourceReachedEOS(bool audio) {
 }
 
 bool NuPlayer::RTSPSource::sourceNearEOS(bool audio) {
-    sp<AnotherPacketSource> source = getSource(audio);
+    std::shared_ptr<AnotherPacketSource> source = getSource(audio);
     int64_t mediaDurationUs = 0;
     getDuration(&mediaDurationUs);
     return (source != NULL && source->isFinished(mediaDurationUs));
 }
 
-void NuPlayer::RTSPSource::onSignalEOS(const sp<AMessage> &msg) {
+void NuPlayer::RTSPSource::onSignalEOS(const std::shared_ptr<AMessage> &msg) {
     int32_t generation;
     CHECK(msg->findInt32("generation", &generation));
 
@@ -473,7 +469,7 @@ void NuPlayer::RTSPSource::postSourceEOSIfNecessary() {
     // data before signaling EOS
     if (sourceNearEOS(audio) || sourceNearEOS(video)) {
         if (!mEOSPending) {
-            sp<AMessage> msg = new AMessage(kWhatSignalEOS, this);
+            std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSignalEOS, this);
             msg->setInt32("generation", mSeekGeneration);
             msg->post(kNearEOSTimeoutUs);
             mEOSPending = true;
@@ -481,9 +477,9 @@ void NuPlayer::RTSPSource::postSourceEOSIfNecessary() {
     }
 }
 
-void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
+void NuPlayer::RTSPSource::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
     if (msg->what() == kWhatDisconnect) {
-        sp<AReplyToken> replyID;
+        std::shared_ptr<AReplyToken> replyID;
         CHECK(msg->senderAwaitsResponse(&replyID));
 
         mDisconnectReplyID = replyID;
@@ -558,7 +554,7 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
 
         case MyHandler::kWhatSeekPaused:
         {
-            sp<AnotherPacketSource> source = getSource(true /* audio */);
+            std::shared_ptr<AnotherPacketSource> source = getSource(true /* audio */);
             if (source != NULL) {
                 source->queueDiscontinuity(ATSParser::DISCONTINUITY_NONE,
                         /* extra */ NULL,
@@ -595,7 +591,7 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
                 CHECK_EQ(trackIndex, 0u);
             }
 
-            sp<ABuffer> accessUnit;
+            std::shared_ptr<ABuffer> accessUnit;
             CHECK(msg->findBuffer("accessUnit", &accessUnit));
 
             int32_t damaged;
@@ -632,7 +628,7 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
 
             TrackInfo *info = &mTracks.editItemAt(trackIndex);
 
-            sp<AnotherPacketSource> source = info->mSource;
+            std::shared_ptr<AnotherPacketSource> source = info->mSource;
             if (source != NULL) {
                 uint32_t rtpTime;
                 CHECK(accessUnit->meta()->findInt32("rtp-time", (int32_t *)&rtpTime));
@@ -673,7 +669,7 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
             CHECK_LT(trackIndex, mTracks.size());
 
             TrackInfo *info = &mTracks.editItemAt(trackIndex);
-            sp<AnotherPacketSource> source = info->mSource;
+            std::shared_ptr<AnotherPacketSource> source = info->mSource;
             if (source != NULL) {
                 source->signalEOS(finalResult);
             }
@@ -688,7 +684,7 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
             CHECK_LT(trackIndex, mTracks.size());
 
             TrackInfo *info = &mTracks.editItemAt(trackIndex);
-            sp<AnotherPacketSource> source = info->mSource;
+            std::shared_ptr<AnotherPacketSource> source = info->mSource;
             if (source != NULL) {
                 source->queueDiscontinuity(
                         ATSParser::DISCONTINUITY_TIME,
@@ -736,7 +732,7 @@ void NuPlayer::RTSPSource::onConnected() {
     size_t numTracks = mHandler->countTracks();
     for (size_t i = 0; i < numTracks; ++i) {
         int32_t timeScale;
-        sp<MetaData> format = mHandler->getTrackFormat(i, &timeScale);
+        std::shared_ptr<MetaData> format = mHandler->getTrackFormat(i, &timeScale);
 
         const char *mime;
         CHECK(format->findCString(kKeyMIMEType, &mime));
@@ -760,7 +756,7 @@ void NuPlayer::RTSPSource::onConnected() {
 
         if ((isAudio && mAudioTrack == NULL)
                 || (isVideo && mVideoTrack == NULL)) {
-            sp<AnotherPacketSource> source = new AnotherPacketSource(format);
+            std::shared_ptr<AnotherPacketSource> source = new AnotherPacketSource(format);
 
             if (isAudio) {
                 mAudioTrack = source;
@@ -777,7 +773,7 @@ void NuPlayer::RTSPSource::onConnected() {
     mState = CONNECTED;
 }
 
-void NuPlayer::RTSPSource::onSDPLoaded(const sp<AMessage> &msg) {
+void NuPlayer::RTSPSource::onSDPLoaded(const std::shared_ptr<AMessage> &msg) {
     status_t err;
     CHECK(msg->findInt32("result", &err));
 
@@ -788,8 +784,8 @@ void NuPlayer::RTSPSource::onSDPLoaded(const sp<AMessage> &msg) {
     }
 
     if (err == OK) {
-        sp<ASessionDescription> desc;
-        sp<RefBase> obj;
+        std::shared_ptr<ASessionDescription> desc;
+        std::shared_ptr<RefBase> obj;
         CHECK(msg->findObject("description", &obj));
         desc = static_cast<ASessionDescription *>(obj.get());
 
@@ -798,7 +794,7 @@ void NuPlayer::RTSPSource::onSDPLoaded(const sp<AMessage> &msg) {
             ALOGE("Unable to find url in SDP");
             err = UNKNOWN_ERROR;
         } else {
-            sp<AMessage> notify = new AMessage(kWhatNotify, this);
+            std::shared_ptr<AMessage> notify = std::make_shared<AMessage>(kWhatNotify, this);
 
             mHandler = new MyHandler(rtspUri.c_str(), notify, mUIDValid, mUID);
             mLooper->registerHandler(mHandler);
@@ -823,7 +819,7 @@ void NuPlayer::RTSPSource::onSDPLoaded(const sp<AMessage> &msg) {
     }
 }
 
-void NuPlayer::RTSPSource::onDisconnected(const sp<AMessage> &msg) {
+void NuPlayer::RTSPSource::onDisconnected(const std::shared_ptr<AMessage> &msg) {
     if (mState == DISCONNECTED) {
         return;
     }
@@ -859,29 +855,29 @@ void NuPlayer::RTSPSource::finishDisconnectIfPossible() {
         return;
     }
 
-    (new AMessage)->postReply(mDisconnectReplyID);
+    (std::make_shared<AMessage>)->postReply(mDisconnectReplyID);
     mDisconnectReplyID = 0;
 }
 
 void NuPlayer::RTSPSource::setError(status_t err) {
-    Mutex::Autolock _l(mBufferingLock);
+    std::lock_guard<std::mutex> _l(mBufferingLock);
     mFinalResult = err;
 }
 
 void NuPlayer::RTSPSource::startBufferingIfNecessary() {
-    Mutex::Autolock _l(mBufferingLock);
+    std::lock_guard<std::mutex> _l(mBufferingLock);
 
     if (!mBuffering) {
         mBuffering = true;
 
-        sp<AMessage> notify = dupNotify();
+        std::shared_ptr<AMessage> notify = dupNotify();
         notify->setInt32("what", kWhatPauseOnBufferingStart);
         notify->post();
     }
 }
 
 bool NuPlayer::RTSPSource::stopBufferingIfNecessary() {
-    Mutex::Autolock _l(mBufferingLock);
+    std::lock_guard<std::mutex> _l(mBufferingLock);
 
     if (mBuffering) {
         if (!haveSufficientDataOnAllTracks()) {
@@ -890,7 +886,7 @@ bool NuPlayer::RTSPSource::stopBufferingIfNecessary() {
 
         mBuffering = false;
 
-        sp<AMessage> notify = dupNotify();
+        std::shared_ptr<AMessage> notify = dupNotify();
         notify->setInt32("what", kWhatResumeOnBufferingEnd);
         notify->post();
     }
@@ -902,7 +898,7 @@ void NuPlayer::RTSPSource::finishSeek(status_t err) {
     if (mSeekReplyID == NULL) {
         return;
     }
-    sp<AMessage> seekReply = new AMessage;
+    std::shared_ptr<AMessage> seekReply = std::make_shared<AMessage>;
     seekReply->setInt32("err", err);
     seekReply->postReply(mSeekReplyID);
     mSeekReplyID = NULL;

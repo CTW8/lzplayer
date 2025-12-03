@@ -19,24 +19,20 @@
 #include <utils/Log.h>
 
 #include "NuPlayerStreamListener.h"
-
-#include <binder/MemoryDealer.h>
-#include <media/stagefright/foundation/ADebug.h>
-#include <media/stagefright/foundation/AMessage.h>
-#include <media/stagefright/MediaErrors.h>
+#include "AMessage.h"
 
 namespace android {
 
 NuPlayer::NuPlayerStreamListener::NuPlayerStreamListener(
-        const sp<IStreamSource> &source,
-        const sp<AHandler> &targetHandler)
+        const std::shared_ptr<IStreamSource> &source,
+        const std::shared_ptr<AHandler> &targetHandler)
     : mSource(source),
       mTargetHandler(targetHandler),
       mEOS(false),
       mSendDataNotification(true) {
     mMemoryDealer = new MemoryDealer(kNumBuffers * kBufferSize);
     for (size_t i = 0; i < kNumBuffers; ++i) {
-        sp<IMemory> mem = mMemoryDealer->allocate(kBufferSize);
+        std::shared_ptr<IMemory> mem = mMemoryDealer->allocate(kBufferSize);
         CHECK(mem != NULL);
 
         mBuffers.push(mem);
@@ -70,7 +66,7 @@ void NuPlayer::NuPlayerStreamListener::queueBuffer(size_t index, size_t size) {
 }
 
 void NuPlayer::NuPlayerStreamListener::issueCommand(
-        Command cmd, bool synchronous, const sp<AMessage> &extra) {
+        Command cmd, bool synchronous, const std::shared_ptr<AMessage> &extra) {
     CHECK(!synchronous);
 
     QueueEntry entry;
@@ -91,7 +87,7 @@ void NuPlayer::NuPlayerStreamListener::issueCommand(
 }
 
 ssize_t NuPlayer::NuPlayerStreamListener::read(
-        void *data, size_t size, sp<AMessage> *extra) {
+        void *data, size_t size, std::shared_ptr<AMessage> *extra) {
     CHECK_GT(size, 0u);
 
     extra->clear();
@@ -146,7 +142,7 @@ ssize_t NuPlayer::NuPlayerStreamListener::read(
         return ERROR_MALFORMED;
     }
 
-    sp<IMemory> mem = mBuffers.editItemAt(entry->mIndex);
+    std::shared_ptr<IMemory> mem = mBuffers.editItemAt(entry->mIndex);
     if (mem == NULL || mem->size() < copy || mem->size() - copy < entry->mOffset) {
         return ERROR_MALFORMED;
     }

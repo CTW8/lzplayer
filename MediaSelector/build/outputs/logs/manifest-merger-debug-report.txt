@@ -1,0 +1,59 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:2:1-23:12
+INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:2:1-23:12
+INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:2:1-23:12
+	package
+		INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:2:1-23:12
+		INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:2:11-69
+uses-permission#android.permission.READ_MEDIA_IMAGES
+ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:4:5-76
+	android:name
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:4:22-73
+uses-permission#android.permission.READ_MEDIA_VIDEO
+ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:5:5-75
+	android:name
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:5:22-72
+uses-permission#android.permission.READ_EXTERNAL_STORAGE
+ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:6:5-79
+	android:name
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:6:22-77
+application
+ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:8:5-22:19
+activity#com.ctw.mediaselector.MediaSelectorActivity
+ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:9:9-13:59
+	android:requestLegacyExternalStorage
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:13:13-56
+	android:exported
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:12:13-37
+	android:theme
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:11:13-55
+	android:name
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:10:13-50
+activity#com.ctw.mediaselector.MediaPreviewActivity
+ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:15:9-19:55
+	android:screenOrientation
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:19:13-52
+	android:exported
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:18:13-37
+	android:theme
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:17:13-55
+	android:name
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:16:13-49
+uses-sdk
+INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+		INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+		ADDED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+		INJECTED from /Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml

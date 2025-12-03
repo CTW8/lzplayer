@@ -1,0 +1,42 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.ctw.mediaselector" >
+4
+5    <uses-sdk android:minSdkVersion="24" />
+5-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml
+6    <!-- 添加媒体文件访问声明 -->
+7    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+7-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:4:5-76
+7-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:4:22-73
+8    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+8-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:5:5-75
+8-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:5:22-72
+9    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+9-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:6:5-79
+9-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:6:22-77
+10
+11    <application>
+11-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:8:5-22:19
+12        <activity
+12-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:9:9-13:59
+13            android:name="com.ctw.mediaselector.MediaSelectorActivity"
+13-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:10:13-50
+14            android:exported="false"
+14-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:12:13-37
+15            android:requestLegacyExternalStorage="true"
+15-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:13:13-56
+16            android:theme="@style/Theme.MediaSelector" />
+16-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:11:13-55
+17        <activity
+17-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:15:9-19:55
+18            android:name="com.ctw.mediaselector.MediaPreviewActivity"
+18-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:16:13-49
+19            android:exported="false"
+19-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:18:13-37
+20            android:screenOrientation="unspecified"
+20-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:19:13-52
+21            android:theme="@style/Theme.MediaSelector" />
+21-->/Users/lizhen/Documents/androidproject/lzplayer/MediaSelector/src/main/AndroidManifest.xml:17:13-55
+22    </application>
+23
+24</manifest>

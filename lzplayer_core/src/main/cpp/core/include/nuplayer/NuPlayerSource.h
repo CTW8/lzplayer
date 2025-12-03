@@ -135,7 +135,7 @@ struct NuPlayer::Source : public AHandler {
 
     // Modular DRM
     virtual status_t prepareDrm(
-            const uint8_t /*uuid*/[16], const Vector<uint8_t> &/*drmSessionId*/,
+            const uint8_t /*uuid*/[16], const std::vector<uint8_t> &/*drmSessionId*/,
             std::shared_ptr<ICrypto> */*crypto*/) {
         return INVALID_OPERATION;
     }

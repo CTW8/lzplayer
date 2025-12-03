@@ -17,20 +17,13 @@
 //#define LOG_NDEBUG 0
 #define LOG_TAG "MetaDataBase"
 #include <inttypes.h>
-#include <utils/KeyedVector.h>
+#include <unordered_map>
 #include "utils/Log.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-#include <media/stagefright/foundation/ADebug.h>
-#include <media/stagefright/foundation/AString.h>
-#include <media/stagefright/foundation/hexdump.h>
-#include <media/stagefright/MetaDataBase.h>
-
-#if defined(__ANDROID__) && !defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
-#include <binder/Parcel.h>
-#endif
+#include "MetaDataBase.h"
 
 namespace android {
 
@@ -45,7 +38,7 @@ struct MetaDataBase::typed_data {
     void setData(uint32_t type, const void *data, size_t size);
     void getData(uint32_t *type, const void **data, size_t *size) const;
     // may include hexdump of binary data if verbose=true
-    String8 asString(bool verbose) const;
+    std::string asString(bool verbose) const;
 
 private:
     uint32_t mType;
@@ -78,7 +71,7 @@ struct MetaDataBase::Rect {
 
 
 struct MetaDataBase::MetaDataInternal {
-    KeyedVector<uint32_t, MetaDataBase::typed_data> mItems;
+    std::unordered_map<uint32_t, MetaDataBase::typed_data> mItems;
 };
 
 
@@ -376,40 +369,40 @@ void MetaDataBase::typed_data::freeStorage() {
     mSize = 0;
 }
 
-String8 MetaDataBase::typed_data::asString(bool verbose) const {
-    String8 out;
+std::string MetaDataBase::typed_data::asString(bool verbose) const {
+    std::string out;
     const void *data = storage();
     switch(mType) {
         case TYPE_NONE:
-            out = String8::format("no type, size %zu)", mSize);
+            out = std::string::format("no type, size %zu)", mSize);
             break;
         case TYPE_C_STRING:
-            out = String8::format("(char*) %s", (const char *)data);
+            out = std::string::format("(char*) %s", (const char *)data);
             break;
         case TYPE_INT32:
-            out = String8::format("(int32_t) %d", *(int32_t *)data);
+            out = std::string::format("(int32_t) %d", *(int32_t *)data);
             break;
         case TYPE_INT64:
-            out = String8::format("(int64_t) %" PRId64, *(int64_t *)data);
+            out = std::string::format("(int64_t) %" PRId64, *(int64_t *)data);
             break;
         case TYPE_FLOAT:
-            out = String8::format("(float) %f", *(float *)data);
+            out = std::string::format("(float) %f", *(float *)data);
             break;
         case TYPE_POINTER:
-            out = String8::format("(void*) %p", *(void **)data);
+            out = std::string::format("(void*) %p", *(void **)data);
             break;
         case TYPE_RECT:
         {
             const Rect *r = (const Rect *)data;
-            out = String8::format("Rect(%d, %d, %d, %d)",
+            out = std::string::format("Rect(%d, %d, %d, %d)",
                                   r->mLeft, r->mTop, r->mRight, r->mBottom);
             break;
         }
 
         default:
-            out = String8::format("(unknown type %d, size %zu)", mType, mSize);
+            out = std::string::format("(unknown type %d, size %zu)", mType, mSize);
             if (verbose && mSize <= 48) { // if it's less than three lines of hex data, dump it
-                AString foo;
+                std::string foo;
                 hexdump(data, mSize, 0, &foo);
                 out.append("\n");
                 out.append(foo.c_str());
@@ -427,8 +420,8 @@ static void MakeFourCCString(uint32_t x, char *s) {
     s[4] = '\0';
 }
 
-String8 MetaDataBase::toString() const {
-    String8 s;
+std::string MetaDataBase::toString() const {
+    std::string s;
     for (int i = mInternalData->mItems.size(); --i >= 0;) {
         int32_t key = mInternalData->mItems.keyAt(i);
         char cc[5];

@@ -22,22 +22,19 @@
 #include "NuPlayerDecoderBase.h"
 
 #include "NuPlayerRenderer.h"
-
-#include <media/MediaCodecBuffer.h>
-#include <media/stagefright/foundation/ADebug.h>
-#include <media/stagefright/foundation/AMessage.h>
+#include "AMessage.h"
 
 namespace android {
 
-NuPlayer::DecoderBase::DecoderBase(const sp<AMessage> &notify)
+NuPlayer::DecoderBase::DecoderBase(const std::shared_ptr<AMessage> &notify)
     :  mNotify(notify),
        mBufferGeneration(0),
        mPaused(false),
-       mStats(new AMessage),
+       mStats(std::make_shared<AMessage>()),
        mRequestInputBuffersPending(false) {
     // Every decoder has its own looper because MediaCodec operations
     // are blocking, but NuPlayer needs asynchronous operations.
-    mDecoderLooper = new ALooper;
+    mDecoderLooper = std::make_shared<ALooper>();
     mDecoderLooper->setName("NPDecoder");
     mDecoderLooper->start(false, false, ANDROID_PRIORITY_AUDIO);
 }
@@ -48,7 +45,7 @@ NuPlayer::DecoderBase::~DecoderBase() {
 
 static
 status_t PostAndAwaitResponse(
-        const sp<AMessage> &msg, sp<AMessage> *response) {
+        const std::shared_ptr<AMessage> &msg, std::shared_ptr<AMessage> *response) {
     status_t err = msg->postAndAwaitResponse(response);
 
     if (err != OK) {
@@ -62,8 +59,8 @@ status_t PostAndAwaitResponse(
     return err;
 }
 
-void NuPlayer::DecoderBase::configure(const sp<AMessage> &format) {
-    sp<AMessage> msg = new AMessage(kWhatConfigure, this);
+void NuPlayer::DecoderBase::configure(const std::shared_ptr<AMessage> &format) {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatConfigure, this);
     msg->setMessage("format", format);
     msg->post();
 }
@@ -77,37 +74,37 @@ void NuPlayer::DecoderBase::stopLooper() {
     mDecoderLooper->stop();
 }
 
-void NuPlayer::DecoderBase::setParameters(const sp<AMessage> &params) {
-    sp<AMessage> msg = new AMessage(kWhatSetParameters, this);
+void NuPlayer::DecoderBase::setParameters(const std::shared_ptr<AMessage> &params) {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetParameters, this);
     msg->setMessage("params", params);
     msg->post();
 }
 
-void NuPlayer::DecoderBase::setRenderer(const sp<Renderer> &renderer) {
-    sp<AMessage> msg = new AMessage(kWhatSetRenderer, this);
+void NuPlayer::DecoderBase::setRenderer(const std::shared_ptr<Renderer> &renderer) {
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetRenderer, this);
     msg->setObject("renderer", renderer);
     msg->post();
 }
 
 void NuPlayer::DecoderBase::pause() {
-    sp<AMessage> msg = new AMessage(kWhatPause, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPause, this);
 
-    sp<AMessage> response;
+    std::shared_ptr<AMessage> response;
     PostAndAwaitResponse(msg, &response);
 }
 
 void NuPlayer::DecoderBase::signalFlush() {
-    (new AMessage(kWhatFlush, this))->post();
+    (std::make_shared<AMessage>(kWhatFlush, this))->post();
 }
 
 void NuPlayer::DecoderBase::signalResume(bool notifyComplete) {
-    sp<AMessage> msg = new AMessage(kWhatResume, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatResume, this);
     msg->setInt32("notifyComplete", notifyComplete);
     msg->post();
 }
 
 void NuPlayer::DecoderBase::initiateShutdown() {
-    (new AMessage(kWhatShutdown, this))->post();
+    (std::make_shared<AMessage>(kWhatShutdown, this))->post();
 }
 
 void NuPlayer::DecoderBase::onRequestInputBuffers() {
@@ -119,17 +116,17 @@ void NuPlayer::DecoderBase::onRequestInputBuffers() {
     if (doRequestBuffers()) {
         mRequestInputBuffersPending = true;
 
-        sp<AMessage> msg = new AMessage(kWhatRequestInputBuffers, this);
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRequestInputBuffers, this);
         msg->post(10 * 1000LL);
     }
 }
 
-void NuPlayer::DecoderBase::onMessageReceived(const sp<AMessage> &msg) {
+void NuPlayer::DecoderBase::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
 
     switch (msg->what()) {
         case kWhatConfigure:
         {
-            sp<AMessage> format;
+            std::shared_ptr<AMessage> format;
             CHECK(msg->findMessage("format", &format));
             onConfigure(format);
             break;
@@ -137,7 +134,7 @@ void NuPlayer::DecoderBase::onMessageReceived(const sp<AMessage> &msg) {
 
         case kWhatSetParameters:
         {
-            sp<AMessage> params;
+            std::shared_ptr<AMessage> params;
             CHECK(msg->findMessage("params", &params));
             onSetParameters(params);
             break;
@@ -145,7 +142,7 @@ void NuPlayer::DecoderBase::onMessageReceived(const sp<AMessage> &msg) {
 
         case kWhatSetRenderer:
         {
-            sp<RefBase> obj;
+            std::shared_ptr<RefBase> obj;
             CHECK(msg->findObject("renderer", &obj));
             onSetRenderer(static_cast<Renderer *>(obj.get()));
             break;
@@ -153,12 +150,12 @@ void NuPlayer::DecoderBase::onMessageReceived(const sp<AMessage> &msg) {
 
         case kWhatPause:
         {
-            sp<AReplyToken> replyID;
+            std::shared_ptr<AReplyToken> replyID;
             CHECK(msg->senderAwaitsResponse(&replyID));
 
             mPaused = true;
 
-            (new AMessage)->postReply(replyID);
+            (std::make_shared<AMessage>)->postReply(replyID);
             break;
         }
 
@@ -204,7 +201,7 @@ void NuPlayer::DecoderBase::handleError(int32_t err)
 
     ++mBufferGeneration;
 
-    sp<AMessage> notify = mNotify->dup();
+    std::shared_ptr<AMessage> notify = mNotify->dup();
     notify->setInt32("what", kWhatError);
     notify->setInt32("err", err);
     notify->post();

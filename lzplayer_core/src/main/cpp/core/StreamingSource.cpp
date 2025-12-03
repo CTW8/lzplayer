@@ -21,24 +21,15 @@
 #include "StreamingSource.h"
 
 #include "NuPlayerStreamListener.h"
-
-#include <media/stagefright/MediaSource.h>
-#include <media/stagefright/foundation/ABuffer.h>
-#include <media/stagefright/foundation/ADebug.h>
-#include <media/stagefright/foundation/AMessage.h>
-#include <media/stagefright/foundation/MediaKeys.h>
-#include <media/stagefright/MetaData.h>
-#include <media/stagefright/Utils.h>
-#include <mpeg2ts/AnotherPacketSource.h>
-#include <mpeg2ts/ATSParser.h>
+#include "AMessage.h"
 
 namespace android {
 
 const int32_t kNumListenerQueuePackets = 80;
 
 NuPlayer::StreamingSource::StreamingSource(
-        const sp<AMessage> &notify,
-        const sp<IStreamSource> &source)
+        const std::shared_ptr<AMessage> &notify,
+        const std::shared_ptr<IStreamSource> &source)
     : Source(notify),
       mSource(source),
       mFinalResult(OK),
@@ -102,7 +93,7 @@ status_t NuPlayer::StreamingSource::feedMoreTSData() {
 void NuPlayer::StreamingSource::onReadBuffer() {
     for (int32_t i = 0; i < kNumListenerQueuePackets; ++i) {
         char buffer[188];
-        sp<AMessage> extra;
+        std::shared_ptr<AMessage> extra;
         ssize_t n = mStreamListener->read(buffer, sizeof(buffer), &extra);
 
         if (n == 0) {
@@ -135,7 +126,7 @@ void NuPlayer::StreamingSource::onReadBuffer() {
                 // XXX legacy
 
                 if (extra == NULL) {
-                    extra = new AMessage;
+                    extra = std::make_shared<AMessage>;
                 }
 
                 uint8_t type = 0;
@@ -172,7 +163,7 @@ void NuPlayer::StreamingSource::onReadBuffer() {
 
 status_t NuPlayer::StreamingSource::postReadBuffer() {
     {
-        Mutex::Autolock _l(mBufferingLock);
+        std::lock_guard<std::mutex> _l(mBufferingLock);
         if (mFinalResult != OK) {
             return mFinalResult;
         }
@@ -182,7 +173,7 @@ status_t NuPlayer::StreamingSource::postReadBuffer() {
         mBuffering = true;
     }
 
-    (new AMessage(kWhatReadBuffer, this))->post();
+    (std::make_shared<AMessage>(kWhatReadBuffer, this))->post();
     return OK;
 }
 
@@ -192,8 +183,8 @@ bool NuPlayer::StreamingSource::haveSufficientDataOnAllTracks() {
 
     static const int64_t kMinDurationUs = 2000000LL;
 
-    sp<AnotherPacketSource> audioTrack = getSource(true /*audio*/);
-    sp<AnotherPacketSource> videoTrack = getSource(false /*audio*/);
+    std::shared_ptr<AnotherPacketSource> audioTrack = getSource(true /*audio*/);
+    std::shared_ptr<AnotherPacketSource> videoTrack = getSource(false /*audio*/);
 
     status_t err;
     int64_t durationUs;
@@ -219,31 +210,31 @@ bool NuPlayer::StreamingSource::haveSufficientDataOnAllTracks() {
 }
 
 void NuPlayer::StreamingSource::setError(status_t err) {
-    Mutex::Autolock _l(mBufferingLock);
+    std::lock_guard<std::mutex> _l(mBufferingLock);
     mFinalResult = err;
 }
 
-sp<AnotherPacketSource> NuPlayer::StreamingSource::getSource(bool audio) {
+std::shared_ptr<AnotherPacketSource> NuPlayer::StreamingSource::getSource(bool audio) {
     if (mTSParser == NULL) {
         return NULL;
     }
 
-    sp<MediaSource> source = mTSParser->getSource(
+    std::shared_ptr<MediaSource> source = mTSParser->getSource(
             audio ? ATSParser::AUDIO : ATSParser::VIDEO);
 
     return static_cast<AnotherPacketSource *>(source.get());
 }
 
-sp<AMessage> NuPlayer::StreamingSource::getFormat(bool audio) {
-    sp<AnotherPacketSource> source = getSource(audio);
+std::shared_ptr<AMessage> NuPlayer::StreamingSource::getFormat(bool audio) {
+    std::shared_ptr<AnotherPacketSource> source = getSource(audio);
 
-    sp<AMessage> format = new AMessage;
+    std::shared_ptr<AMessage> format = std::make_shared<AMessage>;
     if (source == NULL) {
         format->setInt32("err", -EWOULDBLOCK);
         return format;
     }
 
-    sp<MetaData> meta = source->getFormat();
+    std::shared_ptr<MetaData> meta = source->getFormat();
     if (meta == NULL) {
         format->setInt32("err", -EWOULDBLOCK);
         return format;
@@ -256,8 +247,8 @@ sp<AMessage> NuPlayer::StreamingSource::getFormat(bool audio) {
 }
 
 status_t NuPlayer::StreamingSource::dequeueAccessUnit(
-        bool audio, sp<ABuffer> *accessUnit) {
-    sp<AnotherPacketSource> source = getSource(audio);
+        bool audio, std::shared_ptr<ABuffer> *accessUnit) {
+    std::shared_ptr<AnotherPacketSource> source = getSource(audio);
 
     if (source == NULL) {
         return -EWOULDBLOCK;
@@ -290,14 +281,14 @@ bool NuPlayer::StreamingSource::isRealTime() const {
 }
 
 void NuPlayer::StreamingSource::onMessageReceived(
-        const sp<AMessage> &msg) {
+        const std::shared_ptr<AMessage> &msg) {
     switch (msg->what()) {
         case kWhatReadBuffer:
         {
             onReadBuffer();
 
             {
-                Mutex::Autolock _l(mBufferingLock);
+                std::lock_guard<std::mutex> _l(mBufferingLock);
                 mBuffering = false;
             }
             break;

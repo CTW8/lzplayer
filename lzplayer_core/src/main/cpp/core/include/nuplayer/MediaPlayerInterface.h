@@ -18,7 +18,8 @@
 #define ANDROID_MEDIAPLAYERINTERFACE_H
 
 #ifdef __cplusplus
-
+#include <mutex>
+#include <condition_variable>
 #include <sys/types.h>
 #include "Errors.h"
 #include <unordered_map>
@@ -142,8 +143,8 @@ public:
         virtual status_t    getPlaybackRate(AudioPlaybackRate* rate /* nonnull */) = 0;
         virtual bool        needsTrailingPadding() { return true; }
 
-        virtual status_t    setParameters(const String8& /* keyValuePairs */) { return NO_ERROR; }
-        virtual String8     getParameters(const String8& /* keys */) { return String8::empty(); }
+        virtual status_t    setParameters(const std::string& /* keyValuePairs */) { return NO_ERROR; }
+        virtual std::string     getParameters(const std::string& /* keys */) { return std::string::empty(); }
 
         virtual media::VolumeShaper::Status applyVolumeShaper(
                                     const std::shared_ptr<media::VolumeShaper::Configuration>& configuration,
@@ -168,7 +169,7 @@ public:
     virtual status_t    setDataSource(
             const std::shared_ptr<IMediaHTTPService> &httpService,
             const char *url,
-            const KeyedVector<String8, String8> *headers = NULL) = 0;
+            const std::unordered_map<std::string, std::string> *headers = NULL) = 0;
 
     virtual status_t    setDataSource(int fd, int64_t offset, int64_t length) = 0;
 
@@ -180,7 +181,7 @@ public:
         return INVALID_OPERATION;
     }
 
-    virtual status_t    setDataSource(const String8& /* rtpParams */) {
+    virtual status_t    setDataSource(const std::string& /* rtpParams */) {
         return INVALID_OPERATION;
     }
 
@@ -275,7 +276,7 @@ public:
 
     void        setNotifyCallback(
             const std::shared_ptr<Listener> &listener) {
-        Mutex::Autolock autoLock(mNotifyLock);
+        std::lock_guard<std::mutex> autoLock(mNotifyLock);
         mListener = listener;
     }
 
@@ -283,7 +284,7 @@ public:
                           const Parcel *obj=NULL) {
         std::shared_ptr<Listener> listener;
         {
-            Mutex::Autolock autoLock(mNotifyLock);
+            std::lock_guard<std::mutex> autoLock(mNotifyLock);
             listener = mListener;
         }
 
@@ -292,12 +293,12 @@ public:
         }
     }
 
-    virtual status_t dump(int /* fd */, const Vector<String16>& /* args */) const {
+    virtual status_t dump(int /* fd */, const std::vector<std::string>& /* args */) const {
         return INVALID_OPERATION;
     }
 
     // Modular DRM
-    virtual status_t prepareDrm(const uint8_t /* uuid */[16], const Vector<uint8_t>& /* drmSessionId */) {
+    virtual status_t prepareDrm(const uint8_t /* uuid */[16], const std::vector<uint8_t>& /* drmSessionId */) {
         return INVALID_OPERATION;
     }
     virtual status_t releaseDrm() {
@@ -307,7 +308,7 @@ public:
 private:
     friend class MediaPlayerService;
 
-    Mutex               mNotifyLock;
+    std::mutex               mNotifyLock;
     std::shared_ptr<Listener>        mListener;
 };
 

@@ -18,22 +18,6 @@
 
 #define RTP_SOURCE_H_
 
-#include <media/stagefright/foundation/ABase.h>
-#include <media/stagefright/foundation/ABuffer.h>
-#include <media/stagefright/foundation/ADebug.h>
-#include <media/stagefright/foundation/AMessage.h>
-#include <media/stagefright/MediaSource.h>
-#include <media/stagefright/rtsp/APacketSource.h>
-#include <media/stagefright/rtsp/ARTPConnection.h>
-#include <media/stagefright/rtsp/ARTPSource.h>
-#include <media/stagefright/rtsp/ASessionDescription.h>
-#include <media/stagefright/Utils.h>
-#include <media/BufferingSettings.h>
-#include <mpeg2ts/AnotherPacketSource.h>
-
-#include <utils/KeyedVector.h>
-#include <utils/Vector.h>
-#include <utils/RefBase.h>
 
 #include "NuPlayerSource.h"
 
@@ -44,8 +28,8 @@ struct AnotherPacketSource;
 
 struct NuPlayer::RTPSource : public NuPlayer::Source {
     RTPSource(
-            const sp<AMessage> &notify,
-            const String8& rtpParams);
+            const std::shared_ptr<AMessage> &notify,
+            const std::string& rtpParams);
 
     virtual status_t getBufferingSettings(
             BufferingSettings* buffering /* nonnull */) override;
@@ -59,7 +43,7 @@ struct NuPlayer::RTPSource : public NuPlayer::Source {
 
     virtual status_t feedMoreTSData();
 
-    virtual status_t dequeueAccessUnit(bool audio, sp<ABuffer> *accessUnit);
+    virtual status_t dequeueAccessUnit(bool audio, std::shared_ptr<ABuffer> *accessUnit);
 
     virtual status_t getDuration(int64_t *durationUs);
     virtual status_t seekTo(
@@ -68,14 +52,14 @@ struct NuPlayer::RTPSource : public NuPlayer::Source {
 
     virtual bool isRealTime() const;
 
-    void onMessageReceived(const sp<AMessage> &msg);
+    void onMessageReceived(const std::shared_ptr<AMessage> &msg);
 
     virtual void setTargetBitrate(int32_t bitrate) override;
 
 protected:
     virtual ~RTPSource();
 
-    virtual sp<MetaData> getFormatMeta(bool audio);
+    virtual std::shared_ptr<MetaData> getFormatMeta(bool audio);
 
 private:
     enum {
@@ -101,14 +85,14 @@ private:
         /* SDP of track */
         bool mIsAudio;
         int32_t mPayloadType;
-        String8 mMimeType;
-        String8 mCodecName;
+        std::string mMimeType;
+        std::string mCodecName;
         int32_t mCodecProfile;
         int32_t mCodecLevel;
         int32_t mWidth;
         int32_t mHeight;
-        String8 mLocalIp;
-        String8 mRemoteIp;
+        std::string mLocalIp;
+        std::string mRemoteIp;
         int32_t mLocalPort;
         int32_t mRemotePort;
         int64_t mSocketNetwork;
@@ -125,7 +109,7 @@ private:
         int32_t mRtpSockOptEcn;
 
         /* a copy of TrackInfo in RTSPSource */
-        sp<AnotherPacketSource> mSource;
+        std::shared_ptr<AnotherPacketSource> mSource;
         uint32_t mRTPTime;
         int64_t mNormalPlaytimeUs;
         bool mNPTMappingValid;
@@ -141,29 +125,29 @@ private:
         bool mEOSReceived;
         uint32_t mNormalPlayTimeRTP;
         int64_t mNormalPlayTimeUs;
-        sp<APacketSource> mPacketSource;
-        List<sp<ABuffer>> mPackets;
+        std::shared_ptr<APacketSource> mPacketSource;
+        std::list<std::shared_ptr<ABuffer>> mPackets;
     };
 
-    const String8 mRTPParams;
+    const std::string mRTPParams;
     uint32_t mFlags;
     State mState;
     status_t mFinalResult;
 
     // below 3 parameters need to be checked whether it needed or not.
-    Mutex mBufferingLock;
+    std::mutex mBufferingLock;
     bool mBuffering;
     bool mInPreparationPhase;
-    Mutex mBufferingSettingsLock;
+    std::mutex mBufferingSettingsLock;
     BufferingSettings mBufferingSettings;
 
-    sp<ALooper> mLooper;
+    std::shared_ptr<ALooper> mLooper;
 
-    sp<ARTPConnection> mRTPConn;
+    std::shared_ptr<ARTPConnection> mRTPConn;
 
-    Vector<TrackInfo> mTracks;
-    sp<AnotherPacketSource> mAudioTrack;
-    sp<AnotherPacketSource> mVideoTrack;
+    std::vector<TrackInfo> mTracks;
+    std::shared_ptr<AnotherPacketSource> mAudioTrack;
+    std::shared_ptr<AnotherPacketSource> mVideoTrack;
 
     int64_t mEOSTimeoutAudio;
     int64_t mEOSTimeoutVideo;
@@ -181,18 +165,18 @@ private:
     bool mPausing;
     int32_t mPauseGeneration;
 
-    sp<AnotherPacketSource> getSource(bool audio);
+    std::shared_ptr<AnotherPacketSource> getSource(bool audio);
 
     /* MyHandler.h */
     void onTimeUpdate(int32_t trackIndex, uint32_t rtpTime, uint64_t ntpTime);
     bool addMediaTimestamp(int32_t trackIndex, const TrackInfo *track,
-            const sp<ABuffer> &accessUnit);
+            const std::shared_ptr<ABuffer> &accessUnit);
     bool dataReceivedOnAllChannels();
-    void postQueueAccessUnit(size_t trackIndex, const sp<ABuffer> &accessUnit);
+    void postQueueAccessUnit(size_t trackIndex, const std::shared_ptr<ABuffer> &accessUnit);
     void postQueueEOS(size_t trackIndex, status_t finalResult);
-    sp<MetaData> getTrackFormat(size_t index, int32_t *timeScale);
+    std::shared_ptr<MetaData> getTrackFormat(size_t index, int32_t *timeScale);
     void onConnected();
-    void onDisconnected(const sp<AMessage> &msg);
+    void onDisconnected(const std::shared_ptr<AMessage> &msg);
 
     void schedulePollBuffering();
     void onPollBuffering();
@@ -201,10 +185,10 @@ private:
 
     void setEOSTimeout(bool audio, int64_t timeout);
 
-    status_t setParameters(const String8 &params);
-    status_t setParameter(const String8 &key, const String8 &value);
+    status_t setParameters(const std::string &params);
+    status_t setParameter(const std::string &key, const std::string &value);
     void setSocketNetwork(int64_t networkHandle);
-    static void TrimString(String8 *s);
+    static void TrimString(std::string *s);
 
     DISALLOW_EVIL_CONSTRUCTORS(RTPSource);
 };

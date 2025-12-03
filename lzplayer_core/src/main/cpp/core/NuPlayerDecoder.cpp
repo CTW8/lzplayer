@@ -75,7 +75,7 @@ NuPlayer::Decoder::Decoder(
       mCurrentMaxVideoTemporalLayerId(0),
       mResumePending(false),
       mComponentName("decoder") {
-    mCodecLooper = new ALooper;
+    mCodecLooper = std::make_shared<ALooper>();
     mCodecLooper->setName("NPDecoder-CL");
     mCodecLooper->start(false, false, ANDROID_PRIORITY_AUDIO);
     mVideoTemporalLayerAggregateFps[0] = mFrameRateTotal;
@@ -91,8 +91,8 @@ NuPlayer::Decoder::~Decoder() {
 }
 
 std::shared_ptr<AMessage> NuPlayer::Decoder::getStats() {
-
-    Mutex::Autolock autolock(mStatsLock);
+    
+    std::lock_guard<std::mutex> autolock(mStatsLock);
     mStats->setInt64("frames-total", mNumFramesTotal);
     mStats->setInt64("frames-dropped-input", mNumInputFramesDropped);
     mStats->setInt64("frames-dropped-output", mNumOutputFramesDropped);
@@ -109,7 +109,7 @@ status_t NuPlayer::Decoder::setVideoSurface(const std::shared_ptr<Surface> &surf
         return BAD_VALUE;
     }
 
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatSetVideoSurface, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetVideoSurface, this);
 
     msg->setObject("surface", surface);
     std::shared_ptr<AMessage> response;
@@ -248,7 +248,7 @@ void NuPlayer::Decoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) 
                 }
             }
 
-            std::shared_ptr<AMessage> response = new AMessage;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
             response->setInt32("err", err);
             response->postReply(replyID);
             break;
@@ -275,7 +275,7 @@ void NuPlayer::Decoder::onConfigure(const std::shared_ptr<AMessage> &format) {
 
     ++mBufferGeneration;
 
-    AString mime;
+    std::string mime;
     CHECK(format->findString("mime", &mime));
 
     mIsAudio = !strncasecmp("audio/", mime.c_str(), 6);
@@ -348,7 +348,7 @@ void NuPlayer::Decoder::onConfigure(const std::shared_ptr<AMessage> &format) {
     CHECK_EQ((status_t)OK, mCodec->getInputFormat(&mInputFormat));
 
     {
-        Mutex::Autolock autolock(mStatsLock);
+        std::lock_guard<std::mutex> autolock(mStatsLock);
         mStats->setString("mime", mime.c_str());
         mStats->setString("component-name", mComponentName.c_str());
     }
@@ -357,13 +357,13 @@ void NuPlayer::Decoder::onConfigure(const std::shared_ptr<AMessage> &format) {
         int32_t width, height;
         if (mOutputFormat->findInt32("width", &width)
                 && mOutputFormat->findInt32("height", &height)) {
-            Mutex::Autolock autolock(mStatsLock);
+            std::lock_guard<std::mutex> autolock(mStatsLock);
             mStats->setInt32("width", width);
             mStats->setInt32("height", height);
         }
     }
 
-    std::shared_ptr<AMessage> reply = new AMessage(kWhatCodecNotify, this);
+    std::shared_ptr<AMessage> reply = std::make_shared<AMessage>(kWhatCodecNotify, this);
     mCodec->setCallback(reply);
 
     err = mCodec->start();
@@ -440,7 +440,7 @@ void NuPlayer::Decoder::onSetParameters(const std::shared_ptr<AMessage> &params)
             return;
         }
 
-        std::shared_ptr<AMessage> codecParams = new AMessage();
+        std::shared_ptr<AMessage> codecParams = std::make_shared<AMessage>();
         codecParams->setFloat("operating-rate", decodeFrameRate * mPlaybackSpeed);
         mCodec->setParameters(codecParams);
     }
@@ -555,7 +555,7 @@ bool NuPlayer::Decoder::doRequestBuffers() {
     status_t err = OK;
     while (err == OK && !mDequeuedInputBuffers.empty()) {
         size_t bufferIx = *mDequeuedInputBuffers.begin();
-        std::shared_ptr<AMessage> msg = new AMessage();
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>();
         msg->setSize("buffer-ix", bufferIx);
         err = fetchInputData(msg);
         if (err != OK && err != ERROR_END_OF_STREAM) {
@@ -592,7 +592,7 @@ status_t NuPlayer::Decoder::releaseCrypto()
 {
     ALOGV("releaseCrypto");
 
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatDrmReleaseCrypto, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatDrmReleaseCrypto, this);
 
     std::shared_ptr<AMessage> response;
     status_t status = msg->postAndAwaitResponse(&response);
@@ -617,7 +617,7 @@ void NuPlayer::Decoder::onReleaseCrypto(const std::shared_ptr<AMessage>& msg)
         ALOGE("onReleaseCrypto No mCodec. err: %d", status);
     }
 
-    std::shared_ptr<AMessage> response = new AMessage;
+    std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
     response->setInt32("status", status);
     // Clearing the state as it's tied to crypto. mIsEncryptedObservedEarlier is sticky though
     // and lasts for the lifetime of this codec. See its use in fetchInputData.
@@ -668,7 +668,7 @@ bool NuPlayer::Decoder::handleAnInputBuffer(size_t index) {
     mInputBufferIsDequeued.editItemAt(index) = true;
 
     if (!mCSDsToSubmit.isEmpty()) {
-        std::shared_ptr<AMessage> msg = new AMessage();
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>();
         msg->setSize("buffer-ix", index);
 
         std::shared_ptr<ABuffer> buffer = mCSDsToSubmit.itemAt(0);
@@ -743,7 +743,7 @@ bool NuPlayer::Decoder::handleAnOutputBuffer(
     bool eos = flags & MediaCodec::BUFFER_FLAG_EOS;
     // we do not expect CODECCONFIG or SYNCFRAME for decoder
 
-    std::shared_ptr<AMessage> reply = new AMessage(kWhatRenderBuffer, this);
+    std::shared_ptr<AMessage> reply = std::make_shared<AMessage>(kWhatRenderBuffer, this);
     reply->setSize("buffer-ix", index);
     reply->setInt32("generation", mBufferGeneration);
     reply->setSize("size", size);
@@ -794,7 +794,7 @@ void NuPlayer::Decoder::handleOutputFormatChange(const std::shared_ptr<AMessage>
         int32_t width, height;
         if (format->findInt32("width", &width)
                 && format->findInt32("height", &height)) {
-            Mutex::Autolock autolock(mStatsLock);
+            std::lock_guard<std::mutex> autolock(mStatsLock);
             mStats->setInt32("width", width);
             mStats->setInt32("height", height);
         }
@@ -814,7 +814,7 @@ void NuPlayer::Decoder::handleOutputFormatChange(const std::shared_ptr<AMessage>
             flags = AUDIO_OUTPUT_FLAG_NONE;
         }
 
-        std::shared_ptr<AMessage> reply = new AMessage(kWhatAudioOutputFormatChanged, this);
+        std::shared_ptr<AMessage> reply = std::make_shared<AMessage>(kWhatAudioOutputFormatChanged, this);
         reply->setInt32("generation", mBufferGeneration);
         mRenderer->changeAudioFormat(
                 format, false /* offloadOnly */, hasVideo,
@@ -846,7 +846,7 @@ void NuPlayer::Decoder::releaseAndResetMediaBuffers() {
 
 void NuPlayer::Decoder::requestCodecNotification() {
     if (mCodec != NULL) {
-        std::shared_ptr<AMessage> reply = new AMessage(kWhatCodecNotify, this);
+        std::shared_ptr<AMessage> reply = std::make_shared<AMessage>(kWhatCodecNotify, this);
         reply->setInt32("generation", mBufferGeneration);
         mCodec->requestActivityNotification(reply);
     }
@@ -1110,7 +1110,7 @@ bool NuPlayer::Decoder::onInputBufferFetched(const std::shared_ptr<AMessage> &ms
         } // needsCopy
 
         status_t err;
-        AString errorDetailMsg;
+        std::string errorDetailMsg;
         if (cryptInfo != NULL) {
             err = mCodec->queueSecureInputBuffer(
                     bufferIx,
@@ -1227,7 +1227,7 @@ bool NuPlayer::Decoder::supportsSeamlessAudioFormatChange(
         return true;
     }
 
-    AString mime;
+    std::string mime;
     if (!targetFormat->findString("mime", &mime)) {
         return false;
     }
@@ -1265,7 +1265,7 @@ bool NuPlayer::Decoder::supportsSeamlessFormatChange(const std::shared_ptr<AMess
         return true;
     }
 
-    AString oldMime, newMime;
+    std::string oldMime, newMime;
     if (!mInputFormat->findString("mime", &oldMime)
             || !targetFormat->findString("mime", &newMime)
             || !(oldMime == newMime)) {
@@ -1293,7 +1293,7 @@ void NuPlayer::Decoder::rememberCodecSpecificData(const std::shared_ptr<AMessage
     }
     mCSDsForCurrentFormat.clear();
     for (int32_t i = 0; ; ++i) {
-        AString tag = "csd-";
+        std::string tag = "csd-";
         tag.append(i);
         std::shared_ptr<ABuffer> buffer;
         if (!format->findBuffer(tag.c_str(), &buffer)) {

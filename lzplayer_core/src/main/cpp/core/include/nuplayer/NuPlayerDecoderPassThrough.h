@@ -64,7 +64,7 @@ private:
     // when the power investigation is done.
     size_t  mPendingBuffersToDrain;
     size_t  mCachedBytes;
-    AString mComponentName;
+    std::string mComponentName;
 
     bool isStaleReply(const std::shared_ptr<AMessage> &msg);
     bool isDoneFetching() const;

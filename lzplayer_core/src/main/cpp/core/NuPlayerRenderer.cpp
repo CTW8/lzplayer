@@ -161,7 +161,7 @@ NuPlayer::Renderer::~Renderer() {
     }
 
     // Try to avoid racing condition in case callback is still on.
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
     if (mUseAudioCallback) {
         flushQueue(&mAudioQueue);
         flushQueue(&mVideoQueue);
@@ -176,7 +176,7 @@ void NuPlayer::Renderer::queueBuffer(
         bool audio,
         const std::shared_ptr<MediaCodecBuffer> &buffer,
         const std::shared_ptr<AMessage> &notifyConsumed) {
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatQueueBuffer, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatQueueBuffer, this);
     msg->setInt32("queueGeneration", getQueueGeneration(audio));
     msg->setInt32("audio", static_cast<int32_t>(audio));
     msg->setObject("buffer", buffer);
@@ -187,7 +187,7 @@ void NuPlayer::Renderer::queueBuffer(
 void NuPlayer::Renderer::queueEOS(bool audio, status_t finalResult) {
     CHECK_NE(finalResult, (status_t)OK);
 
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatQueueEOS, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatQueueEOS, this);
     msg->setInt32("queueGeneration", getQueueGeneration(audio));
     msg->setInt32("audio", static_cast<int32_t>(audio));
     msg->setInt32("finalResult", finalResult);
@@ -195,7 +195,7 @@ void NuPlayer::Renderer::queueEOS(bool audio, status_t finalResult) {
 }
 
 status_t NuPlayer::Renderer::setPlaybackSettings(const AudioPlaybackRate &rate) {
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatConfigPlayback, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatConfigPlayback, this);
     writeToAMessage(msg, rate);
     std::shared_ptr<AMessage> response;
     status_t err = msg->postAndAwaitResponse(&response);
@@ -230,7 +230,7 @@ status_t NuPlayer::Renderer::onConfigPlayback(const AudioPlaybackRate &rate /* s
 }
 
 status_t NuPlayer::Renderer::getPlaybackSettings(AudioPlaybackRate *rate /* nonnull */) {
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatGetPlaybackSettings, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatGetPlaybackSettings, this);
     std::shared_ptr<AMessage> response;
     status_t err = msg->postAndAwaitResponse(&response);
     if (err == OK && response != NULL) {
@@ -263,7 +263,7 @@ status_t NuPlayer::Renderer::onGetPlaybackSettings(AudioPlaybackRate *rate /* no
 }
 
 status_t NuPlayer::Renderer::setSyncSettings(const AVSyncSettings &sync, float videoFpsHint) {
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatConfigSync, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatConfigSync, this);
     writeToAMessage(msg, sync, videoFpsHint);
     std::shared_ptr<AMessage> response;
     status_t err = msg->postAndAwaitResponse(&response);
@@ -282,7 +282,7 @@ status_t NuPlayer::Renderer::onConfigSync(const AVSyncSettings &sync, float vide
 }
 
 status_t NuPlayer::Renderer::getSyncSettings(AVSyncSettings *sync, float *videoFps) {
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatGetSyncSettings, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatGetSyncSettings, this);
     std::shared_ptr<AMessage> response;
     status_t err = msg->postAndAwaitResponse(&response);
     if (err == OK && response != NULL) {
@@ -303,7 +303,7 @@ status_t NuPlayer::Renderer::onGetSyncSettings(
 
 void NuPlayer::Renderer::flush(bool audio, bool notifyComplete) {
     {
-        Mutex::Autolock autoLock(mLock);
+        std::lock_guard<std::mutex> autoLock(mLock);
         if (audio) {
             mNotifyCompleteAudio |= notifyComplete;
             clearAudioFirstAnchorTime_l();
@@ -324,12 +324,12 @@ void NuPlayer::Renderer::flush(bool audio, bool notifyComplete) {
     // Wait until the current job in the message queue is done, to make sure
     // buffer processing from the old generation is finished. After the current
     // job is finished, access to buffers are protected by generation.
-    Mutex::Autolock syncLock(mSyncLock);
+    std::lock_guard<std::mutex> syncLock(mSyncLock);
     int64_t syncCount = mSyncCount;
     mSyncFlag.clear();
 
     // Make sure message queue is not empty after mSyncFlag is cleared.
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatFlush, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatFlush, this);
     msg->setInt32("audio", static_cast<int32_t>(audio));
     msg->post();
 
@@ -348,23 +348,23 @@ void NuPlayer::Renderer::signalTimeDiscontinuity() {
 }
 
 void NuPlayer::Renderer::signalDisableOffloadAudio() {
-    (new AMessage(kWhatDisableOffloadAudio, this))->post();
+    (std::make_shared<AMessage>(kWhatDisableOffloadAudio, this))->post();
 }
 
 void NuPlayer::Renderer::signalEnableOffloadAudio() {
-    (new AMessage(kWhatEnableOffloadAudio, this))->post();
+    (std::make_shared<AMessage>(kWhatEnableOffloadAudio, this))->post();
 }
 
 void NuPlayer::Renderer::pause() {
-    (new AMessage(kWhatPause, this))->post();
+    (std::make_shared<AMessage>(kWhatPause, this))->post();
 }
 
 void NuPlayer::Renderer::resume() {
-    (new AMessage(kWhatResume, this))->post();
+    (std::make_shared<AMessage>(kWhatResume, this))->post();
 }
 
 void NuPlayer::Renderer::setVideoFrameRate(float fps) {
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatSetVideoFrameRate, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetVideoFrameRate, this);
     msg->setFloat("frame-rate", fps);
     msg->post();
 }
@@ -378,7 +378,7 @@ status_t NuPlayer::Renderer::getCurrentPosition(int64_t *mediaUs) {
 
     // MediaClock has not started yet. Try to start it if possible.
     {
-        Mutex::Autolock autoLock(mLock);
+        std::lock_guard<std::mutex> autoLock(mLock);
         if (mAudioFirstAnchorTimeMediaUs == -1) {
             return result;
         }
@@ -423,12 +423,12 @@ void NuPlayer::Renderer::clearAnchorTime() {
 }
 
 void NuPlayer::Renderer::setVideoLateByUs(int64_t lateUs) {
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
     mVideoLateByUs = lateUs;
 }
 
 int64_t NuPlayer::Renderer::getVideoLateByUs() {
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
     return mVideoLateByUs;
 }
 
@@ -439,7 +439,7 @@ status_t NuPlayer::Renderer::openAudioSink(
         uint32_t flags,
         bool *isOffloaded,
         bool isStreaming) {
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatOpenAudioSink, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatOpenAudioSink, this);
     msg->setMessage("format", format);
     msg->setInt32("offload-only", offloadOnly);
     msg->setInt32("has-video", hasVideo);
@@ -461,7 +461,7 @@ status_t NuPlayer::Renderer::openAudioSink(
 }
 
 void NuPlayer::Renderer::closeAudioSink() {
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatCloseAudioSink, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatCloseAudioSink, this);
 
     std::shared_ptr<AMessage> response;
     msg->postAndAwaitResponse(&response);
@@ -474,14 +474,14 @@ void NuPlayer::Renderer::changeAudioFormat(
         uint32_t flags,
         bool isStreaming,
         const std::shared_ptr<AMessage> &notify) {
-    std::shared_ptr<AMessage> meta = new AMessage;
+    std::shared_ptr<AMessage> meta = std::make_shared<AMessage>;
     meta->setMessage("format", format);
     meta->setInt32("offload-only", offloadOnly);
     meta->setInt32("has-video", hasVideo);
     meta->setInt32("flags", flags);
     meta->setInt32("isStreaming", isStreaming);
 
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatChangeAudioFormat, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatChangeAudioFormat, this);
     msg->setInt32("queueGeneration", getQueueGeneration(true /* audio */));
     msg->setMessage("notify", notify);
     msg->setMessage("meta", meta);
@@ -509,7 +509,7 @@ void NuPlayer::Renderer::onMessageReceived(const std::shared_ptr<AMessage> &msg)
 
             status_t err = onOpenAudioSink(format, offloadOnly, hasVideo, flags, isStreaming);
 
-            std::shared_ptr<AMessage> response = new AMessage;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
             response->setInt32("err", err);
             response->setInt32("offload", offloadingAudio());
 
@@ -527,7 +527,7 @@ void NuPlayer::Renderer::onMessageReceived(const std::shared_ptr<AMessage> &msg)
 
             onCloseAudioSink();
 
-            std::shared_ptr<AMessage> response = new AMessage;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
             response->postReply(replyID);
             break;
         }
@@ -566,7 +566,7 @@ void NuPlayer::Renderer::onMessageReceived(const std::shared_ptr<AMessage> &msg)
             entry.mNotifyConsumed = notify;
             entry.mMeta = meta;
 
-            Mutex::Autolock autoLock(mLock);
+            std::lock_guard<std::mutex> autoLock(mLock);
             mAudioQueue.push_back(entry);
             postDrainAudioQueue_l();
 
@@ -610,7 +610,7 @@ void NuPlayer::Renderer::onMessageReceived(const std::shared_ptr<AMessage> &msg)
                         mAudioSink->getBufferDurationInUs(), (int64_t)500000 /* half second */);
                 ALOGD_IF(delayUs > maxDrainDelayUs, "postDrainAudioQueue long delay: %lld > %lld",
                         (long long)delayUs, (long long)maxDrainDelayUs);
-                Mutex::Autolock autoLock(mLock);
+                std::lock_guard<std::mutex> autoLock(mLock);
                 postDrainAudioQueue_l(delayUs);
             }
             break;
@@ -677,7 +677,7 @@ void NuPlayer::Renderer::onMessageReceived(const std::shared_ptr<AMessage> &msg)
             AudioPlaybackRate rate;
             readFromAMessage(msg, &rate);
             status_t err = onConfigPlayback(rate);
-            std::shared_ptr<AMessage> response = new AMessage;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
             response->setInt32("err", err);
             response->postReply(replyID);
             break;
@@ -689,7 +689,7 @@ void NuPlayer::Renderer::onMessageReceived(const std::shared_ptr<AMessage> &msg)
             CHECK(msg->senderAwaitsResponse(&replyID));
             AudioPlaybackRate rate = AUDIO_PLAYBACK_RATE_DEFAULT;
             status_t err = onGetPlaybackSettings(&rate);
-            std::shared_ptr<AMessage> response = new AMessage;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
             if (err == OK) {
                 writeToAMessage(response, rate);
             }
@@ -706,7 +706,7 @@ void NuPlayer::Renderer::onMessageReceived(const std::shared_ptr<AMessage> &msg)
             float videoFpsHint;
             readFromAMessage(msg, &sync, &videoFpsHint);
             status_t err = onConfigSync(sync, videoFpsHint);
-            std::shared_ptr<AMessage> response = new AMessage;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
             response->setInt32("err", err);
             response->postReply(replyID);
             break;
@@ -721,7 +721,7 @@ void NuPlayer::Renderer::onMessageReceived(const std::shared_ptr<AMessage> &msg)
             AVSyncSettings sync;
             float videoFps = -1.f;
             status_t err = onGetSyncSettings(&sync, &videoFps);
-            std::shared_ptr<AMessage> response = new AMessage;
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>;
             if (err == OK) {
                 writeToAMessage(response, sync, videoFps);
             }
@@ -786,7 +786,7 @@ void NuPlayer::Renderer::onMessageReceived(const std::shared_ptr<AMessage> &msg)
             }
             ALOGV("Audio Offload tear down due to pause timeout.");
             onAudioTearDown(kDueToTimeout);
-            std::shared_ptr<AMessage> newMsg = new AMessage(kWhatReleaseWakeLock, this);
+            std::shared_ptr<AMessage> newMsg = std::make_shared<AMessage>(kWhatReleaseWakeLock, this);
             newMsg->setInt32("drainGeneration", generation);
             newMsg->post(kWakelockReleaseDelayUs);
             break;
@@ -809,7 +809,7 @@ void NuPlayer::Renderer::onMessageReceived(const std::shared_ptr<AMessage> &msg)
             break;
     }
     if (!mSyncFlag.test_and_set()) {
-        Mutex::Autolock syncLock(mSyncLock);
+        std::lock_guard<std::mutex> syncLock(mSyncLock);
         ++mSyncCount;
         mSyncCondition.broadcast();
     }
@@ -833,7 +833,7 @@ void NuPlayer::Renderer::postDrainAudioQueue_l(int64_t delayUs) {
     }
 
     mDrainAudioQueuePending = true;
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatDrainAudioQueue, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatDrainAudioQueue, this);
     msg->setInt32("drainGeneration", mAudioDrainGeneration);
     msg->post(delayUs);
 }
@@ -895,7 +895,7 @@ size_t NuPlayer::Renderer::AudioSinkCallback(
 }
 
 void NuPlayer::Renderer::notifyEOSCallback() {
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
 
     if (!mUseAudioCallback) {
         return;
@@ -905,7 +905,7 @@ void NuPlayer::Renderer::notifyEOSCallback() {
 }
 
 size_t NuPlayer::Renderer::fillAudioBuffer(void *buffer, size_t size) {
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
 
     if (!mUseAudioCallback) {
         return 0;
@@ -975,7 +975,7 @@ size_t NuPlayer::Renderer::fillAudioBuffer(void *buffer, size_t size) {
     }
 
     if (hasEOS) {
-        (new AMessage(kWhatStopAudioSink, this))->post();
+        (std::make_shared<AMessage>(kWhatStopAudioSink, this))->post();
         // As there is currently no EVENT_STREAM_END callback notification for
         // non-offloaded audio tracks, we need to post the EOS ourselves.
         if (!offloadingAudio()) {
@@ -1150,7 +1150,7 @@ bool NuPlayer::Renderer::onDrainAudioQueue() {
         mNumFramesWritten += copiedFrames;
 
         {
-            Mutex::Autolock autoLock(mLock);
+            std::lock_guard<std::mutex> autoLock(mLock);
             int64_t maxTimeMedia;
             maxTimeMedia =
                 mAnchorTimeMediaUs +
@@ -1243,7 +1243,7 @@ int64_t NuPlayer::Renderer::getRealTimeUs(int64_t mediaTimeUs, int64_t nowUs) {
 }
 
 void NuPlayer::Renderer::onNewAudioMediaTime(int64_t mediaTimeUs) {
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
     // TRICKY: vorbis decoder generates multiple frames with the same
     // timestamp, so only update on the first frame with a given timestamp
     if (mediaTimeUs == mAnchorTimeMediaUs) {
@@ -1301,7 +1301,7 @@ void NuPlayer::Renderer::postDrainVideoQueue() {
 
     QueueEntry &entry = *mVideoQueue.begin();
 
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatDrainVideoQueue, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatDrainVideoQueue, this);
     msg->setInt32("drainGeneration", getDrainGeneration(false /* audio */));
 
     if (entry.mBuffer == NULL) {
@@ -1334,7 +1334,7 @@ void NuPlayer::Renderer::postDrainVideoQueue() {
     CHECK(entry.mBuffer->meta()->findInt64("timeUs", &mediaTimeUs));
 
     {
-        Mutex::Autolock autoLock(mLock);
+        std::lock_guard<std::mutex> autoLock(mLock);
         if (mAnchorTimeMediaUs < 0) {
             mMediaClock->updateAnchor(mediaTimeUs, nowUs, mediaTimeUs);
             mAnchorTimeMediaUs = mediaTimeUs;
@@ -1441,7 +1441,7 @@ void NuPlayer::Renderer::onDrainVideoQueue() {
             mVideoRenderingStarted = true;
             notifyVideoRenderingStart();
         }
-        Mutex::Autolock autoLock(mLock);
+        std::lock_guard<std::mutex> autoLock(mLock);
         notifyIfMediaRenderingStarted_l();
     }
 }
@@ -1453,13 +1453,13 @@ void NuPlayer::Renderer::notifyVideoRenderingStart() {
 }
 
 void NuPlayer::Renderer::notifyEOS(bool audio, status_t finalResult, int64_t delayUs) {
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
     notifyEOS_l(audio, finalResult, delayUs);
 }
 
 void NuPlayer::Renderer::notifyEOS_l(bool audio, status_t finalResult, int64_t delayUs) {
     if (audio && delayUs > 0) {
-        std::shared_ptr<AMessage> msg = new AMessage(kWhatEOS, this);
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatEOS, this);
         msg->setInt32("audioEOSGeneration", mAudioEOSGeneration);
         msg->setInt32("finalResult", finalResult);
         msg->post(delayUs);
@@ -1493,7 +1493,7 @@ void NuPlayer::Renderer::notifyEOS_l(bool audio, status_t finalResult, int64_t d
 }
 
 void NuPlayer::Renderer::notifyAudioTearDown(AudioTearDownReason reason) {
-    std::shared_ptr<AMessage> msg = new AMessage(kWhatAudioTearDown, this);
+    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatAudioTearDown, this);
     msg->setInt32("reason", reason);
     msg->post();
 }
@@ -1534,7 +1534,7 @@ void NuPlayer::Renderer::onQueueBuffer(const std::shared_ptr<AMessage> &msg) {
     entry.mBufferOrdinal = ++mTotalBuffersQueued;
 
     if (audio) {
-        Mutex::Autolock autoLock(mLock);
+        std::lock_guard<std::mutex> autoLock(mLock);
         mAudioQueue.push_back(entry);
         postDrainAudioQueue_l();
     } else {
@@ -1613,7 +1613,7 @@ void NuPlayer::Renderer::onQueueEOS(const std::shared_ptr<AMessage> &msg) {
     entry.mFinalResult = finalResult;
 
     if (audio) {
-        Mutex::Autolock autoLock(mLock);
+        std::lock_guard<std::mutex> autoLock(mLock);
         if (mAudioQueue.empty() && mSyncQueues) {
             syncQueuesDone_l();
         }
@@ -1621,7 +1621,7 @@ void NuPlayer::Renderer::onQueueEOS(const std::shared_ptr<AMessage> &msg) {
         postDrainAudioQueue_l();
     } else {
         if (mVideoQueue.empty() && getSyncQueues()) {
-            Mutex::Autolock autoLock(mLock);
+            std::lock_guard<std::mutex> autoLock(mLock);
             syncQueuesDone_l();
         }
         mVideoQueue.push_back(entry);
@@ -1634,7 +1634,7 @@ void NuPlayer::Renderer::onFlush(const std::shared_ptr<AMessage> &msg) {
     CHECK(msg->findInt32("audio", &audio));
 
     {
-        Mutex::Autolock autoLock(mLock);
+        std::lock_guard<std::mutex> autoLock(mLock);
         if (audio) {
             notifyComplete = mNotifyCompleteAudio;
             mNotifyCompleteAudio = false;
@@ -1667,7 +1667,7 @@ void NuPlayer::Renderer::onFlush(const std::shared_ptr<AMessage> &msg) {
     ALOGV("flushing %s", audio ? "audio" : "video");
     if (audio) {
         {
-            Mutex::Autolock autoLock(mLock);
+            std::lock_guard<std::mutex> autoLock(mLock);
             flushQueue(&mAudioQueue);
 
             ++mAudioDrainGeneration;
@@ -1702,7 +1702,7 @@ void NuPlayer::Renderer::onFlush(const std::shared_ptr<AMessage> &msg) {
             mVideoScheduler->restart();
         }
 
-        Mutex::Autolock autoLock(mLock);
+        std::lock_guard<std::mutex> autoLock(mLock);
         ++mVideoDrainGeneration;
         prepareForMediaRenderingStart_l();
     }
@@ -1768,7 +1768,7 @@ void NuPlayer::Renderer::onAudioSinkChanged() {
 }
 
 void NuPlayer::Renderer::onDisableOffloadAudio() {
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
     mFlags &= ~FLAG_OFFLOAD_AUDIO;
     ++mAudioDrainGeneration;
     if (mAudioRenderingStartGeneration != -1) {
@@ -1779,7 +1779,7 @@ void NuPlayer::Renderer::onDisableOffloadAudio() {
 }
 
 void NuPlayer::Renderer::onEnableOffloadAudio() {
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
     mFlags |= FLAG_OFFLOAD_AUDIO;
     ++mAudioDrainGeneration;
     if (mAudioRenderingStartGeneration != -1) {
@@ -1795,7 +1795,7 @@ void NuPlayer::Renderer::onPause() {
     startAudioOffloadPauseTimeout();
 
     {
-        Mutex::Autolock autoLock(mLock);
+        std::lock_guard<std::mutex> autoLock(mLock);
         // we do not increment audio drain generation so that we fill audio buffer during pause.
         ++mVideoDrainGeneration;
         prepareForMediaRenderingStart_l();
@@ -1829,7 +1829,7 @@ void NuPlayer::Renderer::onResume() {
     }
 
     {
-        Mutex::Autolock autoLock(mLock);
+        std::lock_guard<std::mutex> autoLock(mLock);
         mPaused = false;
         // rendering started message may have been delayed if we were paused.
         if (mRenderingDataDelivered) {
@@ -1860,17 +1860,17 @@ void NuPlayer::Renderer::onSetVideoFrameRate(float fps) {
 }
 
 int32_t NuPlayer::Renderer::getQueueGeneration(bool audio) {
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
     return (audio ? mAudioQueueGeneration : mVideoQueueGeneration);
 }
 
 int32_t NuPlayer::Renderer::getDrainGeneration(bool audio) {
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
     return (audio ? mAudioDrainGeneration : mVideoDrainGeneration);
 }
 
 bool NuPlayer::Renderer::getSyncQueues() {
-    Mutex::Autolock autoLock(mLock);
+    std::lock_guard<std::mutex> autoLock(mLock);
     return mSyncQueues;
 }
 
@@ -1903,7 +1903,7 @@ void NuPlayer::Renderer::onAudioTearDown(AudioTearDownReason reason) {
 void NuPlayer::Renderer::startAudioOffloadPauseTimeout() {
     if (offloadingAudio()) {
         mWakeLock->acquire();
-        std::shared_ptr<AMessage> msg = new AMessage(kWhatAudioOffloadPauseTimeout, this);
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatAudioOffloadPauseTimeout, this);
         msg->setInt32("drainGeneration", mAudioOffloadPauseTimeoutGeneration);
         msg->post(kOffloadPauseMaxUs);
     }
