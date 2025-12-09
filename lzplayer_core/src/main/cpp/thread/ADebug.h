@@ -17,8 +17,6 @@
 #ifndef A_DEBUG_H_
 
 #define A_DEBUG_H_
-
-#include <string.h>
 #include "Errors.h"
 #include "Log.h"
 
@@ -93,9 +91,9 @@ inline static const char *asString(status_t i, const char *def = "??") {
             std::string ___full =                                           \
                 __FILE__ ":" LITERAL_TO_STRING(__LINE__)                \
                     " CHECK_" #suffix "( " #x "," #y ") failed: ";      \
-            ___full.append(a);                                          \
+            ___full.append(std::to_string(a));                                          \
             ___full.append(" vs. ");                                    \
-            ___full.append(b);                                          \
+            ___full.append(std::to_string(b));                                          \
             LOG_ALWAYS_FATAL("%s", ___full.c_str());                    \
         }                                                               \
     } while (false)

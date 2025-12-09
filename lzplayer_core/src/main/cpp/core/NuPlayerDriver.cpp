@@ -29,7 +29,7 @@
 #include "ALooper.h"
 #include "AMessage.h"
 #include "AHandler.h"
-#include "MediaClock.h"
+#include "ADebug.h"
 
 static const int kDumpLockRetries = 50;
 static const int kDumpLockSleepUs = 20000;
@@ -141,7 +141,7 @@ status_t NuPlayerDriver::setDataSource(
         const char *url,
         const KeyedVector<String8, String8> *headers) {
     ALOGV("setDataSource(%p) url(%s)", this, uriDebugString(url, false).c_str());
-    std::lock_guard<std::mutex> lock(mLock);
+    std::unique_lock<std::mutex> lock(mLock);
 
     if (mState != STATE_IDLE) {
         return INVALID_OPERATION;
@@ -152,7 +152,7 @@ status_t NuPlayerDriver::setDataSource(
     mPlayer->setDataSourceAsync(httpService, url, headers);
 
     while (mState == STATE_SET_DATASOURCE_PENDING) {
-        mCondition.wait(mLock);
+        mCondition.wait(lock);
     }
 
     return mAsyncResult;
@@ -160,7 +160,7 @@ status_t NuPlayerDriver::setDataSource(
 
 status_t NuPlayerDriver::setDataSource(int fd, int64_t offset, int64_t length) {
     ALOGV("setDataSource(%p) file(%d)", this, fd);
-    std::lock_guard<std::mutex> lock(mLock);
+    std::unique_lock<std::mutex> lock(mLock);
 
     if (mState != STATE_IDLE) {
         return INVALID_OPERATION;
@@ -171,7 +171,7 @@ status_t NuPlayerDriver::setDataSource(int fd, int64_t offset, int64_t length) {
     mPlayer->setDataSourceAsync(fd, offset, length);
 
     while (mState == STATE_SET_DATASOURCE_PENDING) {
-        mCondition.wait(mLock);
+        mCondition.wait(lock);
     }
 
     return mAsyncResult;

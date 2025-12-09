@@ -26,8 +26,6 @@
 
 namespace android {
 
-class MediaCodecBuffer;
-
 struct NuPlayer::Decoder : public DecoderBase {
     Decoder(const std::shared_ptr<AMessage> &notify,
             const std::shared_ptr<Source> &source,

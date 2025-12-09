@@ -45,15 +45,5 @@ MetaData::MetaData(const MetaDataBase &from)
 MetaData::~MetaData() {
 }
 
-#if defined(__ANDROID__) && !defined(__ANDROID_VNDK__) && !defined(__ANDROID_APEX__)
-/* static */
-std::shared_ptr<MetaData> MetaData::createFromParcel(const Parcel &parcel) {
-
-    std::shared_ptr<MetaData> meta = std::make_shared<MetaData>();
-    meta->updateFromParcel(parcel);
-    return meta;
-}
-#endif
-
 }  // namespace android
 

@@ -43,6 +43,7 @@
 #include "MetaData.h"
 #include "ALooper.h"
 #include "AMessage.h"
+#include "VEDef.h"
 
 namespace android {
 
@@ -350,7 +351,7 @@ status_t NuPlayer::setBufferingSettings(const BufferingSettings& buffering) {
 }
 
 void NuPlayer::setDataSourceAsync(const std::string& rtpParams) {
-    ALOGD("setDataSourceAsync for RTP = %s", rtpParams.string());
+    ALOGD("setDataSourceAsync for RTP = %s", rtpParams.c_str());
     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetDataSource, this);
 
     std::shared_ptr<AMessage> notify = std::make_shared<AMessage>(kWhatSourceNotify, this);
@@ -2244,7 +2245,7 @@ status_t NuPlayer::getCurrentPosition(int64_t *mediaUs) {
     return renderer->getCurrentPosition(mediaUs);
 }
 
-void NuPlayer::getStats(Vector<std::shared_ptr<AMessage> > *trackStats) {
+void NuPlayer::getStats(std::vector<std::shared_ptr<AMessage> > *trackStats) {
     CHECK(trackStats != NULL);
 
     trackStats->clear();
@@ -2998,7 +2999,7 @@ const char *NuPlayer::getDataSourceType() {
  }
 
 // Modular DRM begin
-status_t NuPlayer::prepareDrm(const uint8_t uuid[16], const Vector<uint8_t> &drmSessionId)
+status_t NuPlayer::prepareDrm(const uint8_t uuid[16], const std::vector<uint8_t> &drmSessionId)
 {
     ALOGV("prepareDrm ");
 
@@ -3007,7 +3008,7 @@ status_t NuPlayer::prepareDrm(const uint8_t uuid[16], const Vector<uint8_t> &drm
     // synchronous call so just passing the address but with local copies of "const" args
     uint8_t UUID[16];
     memcpy(UUID, uuid, sizeof(UUID));
-    Vector<uint8_t> sessionId = drmSessionId;
+    std::vector<uint8_t> sessionId = drmSessionId;
     msg->setPointer("uuid", (void*)UUID);
     msg->setPointer("drmSessionId", (void*)&sessionId);
 
@@ -3055,7 +3056,7 @@ status_t NuPlayer::onPrepareDrm(const std::shared_ptr<AMessage> &msg)
     }
 
     uint8_t *uuid;
-    Vector<uint8_t> *drmSessionId;
+    std::vector<uint8_t> *drmSessionId;
     CHECK(msg->findPointer("uuid", (void**)&uuid));
     CHECK(msg->findPointer("drmSessionId", (void**)&drmSessionId));
 

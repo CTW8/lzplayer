@@ -35,10 +35,6 @@ struct sockaddr_in;
 
 namespace android {
 
-class DataSource;
-class Parcel;
-class Surface;
-class IGraphicBufferProducer;
 
 template<typename T> class SortedVector;
 

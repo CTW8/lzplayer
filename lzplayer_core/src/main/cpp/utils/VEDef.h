@@ -20,7 +20,13 @@
 #define VE_PLAYER_ERROR                         0x2000
 #define VE_PLAYER_ERROR_OPEN_DEMUX_FAILED                   (VE_PLAYER_ERROR + 1)
 
-
+enum MediaPlayerSeekMode{
+    SEEK_PREVIOUS_SYNC = 0,
+    SEEK_NEXT_SYNC = 1,
+    SEEK_CLOSEST_SYNC = 2,
+    SEEK_CLOSEST = 3,
+    SEEK_FRAME_INDEX = 4,
+};
 
 enum EFrameType{
     E_FRAME_TYPE_UNKNOW = -1,

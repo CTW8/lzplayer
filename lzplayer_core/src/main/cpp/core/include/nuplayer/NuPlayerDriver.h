@@ -17,16 +17,14 @@
 #include "MediaPlayerInterface.h"
 #include "Errors.h"
 #include "VEError.h"
+#include "ALooper.h"
 #include <mutex>
 #include <condition_variable>
 
 namespace android {
 
-struct ALooper;
-struct MediaClock;
-struct NuPlayer;
-
-struct NuPlayerDriver : public MediaPlayerInterface {
+class NuPlayerDriver : public MediaPlayerInterface {
+public:
     explicit NuPlayerDriver(pid_t pid);
 
     virtual status_t initCheck();
@@ -36,7 +34,7 @@ struct NuPlayerDriver : public MediaPlayerInterface {
     virtual status_t setDataSource(
             const std::shared_ptr<IMediaHTTPService> &httpService,
             const char *url,
-            const KeyedVector<std::string, std::string> *headers);
+            const std::unordered_map<std::string, std::string> *headers);
 
     virtual status_t setDataSource(int fd, int64_t offset, int64_t length);
 
@@ -95,7 +93,7 @@ struct NuPlayerDriver : public MediaPlayerInterface {
     void notifyFlagsChanged(uint32_t flags);
 
     // Modular DRM
-    virtual status_t prepareDrm(const uint8_t uuid[16], const Vector<uint8_t> &drmSessionId);
+    virtual status_t prepareDrm(const uint8_t uuid[16], const std::vector<uint8_t> &drmSessionId);
     virtual status_t releaseDrm();
 
 protected:

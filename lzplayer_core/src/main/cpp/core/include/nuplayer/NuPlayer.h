@@ -22,17 +22,11 @@
 #include "MediaPlayerInterface.h"
 #include "AHandler.h"
 
-struct AMessage;
 namespace android {
 
-struct ABuffer;
-struct AVSyncSettings;
-class IDataSource;
-struct MediaClock;
-class MetaData;
-struct NuPlayerDriver;
+class NuPlayer : public AHandler {
 
-struct NuPlayer : public AHandler {
+public:
     explicit NuPlayer(pid_t pid, const std::shared_ptr<MediaClock> &mediaClock);
 
     void setUID(uid_t uid);
