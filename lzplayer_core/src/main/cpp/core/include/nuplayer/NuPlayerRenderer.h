@@ -27,10 +27,6 @@
 
 namespace android {
 
-class  AWakeLock;
-struct MediaClock;
-class MediaCodecBuffer;
-struct VideoFrameSchedulerBase;
 
 struct NuPlayer::Renderer : public AHandler {
     enum Flags {

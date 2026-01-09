@@ -309,6 +309,11 @@ void AMessage::setObjectInternal(
     }
 }
 
+
+void AMessage::setBuffer(const char *name, const std::shared_ptr<android::ABuffer> &buffer) {
+    setObjectInternal(name, buffer, kTypeBuffer);
+}
+
 void AMessage::setObject(const char *name, const std::shared_ptr<void> &obj) {
     setObjectInternal(name, obj, kTypeObject);
 }
@@ -324,6 +329,16 @@ void AMessage::setRect(
         item->u.rectValue.mTop = top;
         item->u.rectValue.mRight = right;
         item->u.rectValue.mBottom = bottom;
+    }
+}
+
+void AMessage::setMessage(const char *name, const std::shared_ptr<AMessage> &obj) {
+    Item *item = allocateItem(name);
+    if (item) {
+        item->mType = kTypeMessage;
+
+        if (obj != NULL) { obj->incStrong(this); }
+        item->u.ref.Value = obj.get();
     }
 }
 

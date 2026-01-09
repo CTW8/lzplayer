@@ -23,8 +23,6 @@
 
 namespace android {
 
-struct ALooper;
-struct AnotherPacketSource;
 
 struct NuPlayer::RTPSource : public NuPlayer::Source {
     RTPSource(

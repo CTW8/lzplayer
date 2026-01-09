@@ -24,11 +24,6 @@
 
 namespace android {
 
-struct ABuffer;
-struct MediaCodec;
-class MediaBuffer;
-class MediaCodecBuffer;
-class Surface;
 
 struct NuPlayer::DecoderBase : public AHandler {
     explicit DecoderBase(const std::shared_ptr<AMessage> &notify);

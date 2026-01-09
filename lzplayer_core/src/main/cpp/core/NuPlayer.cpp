@@ -44,6 +44,14 @@
 #include "ALooper.h"
 #include "AMessage.h"
 #include "VEDef.h"
+#include "MediaClock.h"
+#include "BufferingSettings.h"
+#include "DataSource.h"
+#include "MediaErrors.h"
+#include "utils/Timers.h"
+#include "ABuffer.h"
+#include "MediaDefs.h"
+#include "Utils.h"
 
 namespace android {
 
@@ -1128,7 +1136,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                 ALOGV("%s shutdown completed", audio ? "audio" : "video");
                 if (audio) {
                     std::lock_guard<std::mutex> autoLock(mDecoderLock);
-                    mAudioDecoder.clear();
+                    mAudioDecoder.reset();
                     mAudioDecoderError = false;
                     ++mAudioDecoderGeneration;
 
@@ -1136,7 +1144,7 @@ void NuPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
                     mFlushingAudio = SHUT_DOWN;
                 } else {
                     std::lock_guard<std::mutex> autoLock(mDecoderLock);
-                    mVideoDecoder.clear();
+                    mVideoDecoder.reset();
                     mVideoDecoderError = false;
                     ++mVideoDecoderGeneration;
 
@@ -1812,7 +1820,7 @@ void NuPlayer::restartAudio(
     if (mAudioDecoder != NULL) {
         mAudioDecoder->pause();
         std::lock_guard<std::mutex> autoLock(mDecoderLock);
-        mAudioDecoder.clear();
+        mAudioDecoder.reset();
         mAudioDecoderError = false;
         ++mAudioDecoderGeneration;
     }
@@ -2373,16 +2381,16 @@ void NuPlayer::performReset() {
             mRendererLooper->unregisterHandler(mRenderer->id());
         }
         mRendererLooper->stop();
-        mRendererLooper.clear();
+        mRendererLooper.reset();
     }
-    mRenderer.clear();
+    mRenderer.reset();
     ++mRendererGeneration;
 
     if (mSource != NULL) {
         mSource->stop();
 
         std::lock_guard<std::mutex> autoLock(mSourceLock);
-        mSource.clear();
+        mSource.reset();
     }
 
     if (mDriver != NULL) {
@@ -2397,15 +2405,15 @@ void NuPlayer::performReset() {
     mResetting = false;
     mSourceStarted = false;
 
-    // Modular DRM
-    if (mCrypto != NULL) {
-        // decoders will be flushed before this so their mCrypto would go away on their own
-        // TODO change to ALOGV
-        ALOGD("performReset mCrypto: %p (%d)", mCrypto.get(),
-                (mCrypto != NULL ? mCrypto->getStrongCount() : 0));
-        mCrypto.clear();
-    }
-    mIsDrmProtected = false;
+//    // Modular DRM
+//    if (mCrypto != NULL) {
+//        // decoders will be flushed before this so their mCrypto would go away on their own
+//        // TODO change to ALOGV
+//        ALOGD("performReset mCrypto: %p (%d)", mCrypto.get(),
+//                (mCrypto != NULL ? mCrypto->getStrongCount() : 0));
+//        mCrypto.reset();
+//    }
+//    mIsDrmProtected = false;
 }
 
 void NuPlayer::performScanSources() {
@@ -3061,26 +3069,26 @@ status_t NuPlayer::onPrepareDrm(const std::shared_ptr<AMessage> &msg)
     CHECK(msg->findPointer("drmSessionId", (void**)&drmSessionId));
 
     status = OK;
-    std::shared_ptr<ICrypto> crypto = NULL;
-
-    status = mSource->prepareDrm(uuid, *drmSessionId, &crypto);
-    if (crypto == NULL) {
-        ALOGE("onPrepareDrm: mSource->prepareDrm failed. status: %d", status);
-        return status;
-    }
-    ALOGV("onPrepareDrm: mSource->prepareDrm succeeded");
-
-    if (mCrypto != NULL) {
-        ALOGE("onPrepareDrm: Unexpected. Already having mCrypto: %p (%d)",
-                mCrypto.get(), mCrypto->getStrongCount());
-        mCrypto.clear();
-    }
-
-    mCrypto = crypto;
-    mIsDrmProtected = true;
-    // TODO change to ALOGV
-    ALOGD("onPrepareDrm: mCrypto: %p (%d)", mCrypto.get(),
-            (mCrypto != NULL ? mCrypto->getStrongCount() : 0));
+//    std::shared_ptr<ICrypto> crypto = NULL;
+//
+//    status = mSource->prepareDrm(uuid, *drmSessionId, &crypto);
+//    if (crypto == NULL) {
+//        ALOGE("onPrepareDrm: mSource->prepareDrm failed. status: %d", status);
+//        return status;
+//    }
+//    ALOGV("onPrepareDrm: mSource->prepareDrm succeeded");
+//
+//    if (mCrypto != NULL) {
+//        ALOGE("onPrepareDrm: Unexpected. Already having mCrypto: %p (%d)",
+//                mCrypto.get(), mCrypto->getStrongCount());
+//        mCrypto.reset();
+//    }
+//
+//    mCrypto = crypto;
+//    mIsDrmProtected = true;
+//    // TODO change to ALOGV
+//    ALOGD("onPrepareDrm: mCrypto: %p (%d)", mCrypto.get(),
+//            (mCrypto != NULL ? mCrypto->getStrongCount() : 0));
 
     return status;
 }
@@ -3089,45 +3097,45 @@ status_t NuPlayer::onReleaseDrm()
 {
     // TODO change to ALOGV
     ALOGD("onReleaseDrm ");
-
-    if (!mIsDrmProtected) {
-        ALOGW("onReleaseDrm: Unexpected. mIsDrmProtected is already false.");
-    }
-
-    mIsDrmProtected = false;
-
-    status_t status;
-    if (mCrypto != NULL) {
-        // notifying the source first before removing crypto from codec
-        if (mSource != NULL) {
-            mSource->releaseDrm();
-        }
-
-        status=OK;
-        // first making sure the codecs have released their crypto reference
-        const std::shared_ptr<DecoderBase> &videoDecoder = getDecoder(false/*audio*/);
-        if (videoDecoder != NULL) {
-            status = videoDecoder->releaseCrypto();
-            ALOGV("onReleaseDrm: video decoder ret: %d", status);
-        }
-
-        const std::shared_ptr<DecoderBase> &audioDecoder = getDecoder(true/*audio*/);
-        if (audioDecoder != NULL) {
-            status_t status_audio = audioDecoder->releaseCrypto();
-            if (status == OK) {   // otherwise, returning the first error
-                status = status_audio;
-            }
-            ALOGV("onReleaseDrm: audio decoder ret: %d", status_audio);
-        }
-
-        // TODO change to ALOGV
-        ALOGD("onReleaseDrm: mCrypto: %p (%d)", mCrypto.get(),
-                (mCrypto != NULL ? mCrypto->getStrongCount() : 0));
-        mCrypto.clear();
-    } else {   // mCrypto == NULL
-        ALOGE("onReleaseDrm: Unexpected. There is no crypto.");
-        status = INVALID_OPERATION;
-    }
+//
+//    if (!mIsDrmProtected) {
+//        ALOGW("onReleaseDrm: Unexpected. mIsDrmProtected is already false.");
+//    }
+//
+//    mIsDrmProtected = false;
+//
+    status_t status = OK;
+//    if (mCrypto != NULL) {
+//        // notifying the source first before removing crypto from codec
+//        if (mSource != NULL) {
+//            mSource->releaseDrm();
+//        }
+//
+//        status=OK;
+//        // first making sure the codecs have released their crypto reference
+//        const std::shared_ptr<DecoderBase> &videoDecoder = getDecoder(false/*audio*/);
+//        if (videoDecoder != NULL) {
+//            status = videoDecoder->releaseCrypto();
+//            ALOGV("onReleaseDrm: video decoder ret: %d", status);
+//        }
+//
+//        const std::shared_ptr<DecoderBase> &audioDecoder = getDecoder(true/*audio*/);
+//        if (audioDecoder != NULL) {
+//            status_t status_audio = audioDecoder->releaseCrypto();
+//            if (status == OK) {   // otherwise, returning the first error
+//                status = status_audio;
+//            }
+//            ALOGV("onReleaseDrm: audio decoder ret: %d", status_audio);
+//        }
+//
+//        // TODO change to ALOGV
+//        ALOGD("onReleaseDrm: mCrypto: %p (%d)", mCrypto.get(),
+//                (mCrypto != NULL ? mCrypto->getStrongCount() : 0));
+//        mCrypto.reset();
+//    } else {   // mCrypto == NULL
+//        ALOGE("onReleaseDrm: Unexpected. There is no crypto.");
+//        status = INVALID_OPERATION;
+//    }
 
     return status;
 }

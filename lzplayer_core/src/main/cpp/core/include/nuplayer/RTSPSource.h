@@ -24,12 +24,6 @@
 
 namespace android {
 
-struct ALooper;
-struct AReplyToken;
-struct AnotherPacketSource;
-struct MyHandler;
-struct SDPLoader;
-
 struct NuPlayer::RTSPSource : public NuPlayer::Source {
     RTSPSource(
             const std::shared_ptr<AMessage> &notify,

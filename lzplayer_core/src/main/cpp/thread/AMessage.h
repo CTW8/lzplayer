@@ -23,7 +23,7 @@
 #include <vector>
 #include <memory>
 #include <iostream>
-
+#include "ABuffer.h"
 struct AHandler;
 
 struct AReplyToken{
@@ -74,8 +74,9 @@ struct AMessage :public std::enable_shared_from_this<AMessage> {
     void setPointer(const char *name, void *value);
     void setString(const char *name, const char *s, ssize_t len = -1);
     void setString(const char *name, const std::string   &s);
+    void setBuffer(const char *name, const std::shared_ptr<android::ABuffer> &buffer);
     void setObject(const char *name, const std::shared_ptr<void> &obj);
-
+    void setMessage(const char *name, const std::shared_ptr<AMessage> &obj);
     void setRect(
             const char *name,
             int32_t left, int32_t top, int32_t right, int32_t bottom);
@@ -137,7 +138,9 @@ struct AMessage :public std::enable_shared_from_this<AMessage> {
         kTypePointer,
         kTypeString,
         kTypeRect,
-        kTypeObject
+        kTypeObject,
+        kTypeMessage,
+        kTypeBuffer,
     };
 
     void setObjectInternal(const char *name, const std::shared_ptr<void> &obj, Type type);

@@ -23,10 +23,6 @@
 
 namespace android {
 
-struct ABuffer;
-struct ATSParser;
-struct AnotherPacketSource;
-
 struct NuPlayer::StreamingSource : public NuPlayer::Source {
     StreamingSource(
             const std::shared_ptr<AMessage> &notify,

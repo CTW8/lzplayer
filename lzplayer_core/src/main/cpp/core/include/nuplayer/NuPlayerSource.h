@@ -27,9 +27,6 @@
 
 namespace android {
 
-struct ABuffer;
-class MediaBuffer;
-
 struct NuPlayer::Source : public AHandler {
     enum Flags {
         FLAG_CAN_PAUSE          = 1,

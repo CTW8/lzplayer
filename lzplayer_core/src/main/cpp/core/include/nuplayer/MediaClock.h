@@ -24,8 +24,6 @@
 
 namespace android {
 
-struct AMessage;
-
 struct MediaClock : public AHandler {
     enum {
         TIMER_REASON_REACHED = 0,

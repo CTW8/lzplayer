@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 The Android Open Source Project
+ * Copyright (C) 2016 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,26 +14,25 @@
  * limitations under the License.
  */
 
-#ifndef META_DATA_H_
+#define LOG_TAG "BufferingSettings"
+//#define LOG_NDEBUG 0
 
-#define META_DATA_H_
+#include <binder/Parcel.h>
 
-#include <sys/types.h>
-
-#include "MetaDataBase.h"
+#include <media/BufferingSettings.h>
 
 namespace android {
 
-class MetaData final : public MetaDataBase{
-public:
-    MetaData();
-    MetaData(const MetaData &from);
-    MetaData(const MetaDataBase &from);
+BufferingSettings::BufferingSettings()
+        : mInitialMarkMs(kNoMark),
+          mResumePlaybackMarkMs(kNoMark) { }
 
-protected:
-    virtual ~MetaData();
-};
+String8 BufferingSettings::toString() const {
+    String8 s;
+    s.appendFormat(
+            "initialMarks(%d ms), resumePlaybackMarks(%d ms)",
+            mInitialMarkMs, mResumePlaybackMarkMs);
+    return s;
+}
 
-}  // namespace android
-
-#endif  // META_DATA_H_
+} // namespace android

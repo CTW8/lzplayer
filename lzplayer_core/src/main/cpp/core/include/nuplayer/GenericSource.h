@@ -22,20 +22,10 @@
 #include <memory>
 #include "NuPlayer.h"
 #include "NuPlayerSource.h"
+#include "MediaBufferBase.h"
+#include "MediaClock.h"
 
 namespace android {
-
-class DecryptHandle;
-struct AnotherPacketSource;
-struct ARTSPController;
-class DataSource;
-class IDataSource;
-struct IMediaHTTPService;
-struct MediaSource;
-class IMediaSource;
-class MediaBuffer;
-struct MediaClock;
-struct NuCachedSource2;
 
 struct NuPlayer::GenericSource : public NuPlayer::Source,
                                  public MediaBufferObserver // Modular DRM
