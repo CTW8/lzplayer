@@ -40,6 +40,9 @@ namespace VE {
 
         int64_t getDuration();
 
+        /// 当前播放位置(毫秒)
+        int64_t getCurrentPosition();
+
         VEResult setLooping(bool looping);
 
         VEResult setSpeedRate(float speed);

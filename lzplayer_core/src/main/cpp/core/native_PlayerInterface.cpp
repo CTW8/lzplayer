@@ -160,6 +160,13 @@ namespace VE {
         return vePlayer->getDuration();
     }
 
+// 获取当前播放位置
+    jlong nativeGetCurrentPosition(JNIEnv *env, jobject obj, jlong handle) {
+        VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
+        CHECK_NULL();
+        return vePlayer->getCurrentPosition();
+    }
+
 // 开始播放
     jint nativeStart(JNIEnv *env, jobject obj, jlong handle) {
         ALOGD("nativeStart called with handle: %ld", handle);

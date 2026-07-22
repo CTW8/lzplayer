@@ -8,6 +8,10 @@ namespace VE {
         /// 单个流程阶段等待组件回执的上限，超时后强制推进，
         /// 宁可状态略有偏差也不能让 seek 永久卡死
         constexpr int64_t kAckTimeoutUs = 2000000;
+
+        /// 进度上报间隔。原先每渲染一帧上报一次(30fps 即每秒 30 条跨线程消息
+        /// 加 30 次 JNI 回调)，且纯音频文件因为没有视频渲染完全收不到进度。
+        constexpr int64_t kProgressIntervalUs = 500000;
     }
 
     VEPlayer::VEPlayer() {
@@ -120,6 +124,10 @@ namespace VE {
             }
             case kWhatAckTimeout: {
                 onAckTimeout(msg);
+                break;
+            }
+            case kWhatProgressTick: {
+                onProgressTick(msg);
                 break;
             }
             case kWhatSetDataSource: {
@@ -239,7 +247,8 @@ namespace VE {
             notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "no playable stream found!!");
             return VE_UNKNOWN_ERROR;
         }
-        mAVSync = std::make_shared<VEAVsync>();
+        mMediaClock = std::make_shared<VEMediaClock>();
+        mAVSync = std::make_shared<VEAVsync>(mMediaClock);
         if (mMediaInfo->fps > 0) {
             mAVSync->setFrameRate(mMediaInfo->fps);
         }
@@ -331,10 +340,11 @@ namespace VE {
         }
 
         mState = STATE_STARTED;
-        if (mAVSync) {
-            mAVSync->resume();
+        if (mMediaClock) {
+            mMediaClock->resume();
         }
         forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
+        startProgressTick();
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
@@ -346,6 +356,10 @@ namespace VE {
         mPendingAcks = 0;
         mAckContinuation = nullptr;
         mState = STATE_PREPARED;
+        stopProgressTick();
+        if (mMediaClock) {
+            mMediaClock->resetClock();
+        }
         forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->stop(); });
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
@@ -363,8 +377,9 @@ namespace VE {
         }
 
         mState = STATE_PAUSED;
-        if (mAVSync) {
-            mAVSync->pause();
+        stopProgressTick();
+        if (mMediaClock) {
+            mMediaClock->pause();
         }
         forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->pause(); });
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
@@ -385,6 +400,7 @@ namespace VE {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
 
         // 中断正在进行的流程，避免拆解过程中还有回调想往下推进
+        stopProgressTick();
         mSeekStage = SEEK_STAGE_NONE;
         mHasPendingSeek = false;
         mPendingAcks = 0;
@@ -423,6 +439,7 @@ namespace VE {
         mDemuxLooper.reset();
 
         mAVSync.reset();
+        mMediaClock.reset();
         mMediaInfo.reset();
 
         mVideoEOS = false;
@@ -469,9 +486,23 @@ namespace VE {
     }
 
     long VEPlayer::getCurrentPosition() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
+        // 直接读主时钟。可跨线程调用：VEMediaClock 内部自带锁。
+        auto clock = mMediaClock;
+        if (clock == nullptr) {
+            return 0;
+        }
+        double positionUs = clock->getCurrentMediaTime();
+        if (positionUs < 0) {
+            positionUs = 0;
+        }
+        long positionMs = static_cast<long>(positionUs / 1000);
+
+        // 时钟按实时外推，末尾可能略微超过总时长，这里夹住
+        if (mMediaInfo != nullptr && mMediaInfo->duration > 0 &&
+            positionMs > static_cast<long>(mMediaInfo->duration)) {
+            positionMs = static_cast<long>(mMediaInfo->duration);
+        }
+        return positionMs;
     }
 
     long VEPlayer::getDuration() {
@@ -532,9 +563,12 @@ namespace VE {
     }
 
     VEResult VEPlayer::setPlaySpeed(float speed) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
+        // 时钟侧支持变速，但音频还没做变速重采样(sonic 已链接未接入)。
+        // 只改时钟会让音频仍按 1x 播放而时钟按 N 倍走，反而彻底破坏同步，
+        // 因此这里明确返回不支持，避免上层以为设置成功。
+        ALOGW("VEPlayer::%s speed=%f not supported yet (audio time-stretch missing)",
+              __FUNCTION__, speed);
+        return VE_INVALID_OPERATION;
     }
 
     void VEPlayer::onEOS() {
@@ -564,6 +598,11 @@ namespace VE {
             }
 
             mState = STATE_COMPLETED;
+            stopProgressTick();
+            // 收尾补一次满进度，避免进度条停在最后一次 tick 的位置
+            if (mMediaInfo != nullptr && mMediaInfo->duration > 0) {
+                notifyProgress(static_cast<int64_t>(mMediaInfo->duration) * 1000);
+            }
             if (onCompleteCallback) {
                 onCompleteCallback();
             }
@@ -694,6 +733,38 @@ namespace VE {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // 进度上报
+    // ---------------------------------------------------------------------
+
+    void VEPlayer::startProgressTick() {
+        ++mProgressGeneration;
+        auto tick = std::make_shared<AMessage>(kWhatProgressTick, shared_from_this());
+        tick->setInt32("generation", mProgressGeneration);
+        tick->post();
+    }
+
+    void VEPlayer::stopProgressTick() {
+        // 递增代次即可让在途的 tick 失效
+        ++mProgressGeneration;
+    }
+
+    void VEPlayer::onProgressTick(const std::shared_ptr<AMessage> &msg) {
+        int32_t generation = 0;
+        msg->findInt32("generation", &generation);
+        if (generation != mProgressGeneration || mState != STATE_STARTED) {
+            return;
+        }
+
+        if (mMediaClock) {
+            notifyProgress(static_cast<int64_t>(mMediaClock->getCurrentMediaTime()));
+        }
+
+        auto next = std::make_shared<AMessage>(kWhatProgressTick, shared_from_this());
+        next->setInt32("generation", mProgressGeneration);
+        next->post(kProgressIntervalUs);
+    }
+
     void VEPlayer::onAckTimeout(const std::shared_ptr<AMessage> &msg) {
         int32_t generation = 0;
         msg->findInt32("generation", &generation);
@@ -746,7 +817,7 @@ namespace VE {
         ALOGI("VEPlayer::seek stage 1/3 - pausing components");
         mSeekStage = SEEK_STAGE_PAUSING;
         if (mAVSync) {
-            mAVSync->pause();
+            mMediaClock->pause();
         }
 
         uint32_t mask = activeComponentMask();
@@ -771,7 +842,8 @@ namespace VE {
         mSeekStage = SEEK_STAGE_PRIMING;
 
         if (mAVSync) {
-            mAVSync->resetTo(mSeekTargetMs * 1000.0);
+            mMediaClock->resetTo(mSeekTargetMs * 1000.0);
+            mAVSync->reset(mSeekTargetMs * 1000.0);
         }
 
         if (mVideoRender) {
@@ -803,7 +875,7 @@ namespace VE {
             mState = STATE_STARTED;
             forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
             if (mAVSync) {
-                mAVSync->resume();
+                mMediaClock->resume();
             }
         } else {
             // 暂停态 seek：预览帧已经上屏，重新回到暂停
@@ -811,7 +883,7 @@ namespace VE {
             forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->pause(); });
             if (mAVSync) {
                 // 冻结时钟，否则暂停期间它会一直外推，恢复播放时视频会被判定为落后
-                mAVSync->pause();
+                mMediaClock->pause();
             }
         }
 

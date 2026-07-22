@@ -3,26 +3,31 @@
 
 #include "VEMediaClock.h"
 #include <cmath>
+#include <memory>
 #include <mutex>
 
 namespace VE {
+    /// 音视频同步策略。
+    ///
+    /// 只负责"这一帧该等多久 / 该不该丢"的判定，时间基准来自外部注入的
+    /// VEMediaClock —— 时钟的启停和定位由播放器统一掌管，这里只读不写。
     class VEAVsync {
     public:
-        VEAVsync();
+        explicit VEAVsync(const std::shared_ptr<VEMediaClock> &clock);
 
         ~VEAVsync();
 
-        // 更新音频 PTS
+        // 更新音频 PTS(推进主时钟)
         void updateAudioPts(double audioPts);
 
         // 更新视频 PTS
         void updateVideoPts(double videoPts);
 
-        // 设置播放速度
-        void setPlaybackSpeed(double speed);
-
         // 设置帧率
         void setFrameRate(int frameRate);
+
+        /// seek 后把同步基准挪到目标位置(时钟本身由播放器负责重置)
+        void reset(double ptsUs);
 
         // 获取等待时间
         int64_t getWaitTime() const;
@@ -30,22 +35,14 @@ namespace VE {
         // 判断是否需要丢帧
         bool shouldDropFrame() const;
 
-        /// seek 后把时钟重新定位到目标位置
-        void resetTo(double ptsUs);
-
-        /// 暂停/恢复时钟外推
-        void pause();
-
-        void resume();
-
     private:
         int64_t frameIntervalUs() const;
 
-        std::shared_ptr<VEMediaClock> m_MediaClock; // 媒体时钟
+        /// 主时钟，由 VEPlayer 创建并持有，这里只是引用
+        std::shared_ptr<VEMediaClock> m_MediaClock;
         double m_VideoPts;          // 当前视频 PTS
-        double m_PlaybackSpeed;     // 播放速度
         int m_FrameRate;            // 帧率
-        mutable std::mutex m_Mutex;         // 线程安全保护
+        mutable std::mutex m_Mutex; // 保护上面两个同步策略状态
     };
 }
 #endif

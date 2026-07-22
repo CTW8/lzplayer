@@ -5,12 +5,12 @@ namespace VE {
         constexpr double kSyncThresholdUs = 40000.0;
         /// 超过该范围认为时钟不可信(刚 seek 完/音频还没起来)，退化为按帧率出帧
         constexpr double kMaxDiffUs = 500000.0;
+        constexpr int kDefaultFrameRate = 30;
     }
 
-    VEAVsync::VEAVsync()
-            : m_VideoPts(0), m_PlaybackSpeed(1.0), m_FrameRate(30) {
+    VEAVsync::VEAVsync(const std::shared_ptr<VEMediaClock> &clock)
+            : m_MediaClock(clock), m_VideoPts(0), m_FrameRate(kDefaultFrameRate) {
         ALOGI("VEAVsync::%s - Constructor called", __FUNCTION__);
-        m_MediaClock = std::make_shared<VEMediaClock>();
     }
 
     VEAVsync::~VEAVsync() {
@@ -18,7 +18,7 @@ namespace VE {
     }
 
     int64_t VEAVsync::frameIntervalUs() const {
-        int fps = m_FrameRate > 0 ? m_FrameRate : 30;
+        int fps = m_FrameRate > 0 ? m_FrameRate : kDefaultFrameRate;
         return static_cast<int64_t>(1000000 / fps);
     }
 
@@ -33,40 +33,16 @@ namespace VE {
         m_VideoPts = videoPts;
     }
 
-    void VEAVsync::setPlaybackSpeed(double speed) {
-        ALOGI("VEAVsync::%s - Setting playback speed: %f", __FUNCTION__, speed);
-        std::lock_guard<std::mutex> lock(m_Mutex);
-        m_PlaybackSpeed = speed;
-        if (m_MediaClock) {
-            m_MediaClock->setPlaybackSpeed(speed);
-        }
-    }
-
     void VEAVsync::setFrameRate(int frameRate) {
         ALOGI("VEAVsync::%s - Setting frame rate: %d", __FUNCTION__, frameRate);
         std::lock_guard<std::mutex> lock(m_Mutex);
         m_FrameRate = frameRate;
     }
 
-    void VEAVsync::resetTo(double ptsUs) {
-        ALOGI("VEAVsync::%s - reset clock to %f", __FUNCTION__, ptsUs);
+    void VEAVsync::reset(double ptsUs) {
+        // seek 后清掉上一段的视频 pts，避免拿旧值和新时钟比较
         std::lock_guard<std::mutex> lock(m_Mutex);
         m_VideoPts = ptsUs;
-        if (m_MediaClock) {
-            m_MediaClock->resetTo(ptsUs);
-        }
-    }
-
-    void VEAVsync::pause() {
-        if (m_MediaClock) {
-            m_MediaClock->pause();
-        }
-    }
-
-    void VEAVsync::resume() {
-        if (m_MediaClock) {
-            m_MediaClock->resume();
-        }
     }
 
     int64_t VEAVsync::getWaitTime() const {

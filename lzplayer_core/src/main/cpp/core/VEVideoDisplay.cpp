@@ -287,9 +287,8 @@ namespace VE {
             postMessage(VE_NOTIFY_EVENT_FIRST_FRAME, 0, 0,
                         static_cast<int64_t>(frame->getPts()), nullptr);
         }
-
-        postMessage(VE_NOTIFY_EVENT_PROGRESS,0,0,static_cast<int64_t>(frame->getPts()), nullptr);
-        ALOGI("VEVideoDisplay::onRender - Notifying progress: %" PRId64, frame->getPts());
+        // 进度不再逐帧上报：由播放器按固定间隔读主时钟统一上报，
+        // 这样纯音频文件也有进度，且省掉每秒几十条跨线程消息 + JNI 回调
         return VE_OK;
     }
 

@@ -140,7 +140,8 @@ namespace VE {
             kWhatStop = 'stop',
             kWhatComponentEvent = 'renE',
             kWhatRelease = 'rele',
-            kWhatAckTimeout = 'ackT'
+            kWhatAckTimeout = 'ackT',
+            kWhatProgressTick = 'prgT'
         };
 
         /// 播放器内部状态。与 VEPlayerDriver 的状态机职责不同：
@@ -197,6 +198,11 @@ namespace VE {
         /// 回执超时：不让一个丢失的回执把 seek 永久卡住
         void onAckTimeout(const std::shared_ptr<AMessage> &msg);
 
+        // ---- 进度上报：按固定间隔读时钟，而不是每渲染一帧发一条消息 ----
+        void startProgressTick();
+        void stopProgressTick();
+        void onProgressTick(const std::shared_ptr<AMessage> &msg);
+
         // ---- seek 流程 ----
         void startSeek(double timestampMs);
         void seekStagePause();
@@ -213,6 +219,9 @@ namespace VE {
         std::shared_ptr<ALooper> mVideoDecodeLooper = nullptr;
         std::shared_ptr<VEVideoDisplay> mVideoRender = nullptr;
         std::shared_ptr<ALooper> mVideoRenderLooper = nullptr;
+        /// 主时钟由播放器持有：启停/定位是播放流程的一部分，
+        /// VEAVsync 只拿它做同步判定，不负责它的生命周期
+        std::shared_ptr<VEMediaClock> mMediaClock = nullptr;
         std::shared_ptr<VEAVsync> mAVSync = nullptr;
 
         std::shared_ptr<AMessage> mRenderNotifyMsg = nullptr;
@@ -239,6 +248,9 @@ namespace VE {
         int32_t mExpectedAckEvent = 0;
         int32_t mAckGeneration = 0;
         std::function<void()> mAckContinuation;
+
+        /// 进度上报定时器的代次，stop/pause 时递增以作废在途的 tick
+        int32_t mProgressGeneration = 0;
 
         // seek 流程状态
         SeekStage mSeekStage = SEEK_STAGE_NONE;

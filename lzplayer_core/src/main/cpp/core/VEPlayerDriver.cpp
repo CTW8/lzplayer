@@ -216,6 +216,15 @@ namespace VE {
         return mPlayer->getDuration();
     }
 
+    int64_t VEPlayerDriver::getCurrentPosition() {
+        std::lock_guard<std::mutex> lk(mMutex);
+        if (currentState == MEDIA_PLAYER_IDLE || currentState == MEDIA_PLAYER_INITIALIZED ||
+            currentState == MEDIA_PLAYER_STATE_ERROR) {
+            return 0;
+        }
+        return mPlayer->getCurrentPosition();
+    }
+
     VEResult VEPlayerDriver::setLooping(bool looping) {
         std::lock_guard<std::mutex> lk(mMutex);
         mEnableLooping = looping;
@@ -225,8 +234,8 @@ namespace VE {
 
     VEResult VEPlayerDriver::setSpeedRate(float speed) {
         std::lock_guard<std::mutex> lk(mMutex);
-        mPlayer->setPlaySpeed(speed);
-        return 0;
+        // 如实返回底层结果，不要吞掉"未支持"
+        return mPlayer->setPlaySpeed(speed);
     }
 
     VEResult VEPlayerDriver::setListener(std::shared_ptr<MediaPlayerListener> listener) {

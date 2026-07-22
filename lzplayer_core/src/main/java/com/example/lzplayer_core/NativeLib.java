@@ -122,6 +122,14 @@ public class NativeLib {
         return -1;
     }
 
+    /** 当前播放位置(毫秒) */
+    public long getCurrentPosition(){
+        if(mHandle != 0){
+            return nativeGetCurrentPosition(mHandle);
+        }
+        return -1;
+    }
+
     public int prepare(){
         if(mHandle != 0){
             return nativePrepare(mHandle);
@@ -240,6 +248,7 @@ public class NativeLib {
     private native int nativeInit(Object mediaplayerThis,long handle,String path);
     private native int nativeSetSurface(long handle,Surface surface,int width,int height);
     private native long nativeGetDuration(long handle);
+    private native long nativeGetCurrentPosition(long handle);
     private native int nativePrepare(long handle);
     private native int nativePrepareAsync(long handle);
     private native int nativeStart(long handle);

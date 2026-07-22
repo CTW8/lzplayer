@@ -96,6 +96,14 @@ public class VEPlayer {
         return -1;
     }
 
+    /** 当前播放位置(毫秒) */
+    public long getCurrentPosition(){
+        if(mNativeHandle != null){
+            return mNativeHandle.getCurrentPosition();
+        }
+        return -1;
+    }
+
     public int prepare(){
         if(mNativeHandle != null){
             Log.d(TAG,"prepare enter");

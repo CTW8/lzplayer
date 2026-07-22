@@ -17,6 +17,7 @@ namespace VE {
     jint nativeSetSurface(JNIEnv *env, jobject obj, jlong handle, jobject surface, jint width,
                           jint height);
     jlong nativeGetDuration(JNIEnv *env, jobject obj, jlong handle);
+    jlong nativeGetCurrentPosition(JNIEnv *env, jobject obj, jlong handle);
     jint nativePrepare(JNIEnv *env, jobject obj, jlong handle);
     jint nativePrepareAsync(JNIEnv *env, jobject obj, jlong handle);
     jint nativeStart(JNIEnv *env, jobject obj, jlong handle);
