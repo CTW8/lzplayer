@@ -131,7 +131,7 @@ void main() {
         // 创建新的EGL Surface
         if (createEGLSurface(win) != 0) {
             ALOGE("VEGLESVideoRenderer::changeSurface - Failed to create new EGL surface");
-            return 0;
+            return VE_UNKNOWN_ERROR;
         }
 
         // 重新设置viewport
@@ -146,6 +146,7 @@ void main() {
         }
 
         ALOGI("VEGLESVideoRenderer::changeSurface - Surface changed successfully");
+        return VE_OK;
     }
 
     VEResult VEGLESVideoRenderer::renderFrame(const std::shared_ptr<VEFrame> &frame) {
