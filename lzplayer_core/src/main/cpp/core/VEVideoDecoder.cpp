@@ -28,7 +28,7 @@ namespace VE {
         // 不直接释放资源，统一在 release / onRelease 中处理
     }
 
-    VEResult VEVideoDecoder::prepare(std::shared_ptr<VEDemux> demux) {
+    VEResult VEVideoDecoder::prepare(std::shared_ptr<IMediaSource> demux) {
         ALOGV("VEVideoDecoder::prepare enter");
         if (!demux) {
             ALOGE("VEVideoDecoder::prepare demux is null");
@@ -216,7 +216,7 @@ namespace VE {
             return VE_INVALID_PARAMS;
         }
 
-        mDemux = std::static_pointer_cast<VEDemux>(tmp);
+        mDemux = std::static_pointer_cast<IMediaSource>(tmp);
         if (!mDemux) {
             ALOGE("VEVideoDecoder::onPrepare demux cast failed");
             return VE_INVALID_PARAMS;

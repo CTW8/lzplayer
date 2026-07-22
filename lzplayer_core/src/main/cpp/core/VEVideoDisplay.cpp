@@ -25,7 +25,7 @@ namespace VE {
         msg->setInt32("width", params.get<int>("width"));
         msg->setInt32("height", params.get<int>("height"));
         msg->setInt32("fps", params.get<int>("fps"));
-        msg->setObject("vdec", params.get<std::shared_ptr<VEVideoDecoder>>("decoder"));
+        msg->setObject("vdec", params.get<std::shared_ptr<IMediaDecoder>>("decoder"));
         msg->post();
         return 0;
     }
@@ -174,7 +174,7 @@ namespace VE {
         std::shared_ptr<void> tmp = nullptr;
 
         msg->findObject("vdec", &tmp);
-        m_pVideoDec = std::static_pointer_cast<VEVideoDecoder>(tmp);
+        m_pVideoDec = std::static_pointer_cast<IMediaDecoder>(tmp);
         msg->findInt32("width", &mViewWidth);
         msg->findInt32("height", &mViewHeight);
 

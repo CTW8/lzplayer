@@ -11,6 +11,7 @@
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "IVEComponent.h"
+#include "IMediaDecoder.h"
 #include "VEBundle.h"
 #include "VEAudioOutputConfig.h"
 
@@ -23,14 +24,14 @@ extern "C" {
     #include "libavutil/opt.h"
 }
 namespace VE {
-    class VEAudioDecoder : public IVEComponent{
+    class VEAudioDecoder : public IMediaDecoder{
     public:
         VEAudioDecoder(std::shared_ptr<AMessage> &notify);
 
         ~VEAudioDecoder() override;
 
         /// outConfig 由播放器统一决定，解码器按它重采样
-        VEResult prepare(std::shared_ptr<VEDemux> demux, const VEAudioOutputConfig &outConfig);
+        VEResult prepare(std::shared_ptr<IMediaSource> source, const VEAudioOutputConfig &outConfig);
 
         VEResult start() override;
 
@@ -46,9 +47,9 @@ namespace VE {
 
         VEResult seekTo(double timestamp) override;
 
-        void needMoreFrame(std::shared_ptr<AMessage> msg);
+        void needMoreFrame(std::shared_ptr<AMessage> msg) override;
 
-        VEResult readFrame(std::shared_ptr<VEFrame> &frame);
+        VEResult readFrame(std::shared_ptr<VEFrame> &frame) override;
 
     private:
         VEResult onPrepare(std::shared_ptr<AMessage> msg);
@@ -96,7 +97,7 @@ namespace VE {
         AVCodecContext *mAudioCtx = nullptr;
         VEMediaInfo *mMediaInfo = nullptr;
         std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
-        std::shared_ptr<VEDemux> mDemux = nullptr;
+        std::shared_ptr<IMediaSource> mDemux = nullptr;
 
         std::shared_ptr<AMessage> mNotifyEvent = nullptr;
 

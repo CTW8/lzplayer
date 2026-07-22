@@ -279,7 +279,7 @@ namespace VE {
             params.set("samplerate", audioOut.sampleRate);
             params.set("channel", audioOut.channels);
             params.set("format", audioOut.format);
-            params.set("decode",mAudioDecoder);
+            params.set("decode", std::static_pointer_cast<IMediaDecoder>(mAudioDecoder));
             mAudioOutput->prepare(params);
         }
 
@@ -305,7 +305,7 @@ namespace VE {
             params.set("width",mViewWidth);
             params.set("height",mViewHeight);
             params.set("fps",mMediaInfo->fps);
-            params.set("decoder",mVideoDecoder);
+            params.set("decoder", std::static_pointer_cast<IMediaDecoder>(mVideoDecoder));
             mVideoRender->prepare(params);
             // 如果Surface已经设置，则在初始化后调用setSurface
 //            if (mWindow != nullptr) {
@@ -881,17 +881,24 @@ namespace VE {
         if (mStateBeforeSeek == STATE_STARTED) {
             mState = STATE_STARTED;
             forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
-            if (mAVSync) {
+            if (mMediaClock) {
                 mMediaClock->resume();
             }
+            // 进度 tick 在 seek 期间(状态为 SEEKING)已经自行中断，这里必须重新拉起
+            startProgressTick();
         } else {
             // 暂停态 seek：预览帧已经上屏，重新回到暂停
             mState = STATE_PAUSED;
             forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->pause(); });
-            if (mAVSync) {
+            if (mMediaClock) {
                 // 冻结时钟，否则暂停期间它会一直外推，恢复播放时视频会被判定为落后
                 mMediaClock->pause();
             }
+        }
+
+        // seek 完成后立刻上报一次位置，不必等下一个 tick 周期
+        if (mMediaClock) {
+            notifyProgress(static_cast<int64_t>(mMediaClock->getCurrentMediaTime()));
         }
 
         if (onSeekComplateCallback) {

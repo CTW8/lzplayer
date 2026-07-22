@@ -2,6 +2,7 @@
 #define __VE_AUDIO_RENDER__
 
 #include "IAudioRender.h"
+#include "IMediaDecoder.h"
 #include "VEAudioDecoder.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
@@ -51,7 +52,8 @@ private:
 
     private:
         std::shared_ptr<IAudioRender> m_AudioRenderer; // 音频渲染器接口
-        std::shared_ptr<VEAudioDecoder> m_AudioDecoder;  // 音频解码器
+        /// 只依赖解码器接口，不绑定具体实现
+        std::shared_ptr<IMediaDecoder> m_AudioDecoder;
         std::deque<std::shared_ptr<VEFrame>> m_FrameQueue; // PCM帧队列
         std::mutex m_Mutex;
         std::condition_variable m_Cond;

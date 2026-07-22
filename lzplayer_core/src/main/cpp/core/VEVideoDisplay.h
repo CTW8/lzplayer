@@ -7,6 +7,7 @@
 
 #include "IVEComponent.h"
 #include "IVideoRender.h"
+#include "IMediaDecoder.h"
 #include "AHandler.h"
 #include "VEVideoDecoder.h"
 #include "VEAVsync.h"
@@ -88,7 +89,8 @@ namespace VE {
         };
 
         std::shared_ptr<IVideoRender> m_pVideoRender = nullptr;
-        std::shared_ptr<VEVideoDecoder> m_pVideoDec = nullptr;
+        /// 只依赖解码器接口：软解与后续的 MediaCodec 硬解可以互换
+        std::shared_ptr<IMediaDecoder> m_pVideoDec = nullptr;
         std::shared_ptr<AMessage> m_pNotify = nullptr;
         std::shared_ptr<VEAVsync> m_pAvSync = nullptr;
         int mViewWidth = 0;

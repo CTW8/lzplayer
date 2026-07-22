@@ -11,6 +11,7 @@
 #include "thread/AMessage.h"
 #include "VEError.h"
 #include "IVEComponent.h"
+#include "IMediaSource.h"
 
 extern "C"
 {
@@ -20,7 +21,7 @@ extern "C"
     #include "libavutil/timestamp.h"
 }
 namespace VE {
-    class VEDemux : public IVEComponent {
+    class VEDemux : public IMediaSource {
 
     public:
         explicit VEDemux(std::shared_ptr<AMessage> &notify);
@@ -42,11 +43,11 @@ namespace VE {
         VEResult pause() override;
 
     public:
-        void needMorePacket(std::shared_ptr<AMessage> msg, int type);
+        void needMorePacket(std::shared_ptr<AMessage> msg, int type) override;
 
-        VEResult read(bool isAudio, std::shared_ptr<VEPacket> &packet);
+        VEResult read(bool isAudio, std::shared_ptr<VEPacket> &packet) override;
 
-        std::shared_ptr<VEMediaInfo> getFileInfo();
+        std::shared_ptr<VEMediaInfo> getFileInfo() override;
 
     private:
         VEResult onPrepare(std::string path);

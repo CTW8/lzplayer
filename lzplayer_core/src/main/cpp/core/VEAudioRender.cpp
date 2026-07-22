@@ -40,7 +40,7 @@ namespace VE {
         msg->setInt32("samplerate",params.get<int>("samplerate"));
         msg->setInt32("channel",params.get<int>("channel"));
         msg->setInt32("format",params.get<int>("format"));
-        msg->setObject("decode",params.get<std::shared_ptr<VEAudioDecoder>>("decode"));
+        msg->setObject("decode",params.get<std::shared_ptr<IMediaDecoder>>("decode"));
         msg->post();
         return 0;
     }
@@ -92,7 +92,7 @@ namespace VE {
 
                 std::shared_ptr<void> tmp = nullptr;
                 msg->findObject("decode", &tmp);
-                m_AudioDecoder = std::static_pointer_cast<VEAudioDecoder>(tmp);
+                m_AudioDecoder = std::static_pointer_cast<IMediaDecoder>(tmp);
 
                 m_AudioRenderer = std::make_shared<VEAudioSLESRender>();////请修复
 

@@ -27,7 +27,7 @@ namespace VE {
         onRelease();
     }
 
-    VEResult VEAudioDecoder::prepare(std::shared_ptr<VEDemux> demux,
+    VEResult VEAudioDecoder::prepare(std::shared_ptr<IMediaSource> demux,
                                      const VEAudioOutputConfig &outConfig) {
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
         msg->setObject("demux", demux);
@@ -167,7 +167,7 @@ namespace VE {
               mOutSampleRate, mOutChannels, mOutFormat);
 
         mFrameQueue = std::make_shared<VEFrameQueue>(AUDIO_FRAME_QUEUE_SIZE);
-        mDemux = std::static_pointer_cast<VEDemux>(tmp);
+        mDemux = std::static_pointer_cast<IMediaSource>(tmp);
         std::shared_ptr<VEMediaInfo> info = mDemux->getFileInfo();
         if (info == nullptr) {
             return -1;

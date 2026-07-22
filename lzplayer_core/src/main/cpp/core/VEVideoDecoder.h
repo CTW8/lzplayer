@@ -11,6 +11,7 @@
 #include "thread/AMessage.h"
 #include "VEDemux.h"
 #include "IVEComponent.h"
+#include "IMediaDecoder.h"
 #include "VEBundle.h"
 
 extern "C" {
@@ -23,12 +24,12 @@ extern "C" {
 
 namespace VE {
     class VEVideoDecoder
-            : public IVEComponent{
+            : public IMediaDecoder{
     public:
         VEVideoDecoder(std::shared_ptr<AMessage> &nofity);
         ~VEVideoDecoder() override;
 
-        VEResult prepare(std::shared_ptr<VEDemux> demux);
+        VEResult prepare(std::shared_ptr<IMediaSource> source);
 
         VEResult prepare(VEBundle params) override;
 
@@ -42,9 +43,9 @@ namespace VE {
 
         VEResult seekTo(double timestampMs) override;
 
-        VEResult readFrame(std::shared_ptr<VEFrame> &frame);
+        VEResult readFrame(std::shared_ptr<VEFrame> &frame) override;
 
-        void needMoreFrame(std::shared_ptr<AMessage> msg);
+        void needMoreFrame(std::shared_ptr<AMessage> msg) override;
 
         VEResult release() override;
 
@@ -103,7 +104,8 @@ namespace VE {
         SwsContext *mSwsCtx = nullptr;
         std::shared_ptr<VEMediaInfo> mMediaInfo = nullptr;
         std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
-        std::shared_ptr<VEDemux> mDemux = nullptr;
+        /// 只依赖数据源接口：本地 demux 与后续的网络源可以互换
+        std::shared_ptr<IMediaSource> mDemux = nullptr;
         bool mIsEOS = false;
 
         std::shared_ptr<AMessage> mNofityEvent = nullptr;
