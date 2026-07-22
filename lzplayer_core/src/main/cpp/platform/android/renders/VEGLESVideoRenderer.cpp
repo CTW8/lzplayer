@@ -509,26 +509,37 @@ void main() {
     // ========== 渲染相关私有方法 ==========
 
     void VEGLESVideoRenderer::updateTextures(const std::shared_ptr<VEFrame> &frame) {
-        mFrameWidth = frame->getFrame()->width;
-        mFrameHeight = frame->getFrame()->height;
+        AVFrame *av = frame->getFrame();
+        mFrameWidth = av->width;
+        mFrameHeight = av->height;
 
-        // 绑定Y纹理
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, mTextures[0]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, mFrameWidth, mFrameHeight,
-                     0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame->getFrame()->data[0]);
+        const int chromaWidth = mFrameWidth / 2;
+        const int chromaHeight = mFrameHeight / 2;
 
-        // 绑定U纹理
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, mTextures[1]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, mFrameWidth / 2, mFrameHeight / 2,
-                     0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame->getFrame()->data[1]);
+        // 解码器输出的每行末尾通常带对齐填充(linesize > width)。用
+        // GL_UNPACK_ROW_LENGTH 告诉 GL 真实行距, 就能直接上传解码器的原始缓冲,
+        // 不必先在 CPU 上逐平面拷贝成紧排布(那是每帧一次全画面 memcpy)。
+        auto uploadPlane = [](GLenum unit, GLuint texture, const uint8_t *data,
+                              int linesize, int width, int height) {
+            if (data == nullptr) {
+                return;
+            }
+            glActiveTexture(unit);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, linesize);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, width, height,
+                         0, GL_LUMINANCE, GL_UNSIGNED_BYTE, data);
+        };
 
-        // 绑定V纹理
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, mTextures[2]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, mFrameWidth / 2, mFrameHeight / 2,
-                     0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame->getFrame()->data[2]);
+        uploadPlane(GL_TEXTURE0, mTextures[0], av->data[0], av->linesize[0],
+                    mFrameWidth, mFrameHeight);
+        uploadPlane(GL_TEXTURE1, mTextures[1], av->data[1], av->linesize[1],
+                    chromaWidth, chromaHeight);
+        uploadPlane(GL_TEXTURE2, mTextures[2], av->data[2], av->linesize[2],
+                    chromaWidth, chromaHeight);
+
+        // 复位，避免影响后续其它上传
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
         GLenum error = glGetError();
         if (error != GL_NO_ERROR) {

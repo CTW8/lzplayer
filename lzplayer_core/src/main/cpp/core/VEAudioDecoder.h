@@ -12,6 +12,7 @@
 #include "thread/AMessage.h"
 #include "IVEComponent.h"
 #include "VEBundle.h"
+#include "VEAudioOutputConfig.h"
 
 extern "C" {
     #include "libavformat/avformat.h"
@@ -28,7 +29,8 @@ namespace VE {
 
         ~VEAudioDecoder() override;
 
-        VEResult prepare(std::shared_ptr<VEDemux> demux);
+        /// outConfig 由播放器统一决定，解码器按它重采样
+        VEResult prepare(std::shared_ptr<VEDemux> demux, const VEAudioOutputConfig &outConfig);
 
         VEResult start() override;
 
@@ -109,6 +111,11 @@ namespace VE {
         std::shared_ptr<AMessage> mNotifyMore = nullptr;
         bool mIsEOS = false;
         SwrContext *mSwrCtx = nullptr;
+
+        /// 重采样目标，prepare 时由播放器下发
+        int32_t mOutSampleRate = 44100;
+        int32_t mOutChannels = 2;
+        int32_t mOutFormat = AV_SAMPLE_FMT_S16;
     };
 }
 

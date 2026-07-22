@@ -18,6 +18,7 @@ extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavutil/avutil.h"
 #include "libavutil/timestamp.h"
+#include "libswscale/swscale.h"
 }
 
 namespace VE {
@@ -70,6 +71,9 @@ namespace VE {
 
         VEResult onSeek(double timestampMs);
 
+        /// 把渲染器不支持的像素格式转成 YUV420P
+        std::shared_ptr<VEFrame> convertToYuv420p(const std::shared_ptr<VEFrame> &src);
+
         VEResult postMessage(int32_t event,int32_t arg1,int32_t arg2,int64_t arg3,void*params);
 
         /// 投递带当前 epoch 的解码消息，flush 后旧消息会被自动丢弃
@@ -95,6 +99,8 @@ namespace VE {
         static const int64_t kNoSeekTarget = INT64_MIN;
 
         AVCodecContext *mVideoCtx = nullptr;
+        /// 仅在解码输出不是 YUV420P 时才会创建
+        SwsContext *mSwsCtx = nullptr;
         std::shared_ptr<VEMediaInfo> mMediaInfo = nullptr;
         std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
         std::shared_ptr<VEDemux> mDemux = nullptr;

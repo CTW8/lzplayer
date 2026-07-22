@@ -4,9 +4,12 @@
 
 #define AUDIO_FRAME_QUEUE_SIZE 50
 
-#define AUDIO_TARGET_OUTPUT_FORMAT AV_SAMPLE_FMT_S16
-#define AUDIO_TARGET_OUTPUT_SAMPLERATE 44100
-#define AUDIO_TARGET_OUTPUT_CHANNELS 2
+// 输出格式不再写死：由 VEPlayer 依据源参数统一决定后传进来，
+// 保证解码器重采样的目标和渲染器配置的设备参数是同一份。
+#define AUDIO_TARGET_OUTPUT_FORMAT  ((AVSampleFormat) mOutFormat)
+#define AUDIO_TARGET_OUTPUT_SAMPLERATE  mOutSampleRate
+#define AUDIO_TARGET_OUTPUT_CHANNELS    mOutChannels
+
 namespace VE {
     VEAudioDecoder::VEAudioDecoder(std::shared_ptr<AMessage> &notify) {
         mAudioCtx = nullptr;
@@ -24,22 +27,27 @@ namespace VE {
         onRelease();
     }
 
-    VEResult VEAudioDecoder::prepare(std::shared_ptr<VEDemux> demux) {
+    VEResult VEAudioDecoder::prepare(std::shared_ptr<VEDemux> demux,
+                                     const VEAudioOutputConfig &outConfig) {
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
         msg->setObject("demux", demux);
+        // 随消息带过去，避免跨线程直接写解码器成员
+        msg->setInt32("outSampleRate", outConfig.sampleRate);
+        msg->setInt32("outChannels", outConfig.channels);
+        msg->setInt32("outFormat", outConfig.format);
         msg->post();
         return 0;
     }
 
     VEResult VEAudioDecoder::flush() {
-        ALOGI("VEAudioDecoder::flush enter");
+        ALOGV("VEAudioDecoder::flush enter");
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatFlush, shared_from_this());
         msg->post();
         return 0;
     }
 
     VEResult VEAudioDecoder::readFrame(std::shared_ptr<VEFrame> &frame) {
-        ALOGI("VEAudioDecoder::readFrame enter");
+        ALOGV("VEAudioDecoder::readFrame enter");
         if (mFrameQueue->getDataSize() == 0) {
             ALOGI("VEAudioDecoder::readFrame - Not enough data in the queue");
             return VE_NOT_ENOUGH_DATA; // 队列为空，返回错误
@@ -71,7 +79,7 @@ namespace VE {
     }
 
     void VEAudioDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
-        ALOGI("VEAudioDecoder::onMessageReceived enter, what=%c%c%c%c",
+        ALOGV("VEAudioDecoder::onMessageReceived enter, what=%c%c%c%c",
               (msg->what() & 0xFF),
               (msg->what() >> 8) & 0xFF,
               (msg->what() >> 16) & 0xFF,
@@ -109,7 +117,7 @@ namespace VE {
                     break;
                 }
                 if (!mIsStarted) {
-                    ALOGI("VEAudioDecoder::onDecode is not started, exiting");
+                    ALOGV("VEAudioDecoder::onDecode is not started, exiting");
                     break;
                 }
 
@@ -148,9 +156,15 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onPrepare(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEAudioDecoder::%s enter", __FUNCTION__);
+        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         std::shared_ptr<void> tmp;
         msg->findObject("demux", &tmp);
+
+        msg->findInt32("outSampleRate", &mOutSampleRate);
+        msg->findInt32("outChannels", &mOutChannels);
+        msg->findInt32("outFormat", &mOutFormat);
+        ALOGI("VEAudioDecoder::%s output config %dHz %dch fmt:%d", __FUNCTION__,
+              mOutSampleRate, mOutChannels, mOutFormat);
 
         mFrameQueue = std::make_shared<VEFrameQueue>(AUDIO_FRAME_QUEUE_SIZE);
         mDemux = std::static_pointer_cast<VEDemux>(tmp);
@@ -178,7 +192,7 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onFlush() {
-        ALOGI("VEAudioDecoder::%s enter", __FUNCTION__);
+        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         // 递增 epoch，使 flush 之前投递的解码消息全部失效
         ++mEpoch;
         mIsStarted = false;
@@ -194,7 +208,7 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onSeek(double timestampMs) {
-        ALOGI("VEAudioDecoder::%s enter timestampMs:%f", __FUNCTION__, timestampMs);
+        ALOGV("VEAudioDecoder::%s enter timestampMs:%f", __FUNCTION__, timestampMs);
         onFlush();
         mSeekTargetUs = static_cast<int64_t>(timestampMs * 1000);
         return VE_OK;
@@ -207,7 +221,7 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onDecode() {
-        ALOGI("VEAudioDecoder::%s enter", __FUNCTION__);
+        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         VEResult ret = VE_OK;
         if (mFrameQueue->getRemainingSize() == 0) {
             ALOGI("VEAudioDecoder::onDecode frame queue is full, stopping decode");
@@ -226,7 +240,7 @@ namespace VE {
             }
 
             if (ret >= 0) {
-                ALOGI("###VEAudioDecoder Audio frame: pts:%" PRId64 ", dts:%" PRId64,
+                ALOGV("###VEAudioDecoder Audio frame: pts:%" PRId64 ", dts:%" PRId64,
                       frame->getFrame()->pts, frame->getFrame()->pkt_dts);
 
                 // 精准 seek：丢弃目标位置之前的音频帧，避免 seek 后回放旧内容
@@ -245,43 +259,32 @@ namespace VE {
                     frame->getFrame()->sample_rate != AUDIO_TARGET_OUTPUT_SAMPLERATE ||
                     frame->getFrame()->ch_layout.nb_channels != AUDIO_TARGET_OUTPUT_CHANNELS) {
                     if (mSwrCtx == nullptr) {
-                        mSwrCtx = swr_alloc();
+                        // 统一用新版 ch_layout 接口，不再混用已废弃的
+                        // "in_channel_layout"/"out_channel_layout" 掩码选项
+                        AVChannelLayout inLayout;
+                        AVChannelLayout outLayout;
+                        av_channel_layout_copy(&inLayout, &frame->getFrame()->ch_layout);
+                        av_channel_layout_default(&outLayout, AUDIO_TARGET_OUTPUT_CHANNELS);
 
-                        // 1. 准备 AVChannelLayout
-                        AVChannelLayout ch_layout;
-                        // 2. 用新版接口根据声道数填充结构体
-                        av_channel_layout_default(&ch_layout,
-                                                  frame->getFrame()->ch_layout.nb_channels);
-                        // 3. 从结构体中取出 uint64_t 掩码并传给 swr 上下文
-                        av_opt_set_int(mSwrCtx,
-                                       "in_channel_layout",
-                                       (int64_t)ch_layout.u.mask,
-                                       0);
+                        int ret = swr_alloc_set_opts2(
+                                &mSwrCtx,
+                                &outLayout, AUDIO_TARGET_OUTPUT_FORMAT, AUDIO_TARGET_OUTPUT_SAMPLERATE,
+                                &inLayout,
+                                static_cast<AVSampleFormat>(frame->getFrame()->format),
+                                frame->getFrame()->sample_rate,
+                                0, nullptr);
 
-                        av_opt_set_int(mSwrCtx, "in_sample_rate", frame->getFrame()->sample_rate,
-                                       0);
-                        av_opt_set_sample_fmt(mSwrCtx, "in_sample_fmt",
-                                              static_cast<AVSampleFormat>(frame->getFrame()->format),
-                                              0);
+                        av_channel_layout_uninit(&inLayout);
+                        av_channel_layout_uninit(&outLayout);
 
-                        // 用目标声道数初始化布局
-                        av_channel_layout_default(&ch_layout, AUDIO_TARGET_OUTPUT_CHANNELS);
-                        // 从结构体中提取 uint64_t 掩码（注意转换为 int64_t 传给 av_opt_set_int）
-                        auto layout_mask = (int64_t)ch_layout.u.mask;
-
-                        av_opt_set_int(mSwrCtx,
-                                       "out_channel_layout",
-                                       layout_mask,
-                                       0);
-
-                        av_opt_set_int(mSwrCtx, "out_sample_rate", AUDIO_TARGET_OUTPUT_SAMPLERATE,
-                                       0);
-                        av_opt_set_sample_fmt(mSwrCtx, "out_sample_fmt", AUDIO_TARGET_OUTPUT_FORMAT,
-                                              0);
+                        if (ret < 0 || mSwrCtx == nullptr) {
+                            ALOGE("VEAudioDecoder failed to alloc resampling context: %d", ret);
+                            return VE_UNKNOWN_ERROR;
+                        }
                         if (swr_init(mSwrCtx) < 0) {
                             ALOGE("VEAudioDecoder Failed to initialize the resampling context");
                             swr_free(&mSwrCtx);
-                            return -1;
+                            return VE_UNKNOWN_ERROR;
                         }
                     }
 
@@ -326,7 +329,7 @@ namespace VE {
 
                     audioFrame->setPts(audioFrame->getFrame()->pts);
                     audioFrame->setDts(audioFrame->getFrame()->pkt_dts);
-                    ALOGI("@@@VEAudioDecoder Audio frame: pts:%" PRId64 ", dts:%" PRId64 ", packet pts:%" PRId64 ", packet dts:%" PRId64,
+                    ALOGV("@@@VEAudioDecoder Audio frame: pts:%" PRId64 ", dts:%" PRId64 ", packet pts:%" PRId64 ", packet dts:%" PRId64,
                           audioFrame->getFrame()->pts, audioFrame->getFrame()->pkt_dts,
                           audioFrame->getPts(), audioFrame->getDts());
                     av_freep(&out_data[0]);
@@ -337,7 +340,7 @@ namespace VE {
                     frame->setFrameType(E_FRAME_TYPE_AUDIO);
                     queueFrame(frame);
                 }
-                ALOGI("VEAudioDecoder Audio frame: pts=%s, nb_samples=%d, channels=%d samplerate:%d format:%d\n",
+                ALOGV("VEAudioDecoder Audio frame: pts=%s, nb_samples=%d, channels=%d samplerate:%d format:%d\n",
                       av_ts2str(frame->getFrame()->pts),
                       frame->getFrame()->nb_samples,
                       frame->getFrame()->ch_layout.nb_channels,
@@ -350,7 +353,7 @@ namespace VE {
         std::shared_ptr<VEPacket> packet;
         ret = mDemux->read(true, packet);
         if (ret == VE_NOT_ENOUGH_DATA) {
-            ALOGI("VEAudioDecoder::onDecode not enough data");
+            ALOGV("VEAudioDecoder::onDecode not enough data");
             mDemux->needMorePacket(std::make_shared<AMessage>(kWhatDecode, shared_from_this()), 1);
             return VE_NOT_ENOUGH_DATA;
         }
@@ -375,7 +378,7 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onRelease() {
-        ALOGI("VEAudioDecoder::%s enter", __FUNCTION__);
+        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         mIsStarted = false;
         if (mAudioCtx) {
             avcodec_free_context(&mAudioCtx);
@@ -396,7 +399,7 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onStart() {
-        ALOGI("VEAudioDecoder::%s enter", __FUNCTION__);
+        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         if (mIsStarted) {
             ALOGI("VEAudioDecoder::onStart already started");
             return VE_OK;
@@ -408,7 +411,7 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onStop() {
-        ALOGI("VEAudioDecoder::%s enter", __FUNCTION__);
+        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         mIsStarted = false;
 
         avcodec_flush_buffers(mAudioCtx);
@@ -418,7 +421,7 @@ namespace VE {
     }
 
     void VEAudioDecoder::queueFrame(std::shared_ptr<VEFrame> frame) {
-        ALOGI("VEAudioDecoder::queueFrame enter");
+        ALOGV("VEAudioDecoder::queueFrame enter");
         if (!mFrameQueue->put(frame)) {
             ALOGI("VEAudioDecoder::queueFrame queue is full, stopping decode");
             mIsStarted = false;
@@ -441,14 +444,14 @@ namespace VE {
     }
 
     void VEAudioDecoder::needMoreFrame(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEAudioDecoder::needMoreFrame enter");
+        ALOGV("VEAudioDecoder::needMoreFrame enter");
         auto needMoreMsg = std::make_shared<AMessage>(kWhatNeedMore, shared_from_this());
         needMoreMsg->setObject("notify", msg);
         needMoreMsg->post();
     }
 
     VEResult VEAudioDecoder::onNeedMoreFrame(const std::shared_ptr<AMessage> &msg) {
-        ALOGI("VEAudioDecoder::onNeedMoreFrame enter");
+        ALOGV("VEAudioDecoder::onNeedMoreFrame enter");
         std::shared_ptr<void> tmp;
         if (!msg->findObject("notify", &tmp)) {
             ALOGW("VEAudioDecoder::onNeedMoreFrame notify not found in message");

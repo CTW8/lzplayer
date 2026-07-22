@@ -15,27 +15,27 @@ namespace VE {
     }
 
     VEPlayer::VEPlayer() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     VEPlayer::~VEPlayer() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     VEResult VEPlayer::setDataSource(std::string path) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetDataSource,
                                                                    shared_from_this());
         msg->setString("path", path);
         msg->post();
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEPlayer::setDisplayOut(ANativeWindow *win, int viewWidth, int viewHeight) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSetVideoSurface,shared_from_this());
         msg->setPointer("window",win);
         msg->setInt32("viewWidth",viewWidth);
@@ -45,49 +45,49 @@ namespace VE {
     }
 
     VEResult VEPlayer::prepare() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare,
                                                                    shared_from_this());
 
 //    std::shared_ptr<AMessage> respon;
 //    msg->postAndAwaitResponse(&respon);
         msg->post();
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     VEResult VEPlayer::prepareAsync() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare,
                                                                    shared_from_this());
         msg->post();
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEPlayer::start() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         std::make_shared<AMessage>(kWhatStart, shared_from_this())->post();
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEPlayer::stop() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         std::make_shared<AMessage>(kWhatStop, shared_from_this())->post();
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEPlayer::pause() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         std::make_shared<AMessage>(kWhatPause, shared_from_this())->post();
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEPlayer::release() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         // 同步等待：返回后各组件线程都已退出、资源已释放，调用方才能安全销毁播放器
         auto msg = std::make_shared<AMessage>(kWhatRelease, shared_from_this());
         std::shared_ptr<AMessage> response;
@@ -95,28 +95,28 @@ namespace VE {
             ALOGW("VEPlayer::%s post release failed, looper may be gone", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     VEResult VEPlayer::seek(double timestampMs) {
-        ALOGI("VEPlayer::%s enter timestampMs:%f", __FUNCTION__, timestampMs);
+        ALOGV("VEPlayer::%s enter timestampMs:%f", __FUNCTION__, timestampMs);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
         msg->setDouble("timestampMs", timestampMs);
         msg->post();
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     VEResult VEPlayer::reset() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         std::make_shared<AMessage>(kWhatReset, shared_from_this())->post();
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
     void VEPlayer::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         switch (msg->what()) {
             case kWhatComponentEvent: {
                 onComponentEvent(msg);
@@ -199,11 +199,11 @@ namespace VE {
                 break;
             }
         }
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     VEResult VEPlayer::onSetDataSource(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         std::string path;
         if (!msg->findString("path", path) || path.empty()) {
             ALOGE("VEPlayer::%s - Invalid path", __FUNCTION__);
@@ -226,12 +226,12 @@ namespace VE {
 
         mDemux = std::make_shared<VEDemux>(mRenderNotifyMsg);
         mDemuxLooper->registerHandler(mDemux);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         VEBundle params;
         params.set("path", mPath);
         if (mDemux->prepare(params) != VE_OK) {
@@ -258,9 +258,16 @@ namespace VE {
             mAudioDecodeLooper->setName("adec_thread");
             mAudioDecodeLooper->start(false);
 
+            // 输出参数只在这里算一次，解码器和渲染器共用，避免两处各写死一份
+            const VEAudioOutputConfig audioOut =
+                    chooseAudioOutputConfig(mMediaInfo->sampleRate, mMediaInfo->channels);
+            ALOGI("VEPlayer::%s audio src %dHz %dch -> out %dHz %dch", __FUNCTION__,
+                  mMediaInfo->sampleRate, mMediaInfo->channels,
+                  audioOut.sampleRate, audioOut.channels);
+
             mAudioDecoder = std::make_shared<VEAudioDecoder>(mRenderNotifyMsg);
             mAudioDecodeLooper->registerHandler(mAudioDecoder);
-            mAudioDecoder->prepare(mDemux);
+            mAudioDecoder->prepare(mDemux, audioOut);
 
             mAudioOutputLooper = std::make_shared<ALooper>();
             mAudioOutputLooper->setName("audio_render");
@@ -269,9 +276,9 @@ namespace VE {
             mAudioOutput = std::make_shared<VEAudioRender>(mRenderNotifyMsg, mAVSync);
             mAudioOutputLooper->registerHandler(mAudioOutput);
             VEBundle params;
-            params.set("samplerate",44100);
-            params.set("channel",2);
-            params.set("format",1);
+            params.set("samplerate", audioOut.sampleRate);
+            params.set("channel", audioOut.channels);
+            params.set("format", audioOut.format);
             params.set("decode",mAudioDecoder);
             mAudioOutput->prepare(params);
         }
@@ -310,7 +317,7 @@ namespace VE {
         if (onPreparedCallback) {
             onPreparedCallback();
         }
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
@@ -327,7 +334,7 @@ namespace VE {
     }
 
     VEResult VEPlayer::onStart(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         if (mState == STATE_IDLE || mState == STATE_ERROR) {
             ALOGW("VEPlayer::%s ignored in state %d", __FUNCTION__, mState);
             return VE_INVALID_OPERATION;
@@ -345,12 +352,12 @@ namespace VE {
         }
         forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
         startProgressTick();
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     VEResult VEPlayer::onStop(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         mSeekStage = SEEK_STAGE_NONE;
         mHasPendingSeek = false;
         mPendingAcks = 0;
@@ -361,12 +368,12 @@ namespace VE {
             mMediaClock->resetClock();
         }
         forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->stop(); });
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     VEResult VEPlayer::onPause(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         if (mSeekStage != SEEK_STAGE_NONE) {
             mStateBeforeSeek = STATE_PAUSED;
             return VE_OK;
@@ -382,22 +389,22 @@ namespace VE {
             mMediaClock->pause();
         }
         forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->pause(); });
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     VEResult VEPlayer::onSeek(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         double timestampMs = 0;
         if (msg->findDouble("timestampMs", &timestampMs)) {
             startSeek(timestampMs);
         }
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     void VEPlayer::teardownComponents() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
 
         // 中断正在进行的流程，避免拆解过程中还有回调想往下推进
         stopProgressTick();
@@ -444,22 +451,22 @@ namespace VE {
 
         mVideoEOS = false;
         mAudioEOS = false;
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     VEResult VEPlayer::onReset(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         // reset 后应能重新 setDataSource：必须真正拆掉这一套组件和线程，
         // 否则再次 setDataSource 会又建一套 looper，线程只增不减。
         teardownComponents();
         mPath.clear();
         mState = STATE_IDLE;
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     VEResult VEPlayer::onRelease(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         teardownComponents();
 
         if (mWindow) {
@@ -475,14 +482,14 @@ namespace VE {
             response->setInt32("ret", VE_OK);
             response->postReply(replyID);
         }
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     void VEPlayer::setLooping(bool enable) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         mEnableLoop = enable;
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     long VEPlayer::getCurrentPosition() {
@@ -506,60 +513,60 @@ namespace VE {
     }
 
     long VEPlayer::getDuration() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         if (mMediaInfo == nullptr) {
             ALOGE("VEPlayer mMediaInfo is null!!!");
             return VE_UNKNOWN_ERROR;
         }
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return mMediaInfo->duration;
     }
 
     void VEPlayer::setVolume(int volume) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     void VEPlayer::setOnInfoListener(funOnInfoCallback callback) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         onInfoCallback = std::move(callback);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     void VEPlayer::setOnProgressListener(funOnProgressCallback callback) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         onProgressCallback = std::move(callback);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     void VEPlayer::setOnCompletionListener(funOnCompletionCallback callback) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         onCompleteCallback = std::move(callback);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     void VEPlayer::setOnErrorListener(funOnErrorCallback callback) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         onErrorCallback = std::move(callback);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     void VEPlayer::setOnEOSListener(funOnEOSCallback callback) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         onEosCallback = std::move(callback);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     void VEPlayer::setOnPreparedListener(funOnPreparedCallback callback) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         onPreparedCallback = std::move(callback);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     void VEPlayer::setOnSeekComplateListener(funOnSeekComplateCallback callback) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         onSeekComplateCallback = std::move(callback);
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     VEResult VEPlayer::setPlaySpeed(float speed) {
@@ -572,7 +579,7 @@ namespace VE {
     }
 
     void VEPlayer::onEOS() {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         if (mSeekStage != SEEK_STAGE_NONE) {
             // seek 过程中管线被 flush，此时的 EOS 不代表播放结束
             ALOGI("VEPlayer::%s ignored during seek", __FUNCTION__);
@@ -607,11 +614,11 @@ namespace VE {
                 onCompleteCallback();
             }
         }
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
     }
 
     VEResult VEPlayer::onSurfaceChanged(ANativeWindow *win, int viewWidth, int viewHeight) {
-        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        ALOGV("VEPlayer::%s enter", __FUNCTION__);
         mWindow = win;
         mViewWidth = viewWidth;
         mViewHeight = viewHeight;
@@ -621,7 +628,7 @@ namespace VE {
             mVideoRender->setSurface(mWindow, mViewWidth, mViewHeight);
         }
 
-        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 

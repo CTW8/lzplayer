@@ -194,9 +194,9 @@ namespace VE {
         if (m_AudioRenderer != nullptr) {
             std::shared_ptr<VEFrame> frame = nullptr;
             VEResult ret = m_AudioDecoder->readFrame(frame);
-            ALOGI("VEAudioRender::%s enter#1", __FUNCTION__);
+            ALOGV("VEAudioRender::%s enter#1", __FUNCTION__);
             if (ret == VE_NOT_ENOUGH_DATA) {
-                ALOGI("VEAudioRender::%s - underrun, feeding silence", __FUNCTION__);
+                ALOGV("VEAudioRender::%s - underrun, feeding silence", __FUNCTION__);
                 // 用静音帧维持 SLES 的回调链：回调是整个音频渲染的唯一驱动源，
                 // 一旦断开就再也不会有回调来消费后续数据。
                 frame = std::make_shared<VEFrame>();
@@ -207,7 +207,7 @@ namespace VE {
                 }
                 return VE_NOT_ENOUGH_DATA;
             }
-            ALOGI("VEAudioRender::%s enter#2", __FUNCTION__);
+            ALOGV("VEAudioRender::%s enter#2", __FUNCTION__);
             if (frame != nullptr) {
                 if (frame->getFrameType() == E_FRAME_TYPE_EOF) {
                     ALOGI("VEAudioRender::%s - End of Stream (EOS) detected", __FUNCTION__);
@@ -242,7 +242,7 @@ namespace VE {
                     ALOGE("VEAudioRender failed: %d", result);
                     return VE_UNKNOWN_ERROR;
                 }
-                ALOGI("VEAudioRender::%s - PTS: %lu exit", __FUNCTION__, frame->getPts());
+                ALOGV("VEAudioRender::%s - PTS: %lu exit", __FUNCTION__, frame->getPts());
                 m_AVSync->updateAudioPts(frame->getPts());
             } else {
                 ALOGD("VEAudioRender frame is null");

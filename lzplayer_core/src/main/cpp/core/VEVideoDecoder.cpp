@@ -1,22 +1,17 @@
 #include "VEVideoDecoder.h"
-#include "libyuv.h"
 #include "VEBundle.h"
 #include <iostream>
 
-#define  FRAME_QUEUE_MAX_SIZE 3
+/// 解码帧队列深度。帧现在是引用而非整帧拷贝，但仍占住解码器的缓冲池，
+/// 不宜过深；够吸收渲染抖动即可。
+#define  FRAME_QUEUE_MAX_SIZE 6
 
 namespace VE {
-// 用于将 YUV420P 有步幅的数据复制到连续内存
-    static void ConvertYUV420PWithStrideToContinuous(
-            const uint8_t *src_y, int src_stride_y,
-            const uint8_t *src_u, int src_stride_u,
-            const uint8_t *src_v, int src_stride_v,
-            uint8_t *dst_y, uint8_t *dst_u, uint8_t *dst_v,
-            int width, int height) {
-        ALOGI("ConvertYUV420PWithStrideToContinuous enter");
-        libyuv::CopyPlane(src_y, src_stride_y, dst_y, width, width, height);
-        libyuv::CopyPlane(src_u, src_stride_u, dst_u, width / 2, width / 2, height / 2);
-        libyuv::CopyPlane(src_v, src_stride_v, dst_v, width / 2, width / 2, height / 2);
+    namespace {
+        /// 渲染器按 3 平面 8bit YUV420 上传纹理，这两种格式可以直接送过去
+        bool isDirectRenderable(int format) {
+            return format == AV_PIX_FMT_YUV420P || format == AV_PIX_FMT_YUVJ420P;
+        }
     }
 
     VEVideoDecoder::VEVideoDecoder(std::shared_ptr<AMessage> &notify)
@@ -24,17 +19,17 @@ namespace VE {
               mMediaInfo(nullptr),
               mIsStarted(false),
               mNeedMoreData(false) {
-        ALOGI("VEVideoDecoder::VEVideoDecoder enter");
+        ALOGV("VEVideoDecoder::VEVideoDecoder enter");
         mNofityEvent = notify;
     }
 
     VEVideoDecoder::~VEVideoDecoder() {
-        ALOGI("VEVideoDecoder::~VEVideoDecoder enter");
+        ALOGV("VEVideoDecoder::~VEVideoDecoder enter");
         // 不直接释放资源，统一在 release / onRelease 中处理
     }
 
     VEResult VEVideoDecoder::prepare(std::shared_ptr<VEDemux> demux) {
-        ALOGI("VEVideoDecoder::prepare enter");
+        ALOGV("VEVideoDecoder::prepare enter");
         if (!demux) {
             ALOGE("VEVideoDecoder::prepare demux is null");
             return VE_INVALID_PARAMS;
@@ -58,7 +53,7 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::seekTo(double timestampMs) {
-        ALOGI("VEVideoDecoder::seekTo enter timestampMs:%f", timestampMs);
+        ALOGV("VEVideoDecoder::seekTo enter timestampMs:%f", timestampMs);
 
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
         msg->setDouble("timestamp", timestampMs);
@@ -67,42 +62,42 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::start() {
-        ALOGI("VEVideoDecoder::start enter");
+        ALOGV("VEVideoDecoder::start enter");
         auto msg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
         msg->post();
         return 0;
     }
 
     VEResult VEVideoDecoder::pause() {
-        ALOGI("VEVideoDecoder::pause enter");
+        ALOGV("VEVideoDecoder::pause enter");
         auto msg = std::make_shared<AMessage>(kWhatPause, shared_from_this());
         msg->post();
         return 0;
     }
 
     VEResult VEVideoDecoder::stop() {
-        ALOGI("VEVideoDecoder::stop enter");
+        ALOGV("VEVideoDecoder::stop enter");
         auto msg = std::make_shared<AMessage>(kWhatStop, shared_from_this());
         msg->post();
         return 0;
     }
 
     VEResult VEVideoDecoder::flush() {
-        ALOGI("VEVideoDecoder::flush enter");
+        ALOGV("VEVideoDecoder::flush enter");
         auto msg = std::make_shared<AMessage>(kWhatFlush, shared_from_this());
         msg->post();
         return VE_OK;
     }
 
     VEResult VEVideoDecoder::readFrame(std::shared_ptr<VEFrame> &frame) {
-        ALOGI("VEVideoDecoder::readFrame enter");
+        ALOGV("VEVideoDecoder::readFrame enter");
         if (!mFrameQueue) {
             ALOGE("VEVideoDecoder::readFrame frame queue is not initialized");
             return VE_UNKNOWN_ERROR;
         }
 
         if (mFrameQueue->getDataSize() == 0) {
-            ALOGI("VEVideoDecoder::readFrame VE_NOT_ENOUGH_DATA");
+            ALOGV("VEVideoDecoder::readFrame VE_NOT_ENOUGH_DATA");
             return VE_NOT_ENOUGH_DATA;
         }
 
@@ -119,14 +114,14 @@ namespace VE {
     }
 
     void VEVideoDecoder::needMoreFrame(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEVideoDecoder::needMoreFrame enter");
+        ALOGV("VEVideoDecoder::needMoreFrame enter");
         auto needMoreMsg = std::make_shared<AMessage>(kWhatNeedMore, shared_from_this());
         needMoreMsg->setObject("notify", msg);
         needMoreMsg->post();
     }
 
     VEResult VEVideoDecoder::release() {
-        ALOGI("VEVideoDecoder::release enter");
+        ALOGV("VEVideoDecoder::release enter");
         auto msg = std::make_shared<AMessage>(kWhatUninit, shared_from_this());
         msg->post();
         return VE_OK;
@@ -134,7 +129,7 @@ namespace VE {
 
 // 消息处理函数
     void VEVideoDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
-        ALOGI("VEVideoDecoder::onMessageReceived enter, what=%c%c%c%c",
+        ALOGV("VEVideoDecoder::onMessageReceived enter, what=%c%c%c%c",
               (msg->what() & 0xFF),
               (msg->what() >> 8) & 0xFF,
               (msg->what() >> 16) & 0xFF,
@@ -175,7 +170,7 @@ namespace VE {
                     break;
                 }
                 if (!mIsStarted) {
-                    ALOGI("VEVideoDecoder::onDecode is not started, exiting");
+                    ALOGV("VEVideoDecoder::onDecode is not started, exiting");
                     break;
                 }
 
@@ -214,7 +209,7 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onPrepare(std::shared_ptr<AMessage> msg) {
-        ALOGI("VEVideoDecoder::onPrepare enter");
+        ALOGV("VEVideoDecoder::onPrepare enter");
         std::shared_ptr<void> tmp;
         if (!msg->findObject("demux", &tmp)) {
             ALOGE("VEVideoDecoder::onPrepare demux not found in message");
@@ -270,7 +265,7 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onStart() {
-        ALOGI("VEVideoDecoder::onStart enter");
+        ALOGV("VEVideoDecoder::onStart enter");
         if (mIsStarted) {
             ALOGI("VEVideoDecoder::onStart already started");
             return VE_OK;
@@ -282,13 +277,13 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onPause() {
-        ALOGI("VEVideoDecoder::onPause enter");
+        ALOGV("VEVideoDecoder::onPause enter");
         mIsStarted = false;
         return VE_OK;
     }
 
     VEResult VEVideoDecoder::onStop() {
-        ALOGI("VEVideoDecoder::onStop enter");
+        ALOGV("VEVideoDecoder::onStop enter");
         mIsStarted = false;
         if (mVideoCtx) {
             avcodec_flush_buffers(mVideoCtx);
@@ -297,7 +292,7 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onFlush() {
-        ALOGI("VEVideoDecoder::onFlush enter");
+        ALOGV("VEVideoDecoder::onFlush enter");
         // 递增 epoch，使 flush 之前投递的解码消息全部失效
         ++mEpoch;
         mIsStarted = false;
@@ -313,13 +308,42 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onSeek(double timestampMs) {
-        ALOGI("VEVideoDecoder::onSeek enter timestampMs:%f", timestampMs);
+        ALOGV("VEVideoDecoder::onSeek enter timestampMs:%f", timestampMs);
         // seek 必须真正清空 codec 内部参考帧和已解出的帧，
         // 否则 seek 后会渲染出目标位置之前的残留画面
         onFlush();
         // demux 只能定位到关键帧，这里记录目标位置，解码时丢弃其之前的帧
         mSeekTargetUs = static_cast<int64_t>(timestampMs * 1000);
         return VE_OK;
+    }
+
+    std::shared_ptr<VEFrame> VEVideoDecoder::convertToYuv420p(const std::shared_ptr<VEFrame> &src) {
+        AVFrame *in = src->getFrame();
+
+        mSwsCtx = sws_getCachedContext(mSwsCtx,
+                                       in->width, in->height,
+                                       static_cast<AVPixelFormat>(in->format),
+                                       in->width, in->height, AV_PIX_FMT_YUV420P,
+                                       SWS_BILINEAR, nullptr, nullptr, nullptr);
+        if (mSwsCtx == nullptr) {
+            ALOGE("VEVideoDecoder::%s failed to create sws context for format %d",
+                  __FUNCTION__, in->format);
+            return nullptr;
+        }
+
+        auto dst = std::make_shared<VEFrame>(in->width, in->height, AV_PIX_FMT_YUV420P);
+        AVFrame *out = dst->getFrame();
+        if (out == nullptr || out->data[0] == nullptr) {
+            ALOGE("VEVideoDecoder::%s failed to allocate target frame", __FUNCTION__);
+            return nullptr;
+        }
+
+        sws_scale(mSwsCtx, in->data, in->linesize, 0, in->height, out->data, out->linesize);
+
+        dst->setFrameType(E_FRAME_TYPE_VIDEO);
+        dst->setPts(in->pts);
+        dst->setDts(in->pkt_dts);
+        return dst;
     }
 
     void VEVideoDecoder::postDecode() {
@@ -329,7 +353,7 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onDecode() {
-        ALOGI("VEVideoDecoder::onDecode enter");
+        ALOGV("VEVideoDecoder::onDecode enter");
 
         if (mFrameQueue && mFrameQueue->getRemainingSize() <= 0) {
             ALOGI("VEVideoDecoder::onDecode frame queue is full");
@@ -361,26 +385,24 @@ namespace VE {
                     mSeekTargetUs = kNoSeekTarget;
                 }
 
-                auto videoFrame = std::make_shared<VEFrame>(
-                        frame->getFrame()->width,
-                        frame->getFrame()->height,
-                        AV_PIX_FMT_YUV420P
-                );
-                videoFrame->setFrameType(E_FRAME_TYPE_VIDEO);
-                ConvertYUV420PWithStrideToContinuous(
-                        frame->getFrame()->data[0], frame->getFrame()->linesize[0],
-                        frame->getFrame()->data[1], frame->getFrame()->linesize[1],
-                        frame->getFrame()->data[2], frame->getFrame()->linesize[2],
-                        videoFrame->getFrame()->data[0], videoFrame->getFrame()->data[1],
-                        videoFrame->getFrame()->data[2],
-                        frame->getFrame()->width, frame->getFrame()->height
-                );
+                AVFrame *decoded = frame->getFrame();
 
-                videoFrame->setPts(frame->getFrame()->pts);
-                videoFrame->setDts(frame->getFrame()->pkt_dts);
-                ALOGD("VEVideoDecoder::onDecode got a frame: pts=%" PRId64 ", dts=%" PRId64,
-                      videoFrame->getPts(), videoFrame->getDts());
+                if (isDirectRenderable(decoded->format)) {
+                    // 零拷贝：直接把解码出的帧交给渲染链路。渲染器用
+                    // GL_UNPACK_ROW_LENGTH 处理行距，不需要先拷成紧排布。
+                    frame->setFrameType(E_FRAME_TYPE_VIDEO);
+                    frame->setPts(decoded->pts);
+                    frame->setDts(decoded->pkt_dts);
+                    ALOGD("VEVideoDecoder::onDecode got a frame: pts=%" PRId64, decoded->pts);
+                    queueFrame(frame);
+                    return VE_OK;
+                }
 
+                // 其它像素格式渲染器认不了，转成 YUV420P 再送
+                auto videoFrame = convertToYuv420p(frame);
+                if (videoFrame == nullptr) {
+                    return VE_UNKNOWN_ERROR;
+                }
                 queueFrame(videoFrame);
                 return VE_OK;
             }
@@ -419,7 +441,12 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onRelease() {
-        ALOGI("VEVideoDecoder::onRelease enter");
+        ALOGV("VEVideoDecoder::onRelease enter");
+        mIsStarted = false;
+        if (mSwsCtx) {
+            sws_freeContext(mSwsCtx);
+            mSwsCtx = nullptr;
+        }
         if (mVideoCtx) {
             avcodec_free_context(&mVideoCtx);
             mVideoCtx = nullptr;
@@ -436,7 +463,7 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onNeedMoreFrame(const std::shared_ptr<AMessage> &msg) {
-        ALOGI("VEVideoDecoder::onNeedMoreFrame enter");
+        ALOGV("VEVideoDecoder::onNeedMoreFrame enter");
         std::shared_ptr<void> tmp;
         if (!msg->findObject("notify", &tmp)) {
             ALOGW("VEVideoDecoder::onNeedMoreFrame notify not found in message");
@@ -456,7 +483,7 @@ namespace VE {
     }
 
     void VEVideoDecoder::queueFrame(std::shared_ptr<VEFrame> frame) {
-        ALOGI("VEVideoDecoder::queueFrame enter");
+        ALOGV("VEVideoDecoder::queueFrame enter");
         if (!mFrameQueue || !mFrameQueue->put(frame)) {
             ALOGI("VEVideoDecoder::queueFrame queue is full, stopping decode");
             mIsStarted = false;
