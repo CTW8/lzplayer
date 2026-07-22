@@ -53,16 +53,11 @@ namespace VE {
         return VE_OK;
     }
 
-    VEResult VEVideoDisplay::seekTo(double timestamp) {
+    VEResult VEVideoDisplay::seekTo(double timestampMs) {
         ALOGI("VEVideoDisplay::%s enter",__FUNCTION__ );
-        try {
-            std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
-            msg->setDouble("timestamp",timestamp);
-            msg->post();
-        } catch (const std::bad_weak_ptr &e) {
-            ALOGE("VEVideoDisplay::pause - Object not managed by shared_ptr yet");
-            return UNKNOWN_ERROR;
-        }
+        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
+        msg->setDouble("timestamp", timestampMs);
+        msg->post();
         return VE_OK;
     }
 
@@ -114,21 +109,25 @@ namespace VE {
             }
             case kWhatPause:{
                 onPause(msg);
+                postMessage(VE_NOTIFY_EVENT_PAUSE_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatFlush:{
                 onFlush(msg);
+                postMessage(VE_NOTIFY_EVENT_FLUSH_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatStop:{
                 onStop(msg);
+                postMessage(VE_NOTIFY_EVENT_STOP_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatRender:{
+                if (isStaleMessage(msg)) {
+                    break;
+                }
                 if (onRender(msg) == VE_OK) {
-                    std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatSync,
-                                                                                     shared_from_this());
-                    renderMsg->post();
+                    postSync(0);
                 }
                 break;
             }
@@ -137,6 +136,9 @@ namespace VE {
                 break;
             }
             case kWhatSync:{
+                if (isStaleMessage(msg)) {
+                    break;
+                }
                 onAVSync(msg);
                 break;
             }
@@ -145,7 +147,10 @@ namespace VE {
                 break;
             }
             case kWhatSeek:{
-                onSeekTo(0);
+                double timestampMs = 0;
+                msg->findDouble("timestamp", &timestampMs);
+                onSeekTo(timestampMs);
+                postMessage(VE_NOTIFY_EVENT_SEEK_DONE, 0, 0, 0, nullptr);
                 break;
             }
             default:{
@@ -180,9 +185,12 @@ namespace VE {
 
     VEResult VEVideoDisplay::onStart(std::shared_ptr<AMessage> msg) {
         ALOGI("VEVideoDisplay::onStart enter");
+        if (m_IsStarted) {
+            return VE_OK;
+        }
         m_IsStarted = true;
-        std::make_shared<AMessage>(kWhatSync, shared_from_this())->post();
-        return 0;
+        postSync(0);
+        return VE_OK;
     }
 
     VEResult VEVideoDisplay::onStop(std::shared_ptr<AMessage> msg) {
@@ -190,18 +198,37 @@ namespace VE {
         return 0;
     }
 
-    VEResult VEVideoDisplay::onSeekTo(double timestamp) {
-//        std::shared_ptr<AMessage> msg = m_pNotify->dup();
-//        msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER);
-//        msg->setInt32("event",NOTIFY_EVENT_SEEK_DONE);
-//        msg->setInt32("ret",VE_OK);
-//        msg->post();
-        postMessage(VE_NOTIFY_EVENT_SEEK_DONE,0,0,0, nullptr);
+    VEResult VEVideoDisplay::onSeekTo(double timestampMs) {
+        ALOGI("VEVideoDisplay::onSeekTo enter timestampMs:%f", timestampMs);
+        // 作废在途的渲染/同步消息，避免 seek 后把旧帧画上去
+        ++m_Epoch;
+        m_IsStarted = false;
+        // 标记：seek 后渲染出的第一帧要上报，作为 seek 真正完成的依据
+        m_NotifyFirstFrame = true;
         return VE_OK;
     }
 
     VEResult VEVideoDisplay::onFlush(std::shared_ptr<AMessage> msg) {
-        return 0;
+        ALOGI("VEVideoDisplay::onFlush enter");
+        ++m_Epoch;
+        m_IsStarted = false;
+        return VE_OK;
+    }
+
+    bool VEVideoDisplay::isStaleMessage(const std::shared_ptr<AMessage> &msg) const {
+        int32_t epoch = 0;
+        msg->findInt32("epoch", &epoch);
+        if (epoch != m_Epoch) {
+            ALOGI("VEVideoDisplay stale msg epoch=%d cur=%d", epoch, m_Epoch);
+            return true;
+        }
+        return false;
+    }
+
+    void VEVideoDisplay::postSync(int64_t delayUs) {
+        auto syncMsg = std::make_shared<AMessage>(kWhatSync, shared_from_this());
+        syncMsg->setInt32("epoch", m_Epoch);
+        syncMsg->post(delayUs);
     }
 
     VEResult VEVideoDisplay::onPause(std::shared_ptr<AMessage> msg) {
@@ -223,14 +250,6 @@ namespace VE {
             return UNKNOWN_ERROR;
         }
 
-        int32_t isDrop = false;
-        msg->findInt32("drop", &isDrop);
-
-        if (isDrop) {
-            ALOGD("VEVideoDisplay::%s - dropping frame", __FUNCTION__);
-            return VE_OK;
-        }
-
         std::shared_ptr<VEFrame> frame = nullptr;
         std::shared_ptr<void> tmp;
 
@@ -250,14 +269,15 @@ namespace VE {
 
         m_pVideoRender->renderFrame(frame);
 
-        if (m_pNotify) {
-//            std::shared_ptr<AMessage> msg = m_pNotify->dup();
-//            msg->setInt32("type", kWhatProgress);
-//            msg->setInt64("progress", static_cast<int64_t>(frame->getPts()));
-//            msg->post();
-            postMessage(VE_NOTIFY_EVENT_PROGRESS,0,0,static_cast<int64_t>(frame->getPts()), nullptr);
-            ALOGI("VEGLESVideoRenderer::renderFrame - Notifying progress: %" PRId64, frame->getPts());
+        if (m_NotifyFirstFrame) {
+            // seek 后的首帧已经上屏，此时才算 seek 真正完成
+            m_NotifyFirstFrame = false;
+            postMessage(VE_NOTIFY_EVENT_FIRST_FRAME, 0, 0,
+                        static_cast<int64_t>(frame->getPts()), nullptr);
         }
+
+        postMessage(VE_NOTIFY_EVENT_PROGRESS,0,0,static_cast<int64_t>(frame->getPts()), nullptr);
+        ALOGI("VEVideoDisplay::onRender - Notifying progress: %" PRId64, frame->getPts());
         return VE_OK;
     }
 
@@ -269,19 +289,15 @@ namespace VE {
             return UNKNOWN_ERROR;
         }
 
-        bool isDrop = false;
         std::shared_ptr<VEFrame> frame = nullptr;
         VEResult ret = m_pVideoDec->readFrame(frame);
         ALOGI("VEVideoDisplay::%s readFrame result: %d", __FUNCTION__, ret);
 
         if (ret == VE_NOT_ENOUGH_DATA) {
             ALOGI("VEVideoDisplay::%s needMoreFrame!!!", __FUNCTION__);
-            try {
-                m_pVideoDec->needMoreFrame(std::make_shared<AMessage>(kWhatSync, shared_from_this()));
-            } catch (const std::bad_weak_ptr &e) {
-                ALOGE("VEVideoDisplay::onAVSync - Object not managed by shared_ptr yet");
-                return UNKNOWN_ERROR;
-            }
+            auto wakeMsg = std::make_shared<AMessage>(kWhatSync, shared_from_this());
+            wakeMsg->setInt32("epoch", m_Epoch);
+            m_pVideoDec->needMoreFrame(wakeMsg);
             return VE_NOT_ENOUGH_DATA;
         }
 
@@ -304,24 +320,20 @@ namespace VE {
         m_pAvSync->updateVideoPts(frame->getPts());
 
         if (m_pAvSync->shouldDropFrame()) {
-            ALOGI("VEVideoDisplay::%s Dropping frame due to sync issues", __FUNCTION__);
-            isDrop = true; // 丢帧
+            // 已经严重落后：直接丢弃，不投递渲染消息也不等待，立即取下一帧追赶
+            ALOGI("VEVideoDisplay::%s Dropping frame pts=%" PRId64, __FUNCTION__, frame->getPts());
+            postSync(0);
+            return VE_OK;
         }
 
         int64_t waitTime = m_pAvSync->getWaitTime(); // 获取等待时间
         ALOGD("VEVideoDisplay::%s waitTime:%" PRId64, __FUNCTION__, waitTime);
-        try {
-            std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender,
-                                                                             shared_from_this());
-            renderMsg->setObject("render", frame);
-            renderMsg->setInt32("drop", isDrop);
-            renderMsg->post(isDrop ? 0 : waitTime); // 根据同步状态设置等待时间
-        } catch (const std::bad_weak_ptr &e) {
-            ALOGE("VEVideoDisplay::onAVSync - Object not managed by shared_ptr yet");
-            return UNKNOWN_ERROR;
-        }
+        std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender,
+                                                                         shared_from_this());
+        renderMsg->setObject("render", frame);
+        renderMsg->setInt32("epoch", m_Epoch);
+        renderMsg->post(waitTime);
         return VE_OK;
-        return 0;
     }
 
     VEResult VEVideoDisplay::onSurfaceChanged(std::shared_ptr<AMessage> msg) {

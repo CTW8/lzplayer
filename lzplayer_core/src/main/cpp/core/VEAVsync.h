@@ -30,7 +30,17 @@ namespace VE {
         // 判断是否需要丢帧
         bool shouldDropFrame() const;
 
+        /// seek 后把时钟重新定位到目标位置
+        void resetTo(double ptsUs);
+
+        /// 暂停/恢复时钟外推
+        void pause();
+
+        void resume();
+
     private:
+        int64_t frameIntervalUs() const;
+
         std::shared_ptr<VEMediaClock> m_MediaClock; // 媒体时钟
         double m_VideoPts;          // 当前视频 PTS
         double m_PlaybackSpeed;     // 播放速度

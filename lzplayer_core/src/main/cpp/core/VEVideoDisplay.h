@@ -26,7 +26,7 @@ namespace VE {
 
         VEResult stop() override;
 
-        VEResult seekTo(double timestamp) override;
+        VEResult seekTo(double timestampMs) override;
 
         VEResult flush() override;
 
@@ -51,7 +51,13 @@ namespace VE {
 
         VEResult onStop(std::shared_ptr<AMessage> msg);
 
-        VEResult onSeekTo(double timestamp);
+        VEResult onSeekTo(double timestampMs);
+
+        /// flush/seek 后，代次不匹配的在途渲染/同步消息应被丢弃
+        bool isStaleMessage(const std::shared_ptr<AMessage> &msg) const;
+
+        /// 投递带当前代次的同步消息
+        void postSync(int64_t delayUs);
 
         VEResult onFlush(std::shared_ptr<AMessage> msg);
 
@@ -91,6 +97,10 @@ namespace VE {
         int mFrameHeight = 0;
 
         bool m_IsStarted = false;
+        /// 渲染/同步消息的代次，flush/seek 时递增以作废在途消息
+        int32_t m_Epoch = 0;
+        /// seek 后是否需要在首帧上屏时上报 FIRST_FRAME
+        bool m_NotifyFirstFrame = false;
         ANativeWindow *mWin = nullptr;
     };
 

@@ -1,5 +1,12 @@
 #include "VEAVsync.h"
 namespace VE {
+    namespace {
+        /// 视频领先/落后在该范围内视为同步，直接渲染
+        constexpr double kSyncThresholdUs = 40000.0;
+        /// 超过该范围认为时钟不可信(刚 seek 完/音频还没起来)，退化为按帧率出帧
+        constexpr double kMaxDiffUs = 500000.0;
+    }
+
     VEAVsync::VEAVsync()
             : m_VideoPts(0), m_PlaybackSpeed(1.0), m_FrameRate(30) {
         ALOGI("VEAVsync::%s - Constructor called", __FUNCTION__);
@@ -10,16 +17,18 @@ namespace VE {
         ALOGI("VEAVsync::%s - Destructor called", __FUNCTION__);
     }
 
+    int64_t VEAVsync::frameIntervalUs() const {
+        int fps = m_FrameRate > 0 ? m_FrameRate : 30;
+        return static_cast<int64_t>(1000000 / fps);
+    }
+
     void VEAVsync::updateAudioPts(double audioPts) {
-        ALOGI("VEAVsync::%s - Updating audio PTS: %f", __FUNCTION__, audioPts);
         if (m_MediaClock) {
-            std::lock_guard<std::mutex> lock(m_Mutex);
             m_MediaClock->updateAudioPts(audioPts);
         }
     }
 
     void VEAVsync::updateVideoPts(double videoPts) {
-        ALOGI("VEAVsync::%s - Updating video PTS: %f", __FUNCTION__, videoPts);
         std::lock_guard<std::mutex> lock(m_Mutex);
         m_VideoPts = videoPts;
     }
@@ -39,37 +48,46 @@ namespace VE {
         m_FrameRate = frameRate;
     }
 
+    void VEAVsync::resetTo(double ptsUs) {
+        ALOGI("VEAVsync::%s - reset clock to %f", __FUNCTION__, ptsUs);
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        m_VideoPts = ptsUs;
+        if (m_MediaClock) {
+            m_MediaClock->resetTo(ptsUs);
+        }
+    }
+
+    void VEAVsync::pause() {
+        if (m_MediaClock) {
+            m_MediaClock->pause();
+        }
+    }
+
+    void VEAVsync::resume() {
+        if (m_MediaClock) {
+            m_MediaClock->resume();
+        }
+    }
+
     int64_t VEAVsync::getWaitTime() const {
-        ALOGI("VEAVsync::%s - Calculating wait time", __FUNCTION__);
         std::lock_guard<std::mutex> lock(m_Mutex);
 
         if (!m_MediaClock) {
-            ALOGI("VEAVsync::%s - Media clock is null, returning frame rate wait time",
-                  __FUNCTION__);
-            return static_cast<int64_t>(1000000 / m_FrameRate);
+            return frameIntervalUs();
         }
 
-        double audioTime = m_MediaClock->getCurrentMediaTime();
-        double diff = m_VideoPts - audioTime;
-        ALOGI("VEAVsync::%s - audioTime: %f, m_VideoPts: %f, diff: %f", __FUNCTION__, audioTime,
-              m_VideoPts, diff);
-        if (diff > 0) {
-            if (diff <= 40000) {
-                return static_cast<int64_t>(diff);
-            } else if (diff <= 500000) {
-                return static_cast<int64_t>(diff);
-            } else {
-                return static_cast<int64_t>(1000000 / m_FrameRate);
-            }
-        } else {
-            if (diff >= -40000) {
-                return 0;
-            } else if (diff >= -500000) {
-                return static_cast<int64_t>(1000000 / m_FrameRate);
-            } else {
-                return static_cast<int64_t>(1000000 / m_FrameRate);
-            }
+        double diff = m_VideoPts - m_MediaClock->getCurrentMediaTime();
+
+        if (diff > kMaxDiffUs) {
+            // 时钟不可信，按帧率节奏出帧，避免长时间黑屏
+            return frameIntervalUs();
         }
+        if (diff > kSyncThresholdUs) {
+            // 视频领先，等到该显示的时刻
+            return static_cast<int64_t>(diff);
+        }
+        // 同步窗口内或已落后，立即渲染
+        return 0;
     }
 
     bool VEAVsync::shouldDropFrame() const {
@@ -77,11 +95,7 @@ namespace VE {
 
         if (!m_MediaClock) return false;
 
-        double audioTime = m_MediaClock->getCurrentMediaTime();
-        double diff = m_VideoPts - audioTime;
-        ALOGI("VEAVsync::%s - audioTime: %f, m_VideoPts: %f, diff: %f", __FUNCTION__, audioTime,
-              m_VideoPts, diff);
-
-        return diff < -500000;
+        double diff = m_VideoPts - m_MediaClock->getCurrentMediaTime();
+        return diff < -kMaxDiffUs;
     }
 }

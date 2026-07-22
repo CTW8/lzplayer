@@ -3,6 +3,7 @@
 
 #include<string>
 #include<memory>
+#include<atomic>
 #include"VEMediaDef.h"
 #include"VEPacket.h"
 #include "VEPacketQueue.h"
@@ -64,6 +65,8 @@ namespace VE {
 
         VEResult onSeek(double posMs);
 
+        VEResult onNeedMorePacket(const std::shared_ptr<AMessage> &msg);
+
         void putPacket(std::shared_ptr<VEPacket> packet, bool isAudio);
 
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
@@ -90,24 +93,20 @@ namespace VE {
         int mAudio_index = -1;
         int mVideo_index = -1;
 
-        bool mIsStart = false;
+        // read() 由解码器线程调用，会读取这两个标志，故需原子访问
+        std::atomic<bool> mIsStart{false};
 
         bool mNeedAudioMore = false;
         bool mNeedVideoMore = false;
 
+        // 下列成员只在 demux 自己的 looper 线程上访问，无需加锁
         std::shared_ptr<AMessage> mAudioNotify = nullptr;
         std::shared_ptr<AMessage> mVideoNotify = nullptr;
-
-        std::mutex mMutexAudio;
-        std::condition_variable mCondAudio;
-
-        std::mutex mMutexVideo;
-        std::condition_variable mCondVideo;
 
         // 音视频共用的时间零点偏移(微秒)，保证两条流落在同一时间轴上
         int64_t mStartTimeOffset = 0;
 
-        bool mIsEOS = false;
+        std::atomic<bool> mIsEOS{false};
 
         //视频帧
         std::shared_ptr<VEPacketQueue> mVideoPacketQueue = nullptr;
@@ -127,6 +126,7 @@ namespace VE {
             kWhatFlush = 'flus',
             kWhatRead = 'read',
             kWhatRelease = 'rele',
+            kWhatNeedMore = 'need',
         };
     };
 }

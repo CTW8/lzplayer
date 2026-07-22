@@ -4,6 +4,12 @@
 
 #include <utility>
 namespace VE {
+    namespace {
+        /// 单个流程阶段等待组件回执的上限，超时后强制推进，
+        /// 宁可状态略有偏差也不能让 seek 永久卡死
+        constexpr int64_t kAckTimeoutUs = 2000000;
+    }
+
     VEPlayer::VEPlayer() {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
@@ -103,35 +109,11 @@ namespace VE {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         switch (msg->what()) {
             case kWhatComponentEvent: {
-                ALOGI("VEPlayer::onMessageReceived - kWhatRenderEvent received");
-                int type = EComponentType::E_COMPONENT_TYPE_UNKNOW;
-                msg->findInt32("type",&type);
-                switch(type){
-                    case EComponentType::E_COMPONENT_TYPE_AUDIO_DECODER:{
-                        onAudioDecoderEvent(msg);
-                        break;
-                    }
-                    case EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER:{
-                        onVideoRenderEvent(msg);
-                        break;
-                    }
-                    case EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER:{
-                        onAudioRenderEvent(msg);
-                        break;
-                    }
-                    case EComponentType::E_COMPONENT_TYPE_VIDEO_DECODER:{
-                        onVideoDecoderEvent(msg);
-                        break;
-                    }
-                    case EComponentType::E_COMPONENT_TYPE_DEMUX:{
-                        onDemuxEvent(msg);
-                        break;
-                    }
-                    default:{
-                        ALOGD("can't find type:%d",type);
-                        break;
-                    }
-                }
+                onComponentEvent(msg);
+                break;
+            }
+            case kWhatAckTimeout: {
+                onAckTimeout(msg);
                 break;
             }
             case kWhatSetDataSource: {
@@ -232,6 +214,7 @@ namespace VE {
         VEBundle params;
         params.set("path", mPath);
         if (mDemux->prepare(params) != VE_OK) {
+            mState = STATE_ERROR;
             notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
             return VE_UNKNOWN_ERROR;
         }
@@ -239,10 +222,14 @@ namespace VE {
         mMediaInfo = mDemux->getFileInfo();
         if (mMediaInfo == nullptr ||
             (mMediaInfo->audio_stream_index == -1 && mMediaInfo->video_stream_index == -1)) {
+            mState = STATE_ERROR;
             notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "no playable stream found!!");
             return VE_UNKNOWN_ERROR;
         }
         mAVSync = std::make_shared<VEAVsync>();
+        if (mMediaInfo->fps > 0) {
+            mAVSync->setFrameRate(mMediaInfo->fps);
+        }
 
         if(mMediaInfo->audio_stream_index != -1) {
             mAudioDecodeLooper = std::make_shared<ALooper>();
@@ -297,6 +284,7 @@ namespace VE {
 //            }
         }
 
+        mState = STATE_PREPARED;
         if (onPreparedCallback) {
             onPreparedCallback();
         }
@@ -318,41 +306,66 @@ namespace VE {
 
     VEResult VEPlayer::onStart(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        if (mState == STATE_IDLE || mState == STATE_ERROR) {
+            ALOGW("VEPlayer::%s ignored in state %d", __FUNCTION__, mState);
+            return VE_INVALID_OPERATION;
+        }
+        if (mSeekStage != SEEK_STAGE_NONE) {
+            // seek 流程会在结束时按 mStateBeforeSeek 恢复播放
+            ALOGI("VEPlayer::%s during seek, resume after seek done", __FUNCTION__);
+            mStateBeforeSeek = STATE_STARTED;
+            return VE_OK;
+        }
+
+        mState = STATE_STARTED;
+        if (mAVSync) {
+            mAVSync->resume();
+        }
         forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
+        return VE_OK;
     }
 
     VEResult VEPlayer::onStop(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        mSeekStage = SEEK_STAGE_NONE;
+        mHasPendingSeek = false;
+        mPendingAcks = 0;
+        mAckContinuation = nullptr;
+        mState = STATE_PREPARED;
         forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->stop(); });
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
+        return VE_OK;
     }
 
     VEResult VEPlayer::onPause(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        if (mSeekStage != SEEK_STAGE_NONE) {
+            mStateBeforeSeek = STATE_PAUSED;
+            return VE_OK;
+        }
+        if (mState != STATE_STARTED) {
+            ALOGW("VEPlayer::%s ignored in state %d", __FUNCTION__, mState);
+            return VE_INVALID_OPERATION;
+        }
+
+        mState = STATE_PAUSED;
+        if (mAVSync) {
+            mAVSync->pause();
+        }
         forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->pause(); });
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
+        return VE_OK;
     }
 
     VEResult VEPlayer::onSeek(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        double timestampMs;
+        double timestampMs = 0;
         if (msg->findDouble("timestampMs", &timestampMs)) {
-            forEachComponent([timestampMs](const std::shared_ptr<IVEComponent> &c) {
-                c->seekTo(timestampMs);
-            });
-            mVideoEOS = false;
-            mAudioEOS = false;
-            //从这里发出时不对的，应该在精准seek解码后渲染完成后发出
-            if (onSeekComplateCallback) {
-                onSeekComplateCallback();
-            }
+            startSeek(timestampMs);
         }
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
+        return VE_OK;
     }
 
     VEResult VEPlayer::onReset(std::shared_ptr<AMessage> msg) {
@@ -454,6 +467,12 @@ namespace VE {
 
     void VEPlayer::onEOS() {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        if (mSeekStage != SEEK_STAGE_NONE) {
+            // seek 过程中管线被 flush，此时的 EOS 不代表播放结束
+            ALOGI("VEPlayer::%s ignored during seek", __FUNCTION__);
+            return;
+        }
+
         // 只统计实际存在的链路：纯音频/纯视频文件不该等一条永远不会到来的 EOS
         bool videoDone = (mVideoRender == nullptr) || mVideoEOS;
         bool audioDone = (mAudioOutput == nullptr) || mAudioEOS;
@@ -462,6 +481,17 @@ namespace VE {
             ALOGI("VEPlayer::%s play complate", __FUNCTION__);
             mVideoEOS = false;
             mAudioEOS = false;
+
+            if (mEnableLoop) {
+                // 循环播放：回到片头继续播，不上报播放结束。
+                // 先置为 STARTED，seek 流程会据此在结束时恢复播放。
+                ALOGI("VEPlayer::%s looping, seek to head", __FUNCTION__);
+                mState = STATE_STARTED;
+                startSeek(0);
+                return;
+            }
+
+            mState = STATE_COMPLETED;
             if (onCompleteCallback) {
                 onCompleteCallback();
             }
@@ -484,147 +514,243 @@ namespace VE {
         return 0;
     }
 
-    VEResult VEPlayer::onVideoRenderEvent(std::shared_ptr<AMessage> msg) {
-        int eventType = 0;
-        msg->findInt32("event",&eventType);
-        switch (eventType) {
-            case VE_NOTIFY_EVENT_SEEK_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_FLUSH_DOING:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_FLUSH_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_OPEN_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_STOP_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_EOS:{
-                mVideoEOS = true;
+    VEResult VEPlayer::onComponentEvent(const std::shared_ptr<AMessage> &msg) {
+        int32_t type = EComponentType::E_COMPONENT_TYPE_UNKNOW;
+        int32_t event = VE_NOTIFY_EVENT_UNKNOW;
+        msg->findInt32("type", &type);
+        msg->findInt32("event", &event);
+
+        switch (event) {
+            case VE_NOTIFY_EVENT_EOS: {
+                if (type == EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER) {
+                    mVideoEOS = true;
+                } else if (type == EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER) {
+                    mAudioEOS = true;
+                }
                 onEOS();
                 break;
             }
-            case VE_NOTIFY_EVENT_PROGRESS:{
-                int64_t progress=0;
-                msg->findInt64("arg3",&progress);
+            case VE_NOTIFY_EVENT_PROGRESS: {
+                int64_t progress = 0;
+                msg->findInt64("arg3", &progress);
                 notifyProgress(progress);
                 break;
             }
-            default:{
-                ALOGD("event type:%d",eventType);
+            case VE_NOTIFY_EVENT_ERROR: {
+                int32_t code = 0;
+                msg->findInt32("arg1", &code);
+                mState = STATE_ERROR;
+                notifyError(code, "component reported error");
+                break;
+            }
+            case VE_NOTIFY_EVENT_FIRST_FRAME: {
+                // 首帧既是 seek 完成的依据，也顺带更新一次进度
+                int64_t pts = 0;
+                msg->findInt64("arg3", &pts);
+                notifyProgress(pts);
+                onComponentAck(type, event);
+                break;
+            }
+            default: {
+                // SEEK_DONE / FLUSH_DONE / PAUSE_DONE / STOP_DONE 等命令回执
+                onComponentAck(type, event);
                 break;
             }
         }
-        return 0;
+        return VE_OK;
     }
 
-    VEResult VEPlayer::onAudioRenderEvent(std::shared_ptr<AMessage> msg) {
-        int eventType = 0;
-        msg->findInt32("event",&eventType);
-        switch (eventType) {
-            case VE_NOTIFY_EVENT_SEEK_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_FLUSH_DOING:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_FLUSH_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_OPEN_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_STOP_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_EOS:{
-                mAudioEOS = true;
-                onEOS();
-                break;
-            }
-            default:{
-                ALOGD("event type:%d",eventType);
-                break;
-            }
-        }
-        return 0;
+    // ---------------------------------------------------------------------
+    // 回执聚合
+    // ---------------------------------------------------------------------
+
+    uint32_t VEPlayer::activeComponentMask() const {
+        uint32_t mask = 0;
+        if (mVideoRender)  mask |= 1u << EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER;
+        if (mAudioOutput)  mask |= 1u << EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER;
+        if (mVideoDecoder) mask |= 1u << EComponentType::E_COMPONENT_TYPE_VIDEO_DECODER;
+        if (mAudioDecoder) mask |= 1u << EComponentType::E_COMPONENT_TYPE_AUDIO_DECODER;
+        if (mDemux)        mask |= 1u << EComponentType::E_COMPONENT_TYPE_DEMUX;
+        return mask;
     }
 
-    VEResult VEPlayer::onVideoDecoderEvent(std::shared_ptr<AMessage> msg) {
-        int eventType = 0;
-        msg->findInt32("event",&eventType);
-        switch (eventType) {
-            case VE_NOTIFY_EVENT_SEEK_DONE:{
+    void VEPlayer::awaitAcks(uint32_t mask, int32_t event, std::function<void()> next) {
+        mPendingAcks = mask;
+        mExpectedAckEvent = event;
+        mAckContinuation = std::move(next);
+        ++mAckGeneration;
 
-                break;
+        ALOGI("VEPlayer::awaitAcks mask:0x%x event:%d gen:%d", mask, event, mAckGeneration);
+
+        if (mPendingAcks == 0) {
+            auto continuation = mAckContinuation;
+            mAckContinuation = nullptr;
+            mExpectedAckEvent = 0;
+            if (continuation) {
+                continuation();
             }
-            case VE_NOTIFY_EVENT_FLUSH_DOING:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_FLUSH_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_OPEN_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_STOP_DONE:{
-                break;
-            }
-            default:{
-                ALOGD("event type:%d",eventType);
-                break;
-            }
+            return;
         }
-        return 0;
+
+        // 丢失回执时的兜底，避免流程永久停在某一阶段
+        auto timeoutMsg = std::make_shared<AMessage>(kWhatAckTimeout, shared_from_this());
+        timeoutMsg->setInt32("generation", mAckGeneration);
+        timeoutMsg->post(kAckTimeoutUs);
     }
 
-    VEResult VEPlayer::onAudioDecoderEvent(std::shared_ptr<AMessage> msg) {
-        int eventType = 0;
-        msg->findInt32("event",&eventType);
-        switch (eventType) {
-            case VE_NOTIFY_EVENT_SEEK_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_FLUSH_DOING:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_FLUSH_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_OPEN_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_STOP_DONE:{
-                break;
+    void VEPlayer::onComponentAck(int32_t type, int32_t event) {
+        if (mPendingAcks == 0 || event != mExpectedAckEvent) {
+            ALOGD("VEPlayer::onComponentAck ignore type:%d event:%d (expect:%d pending:0x%x)",
+                  type, event, mExpectedAckEvent, mPendingAcks);
+            return;
+        }
+        if (type < 0) {
+            return;
+        }
+
+        mPendingAcks &= ~(1u << type);
+        ALOGI("VEPlayer::onComponentAck type:%d event:%d remaining:0x%x", type, event, mPendingAcks);
+
+        if (mPendingAcks == 0) {
+            auto continuation = mAckContinuation;
+            mAckContinuation = nullptr;
+            mExpectedAckEvent = 0;
+            ++mAckGeneration;   // 让在途的超时消息失效
+            if (continuation) {
+                continuation();
             }
         }
-        return 0;
     }
 
-    VEResult VEPlayer::onDemuxEvent(std::shared_ptr<AMessage> msg) {
-        int eventType = 0;
-        msg->findInt32("event",&eventType);
-        switch (eventType) {
-            case VE_NOTIFY_EVENT_SEEK_DONE:{
-                break;
+    void VEPlayer::onAckTimeout(const std::shared_ptr<AMessage> &msg) {
+        int32_t generation = 0;
+        msg->findInt32("generation", &generation);
+        if (generation != mAckGeneration || mPendingAcks == 0) {
+            return; // 回执已齐或已进入下一阶段
+        }
+
+        ALOGW("VEPlayer::onAckTimeout event:%d still pending:0x%x, continue anyway",
+              mExpectedAckEvent, mPendingAcks);
+
+        mPendingAcks = 0;
+        auto continuation = mAckContinuation;
+        mAckContinuation = nullptr;
+        mExpectedAckEvent = 0;
+        if (continuation) {
+            continuation();
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // seek：分阶段推进，每阶段等齐回执后再进入下一阶段
+    // ---------------------------------------------------------------------
+
+    void VEPlayer::startSeek(double timestampMs) {
+        if (mState == STATE_IDLE || mState == STATE_ERROR) {
+            ALOGW("VEPlayer::startSeek ignored in state %d", mState);
+            return;
+        }
+
+        if (mSeekStage != SEEK_STAGE_NONE) {
+            // 正在 seek：只保留最后一次请求，完成后补做(拖动进度条的关键)
+            ALOGI("VEPlayer::startSeek coalesce pending seek to %f", timestampMs);
+            mHasPendingSeek = true;
+            mPendingSeekMs = timestampMs;
+            return;
+        }
+
+        ALOGI("VEPlayer::startSeek to %f ms", timestampMs);
+        mSeekTargetMs = timestampMs;
+        mStateBeforeSeek = (mState == STATE_SEEKING) ? mStateBeforeSeek : mState;
+        mState = STATE_SEEKING;
+        mVideoEOS = false;
+        mAudioEOS = false;
+
+        seekStagePause();
+    }
+
+    void VEPlayer::seekStagePause() {
+        // ① 先让所有组件停止消费数据，避免 flush 与解码并发
+        ALOGI("VEPlayer::seek stage 1/3 - pausing components");
+        mSeekStage = SEEK_STAGE_PAUSING;
+        if (mAVSync) {
+            mAVSync->pause();
+        }
+
+        uint32_t mask = activeComponentMask();
+        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->pause(); });
+        awaitAcks(mask, VE_NOTIFY_EVENT_PAUSE_DONE, [this] { seekStageSeek(); });
+    }
+
+    void VEPlayer::seekStageSeek() {
+        // ② demux 定位到目标关键帧，解码器 flush 并记下精准 seek 目标
+        ALOGI("VEPlayer::seek stage 2/3 - seeking demux & flushing decoders");
+        mSeekStage = SEEK_STAGE_SEEKING;
+
+        uint32_t mask = activeComponentMask();
+        double target = mSeekTargetMs;
+        forEachComponent([target](const std::shared_ptr<IVEComponent> &c) { c->seekTo(target); });
+        awaitAcks(mask, VE_NOTIFY_EVENT_SEEK_DONE, [this] { seekStagePrime(); });
+    }
+
+    void VEPlayer::seekStagePrime() {
+        // ③ 把时钟重新定位到目标位置后重启管线，等第一帧真正上屏
+        ALOGI("VEPlayer::seek stage 3/3 - priming first frame");
+        mSeekStage = SEEK_STAGE_PRIMING;
+
+        if (mAVSync) {
+            mAVSync->resetTo(mSeekTargetMs * 1000.0);
+        }
+
+        if (mVideoRender) {
+            // 有视频时以首帧上屏作为 seek 完成的判据；
+            // 暂停态下也要出这一帧，否则 seek 后画面不会更新。
+            if (mDemux)        mDemux->start();
+            if (mVideoDecoder) mVideoDecoder->start();
+            if (mAudioDecoder) mAudioDecoder->start();
+            mVideoRender->start();
+            if (mStateBeforeSeek == STATE_STARTED && mAudioOutput) {
+                mAudioOutput->start();
             }
-            case VE_NOTIFY_EVENT_FLUSH_DOING:{
-                break;
+            uint32_t mask = 1u << EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER;
+            awaitAcks(mask, VE_NOTIFY_EVENT_FIRST_FRAME, [this] { seekFinish(); });
+        } else {
+            // 纯音频：没有画面可等，恢复播放即视为完成
+            if (mStateBeforeSeek == STATE_STARTED) {
+                forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
             }
-            case VE_NOTIFY_EVENT_FLUSH_DONE:{
-                break;
+            seekFinish();
+        }
+    }
+
+    void VEPlayer::seekFinish() {
+        ALOGI("VEPlayer::seekFinish, restore state %d", mStateBeforeSeek);
+        mSeekStage = SEEK_STAGE_NONE;
+
+        if (mStateBeforeSeek == STATE_STARTED) {
+            mState = STATE_STARTED;
+            forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
+            if (mAVSync) {
+                mAVSync->resume();
             }
-            case VE_NOTIFY_EVENT_OPEN_DONE:{
-                break;
-            }
-            case VE_NOTIFY_EVENT_STOP_DONE:{
-                break;
+        } else {
+            // 暂停态 seek：预览帧已经上屏，重新回到暂停
+            mState = STATE_PAUSED;
+            forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->pause(); });
+            if (mAVSync) {
+                // 冻结时钟，否则暂停期间它会一直外推，恢复播放时视频会被判定为落后
+                mAVSync->pause();
             }
         }
-        return 0;
+
+        if (onSeekComplateCallback) {
+            onSeekComplateCallback();
+        }
+
+        if (mHasPendingSeek) {
+            // seek 期间被合并掉的请求，现在补做
+            mHasPendingSeek = false;
+            startSeek(mPendingSeekMs);
+        }
     }
 }

@@ -4,7 +4,7 @@ using namespace std::chrono;
 namespace VE {
     VEMediaClock::VEMediaClock()
             : m_AudioTimestamp(0), m_BaseSystemTime(0), m_AudioSystemTime(0),
-              m_PlaybackSpeed(1.0) {}
+              m_PlaybackSpeed(1.0), m_Paused(false) {}
 
     VEMediaClock::~VEMediaClock() {}
 
@@ -13,25 +13,31 @@ namespace VE {
 
         m_AudioTimestamp = audioPts;
         m_AudioSystemTime = getCurrentSystemTime();
+        m_Paused = false;
 
         if (m_BaseSystemTime == 0) {
             m_BaseSystemTime = m_AudioSystemTime;
         }
     }
 
-    double VEMediaClock::getCurrentMediaTime() const {
-        std::lock_guard<std::mutex> lock(m_Mutex);
-
+    double VEMediaClock::currentMediaTimeLocked() const {
         if (m_BaseSystemTime == 0) {
             return 0.0;
         }
 
-        int64_t currentSystemTime = getCurrentSystemTime();
-        double elapsedTime = (static_cast<double>(currentSystemTime - m_AudioSystemTime));
-        ALOGI("MediaClock::%s - Current elapsed time: %f, m_AudioTimestamp: %f", __FUNCTION__,
-              elapsedTime * m_PlaybackSpeed, m_AudioTimestamp);
+        // 暂停期间时钟停在最后一次更新的位置，不再外推
+        if (m_Paused) {
+            return m_AudioTimestamp;
+        }
 
+        int64_t currentSystemTime = getCurrentSystemTime();
+        double elapsedTime = static_cast<double>(currentSystemTime - m_AudioSystemTime);
         return elapsedTime * m_PlaybackSpeed + m_AudioTimestamp;
+    }
+
+    double VEMediaClock::getCurrentMediaTime() const {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        return currentMediaTimeLocked();
     }
 
     void VEMediaClock::resetClock() {
@@ -40,10 +46,43 @@ namespace VE {
         m_AudioTimestamp = 0;
         m_BaseSystemTime = 0;
         m_AudioSystemTime = 0;
+        m_Paused = false;
+    }
+
+    void VEMediaClock::resetTo(double ptsUs) {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+
+        m_AudioTimestamp = ptsUs;
+        m_AudioSystemTime = getCurrentSystemTime();
+        m_BaseSystemTime = m_AudioSystemTime;
+        m_Paused = false;
+    }
+
+    void VEMediaClock::pause() {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        if (m_Paused) {
+            return;
+        }
+        // 先把已流逝的时间结算进基准，再冻结
+        m_AudioTimestamp = currentMediaTimeLocked();
+        m_AudioSystemTime = getCurrentSystemTime();
+        m_Paused = true;
+    }
+
+    void VEMediaClock::resume() {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        if (!m_Paused) {
+            return;
+        }
+        m_AudioSystemTime = getCurrentSystemTime();
+        m_Paused = false;
     }
 
     void VEMediaClock::setPlaybackSpeed(double speed) {
         std::lock_guard<std::mutex> lock(m_Mutex);
+        // 先按旧速度结算已播放的时间，避免变速时时钟跳变
+        m_AudioTimestamp = currentMediaTimeLocked();
+        m_AudioSystemTime = getCurrentSystemTime();
         m_PlaybackSpeed = speed;
     }
 

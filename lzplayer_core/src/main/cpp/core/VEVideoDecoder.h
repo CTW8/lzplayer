@@ -39,7 +39,7 @@ namespace VE {
 
         VEResult flush() override;
 
-        VEResult seekTo(double timestamp) override;
+        VEResult seekTo(double timestampMs) override;
 
         VEResult readFrame(std::shared_ptr<VEFrame> &frame);
 
@@ -68,7 +68,12 @@ namespace VE {
 
         VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
 
+        VEResult onSeek(double timestampMs);
+
         VEResult postMessage(int32_t event,int32_t arg1,int32_t arg2,int64_t arg3,void*params);
+
+        /// 投递带当前 epoch 的解码消息，flush 后旧消息会被自动丢弃
+        void postDecode();
 
         // 帧入队列
         void queueFrame(std::shared_ptr<VEFrame> frame);
@@ -86,6 +91,9 @@ namespace VE {
         };
 
     private:
+        /// mSeekTargetUs 的哨兵值：当前没有待完成的精准 seek
+        static const int64_t kNoSeekTarget = INT64_MIN;
+
         AVCodecContext *mVideoCtx = nullptr;
         std::shared_ptr<VEMediaInfo> mMediaInfo = nullptr;
         std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
@@ -94,9 +102,13 @@ namespace VE {
 
         std::shared_ptr<AMessage> mNofityEvent = nullptr;
 
-        std::mutex mMutex;               // 保护共享变量
         bool mIsStarted = false;
         bool mNeedMoreData = false;
+
+        /// 解码消息的代次，flush/seek 时递增以作废在途的解码消息
+        int32_t mEpoch = 0;
+        /// 精准 seek 目标(微秒)，其之前解出的帧全部丢弃
+        int64_t mSeekTargetUs = kNoSeekTarget;
 
         std::shared_ptr<AMessage> mNotifyMore = nullptr;
     };

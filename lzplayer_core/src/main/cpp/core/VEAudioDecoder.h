@@ -63,9 +63,12 @@ namespace VE {
 
         VEResult onRelease();
 
-        VEResult onSeek(double timestamp);
+        VEResult onSeek(double timestampMs);
 
         VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
+
+        /// 投递带当前 epoch 的解码消息，flush 后旧消息会被自动丢弃
+        void postDecode();
 
         void queueFrame(std::shared_ptr<VEFrame> frame);
 
@@ -85,6 +88,9 @@ namespace VE {
         };
 
     private:
+        /// mSeekTargetUs 的哨兵值：当前没有待完成的精准 seek
+        static const int64_t kNoSeekTarget = INT64_MIN;
+
         AVCodecContext *mAudioCtx = nullptr;
         VEMediaInfo *mMediaInfo = nullptr;
         std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
@@ -92,9 +98,13 @@ namespace VE {
 
         std::shared_ptr<AMessage> mNotifyEvent = nullptr;
 
-        std::mutex mMutex;
         bool mIsStarted = false;
         bool mNeedMoreData = false;
+
+        /// 解码消息的代次，flush/seek 时递增以作废在途的解码消息
+        int32_t mEpoch = 0;
+        /// 精准 seek 目标(微秒)，其之前解出的帧全部丢弃
+        int64_t mSeekTargetUs = kNoSeekTarget;
 
         std::shared_ptr<AMessage> mNotifyMore = nullptr;
         bool mIsEOS = false;

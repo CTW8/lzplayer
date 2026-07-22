@@ -44,8 +44,7 @@ namespace VE {
 
         frame = mFrameQueue->get();
         if(mIsEOS == false && mIsStarted == false && mFrameQueue->getRemainingSize() > AUDIO_FRAME_QUEUE_SIZE/2){
-            auto decodeMsg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
-            decodeMsg->post();
+            std::make_shared<AMessage>(kWhatStart, shared_from_this())->post();
         }
         return 0;
     }
@@ -86,23 +85,40 @@ namespace VE {
             }
             case kWhatPause: {
                 onPause();
+                postMessage(VE_NOTIFY_EVENT_PAUSE_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatStop: {
                 onStop();
+                postMessage(VE_NOTIFY_EVENT_STOP_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatFlush: {
                 onFlush();
+                postMessage(VE_NOTIFY_EVENT_FLUSH_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatDecode: {
+                int32_t epoch = 0;
+                msg->findInt32("epoch", &epoch);
+                if (epoch != mEpoch) {
+                    ALOGI("VEAudioDecoder::onDecode stale decode msg, epoch=%d cur=%d", epoch, mEpoch);
+                    break;
+                }
+                if (!mIsStarted) {
+                    ALOGI("VEAudioDecoder::onDecode is not started, exiting");
+                    break;
+                }
+
                 VEResult ret = onDecode();
                 if (ret == VE_OK) {
-                    auto decodeMsg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
-                    decodeMsg->post();
+                    postDecode();
                 } else {
+                    ALOGI("VEAudioDecoder::onMessageReceived onDecode stopped, ret=%d", ret);
                     mIsStarted = false;
+                    if (ret != VE_NOT_ENOUGH_DATA && ret != VE_EOS && ret != VE_NO_MEMORY) {
+                        postMessage(VE_NOTIFY_EVENT_ERROR, ret, 0, 0, nullptr);
+                    }
                 }
                 break;
             }
@@ -115,9 +131,10 @@ namespace VE {
                 break;
             }
             case kWhatSeek:{
-                double pts =0;
-                msg->findDouble("timestamp",&pts);
-                onSeek(pts);
+                double timestampMs = 0;
+                msg->findDouble("timestamp", &timestampMs);
+                onSeek(timestampMs);
+                postMessage(VE_NOTIFY_EVENT_SEEK_DONE, 0, 0, 0, nullptr);
                 break;
             }
             default: {
@@ -159,9 +176,31 @@ namespace VE {
 
     VEResult VEAudioDecoder::onFlush() {
         ALOGI("VEAudioDecoder::%s enter", __FUNCTION__);
-        avcodec_flush_buffers(mAudioCtx);
-        mFrameQueue->clear();
-        return false;
+        // 递增 epoch，使 flush 之前投递的解码消息全部失效
+        ++mEpoch;
+        mIsStarted = false;
+        mIsEOS = false;
+        mNeedMoreData = false;
+        if (mAudioCtx) {
+            avcodec_flush_buffers(mAudioCtx);
+        }
+        if (mFrameQueue) {
+            mFrameQueue->clear();
+        }
+        return VE_OK;
+    }
+
+    VEResult VEAudioDecoder::onSeek(double timestampMs) {
+        ALOGI("VEAudioDecoder::%s enter timestampMs:%f", __FUNCTION__, timestampMs);
+        onFlush();
+        mSeekTargetUs = static_cast<int64_t>(timestampMs * 1000);
+        return VE_OK;
+    }
+
+    void VEAudioDecoder::postDecode() {
+        auto decodeMsg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
+        decodeMsg->setInt32("epoch", mEpoch);
+        decodeMsg->post();
     }
 
     VEResult VEAudioDecoder::onDecode() {
@@ -186,6 +225,18 @@ namespace VE {
             if (ret >= 0) {
                 ALOGI("###VEAudioDecoder Audio frame: pts:%" PRId64 ", dts:%" PRId64,
                       frame->getFrame()->pts, frame->getFrame()->pkt_dts);
+
+                // 精准 seek：丢弃目标位置之前的音频帧，避免 seek 后回放旧内容
+                if (mSeekTargetUs != kNoSeekTarget) {
+                    int64_t pts = frame->getFrame()->pts;
+                    if (pts != AV_NOPTS_VALUE && pts < mSeekTargetUs) {
+                        ALOGD("VEAudioDecoder::onDecode drop frame pts=%" PRId64
+                                      " until %" PRId64, pts, mSeekTargetUs);
+                        return VE_OK;
+                    }
+                    ALOGI("VEAudioDecoder::onDecode reached seek target pts=%" PRId64, pts);
+                    mSeekTargetUs = kNoSeekTarget;
+                }
 
                 if (frame->getFrame()->format != (int32_t) AUDIO_TARGET_OUTPUT_FORMAT ||
                     frame->getFrame()->sample_rate != AUDIO_TARGET_OUTPUT_SAMPLERATE ||
@@ -338,8 +389,7 @@ namespace VE {
         }
         mIsEOS = false;
         mIsStarted = true;
-        std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
-        msg->post();
+        postDecode();
         return VE_OK;
     }
 
@@ -396,10 +446,9 @@ namespace VE {
         mNotifyMore = notifyMsg;
         mNeedMoreData = true;
 
-        if (!mIsStarted) {
+        if (!mIsStarted && !mIsEOS) {
             mIsStarted = true;
-            auto decodeMsg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
-            decodeMsg->post();
+            postDecode();
         }
         return VE_OK;
     }
@@ -412,15 +461,6 @@ namespace VE {
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
         msg->setDouble("timestamp",timestamp);
         msg->post();
-        return VE_OK;
-    }
-
-    VEResult VEAudioDecoder::onSeek(double timestamp) {
-//        std::shared_ptr<AMessage> msg = mNotifyEvent->dup();
-//        msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_AUDIO_DECODER);
-//        msg->setInt32("ret",VE_OK);
-//        msg->post();
-        postMessage(VE_NOTIFY_EVENT_SEEK_DONE,0,0,0, nullptr);
         return VE_OK;
     }
 

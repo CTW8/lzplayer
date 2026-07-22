@@ -3,6 +3,11 @@
 #include "renders/VEAudioSLESRender.h"
 
 namespace VE {
+    namespace {
+        /// 静音帧也入队失败时的重试间隔
+        constexpr int64_t kUnderrunRetryUs = 10000;
+    }
+
     VEAudioRender::VEAudioRender(const std::shared_ptr<AMessage> &notify,const std::shared_ptr<VEAVsync> &avSync)
             :m_Notify(notify),m_AVSync(avSync) {
 //        fp = fopen("/data/data/com.example.lzplayer/files/dump_audio.pcm","wb+");
@@ -98,9 +103,11 @@ namespace VE {
                 // Obtain shared_ptr<AHandler> via shared_from_this(), cast to shared_ptr<VEAudioRender>,
                 auto selfShared = std::dynamic_pointer_cast<VEAudioRender>(shared_from_this());
                 auto wSelf = std::weak_ptr<VEAudioRender>(selfShared);
+                // 该回调来自 OpenSL ES 的回调线程，只做投递；epoch 保证
+                // seek/pause 之前排队的回调不会再消费新数据
                 config.onCallback = [wSelf]() -> int {
                     if (auto self = wSelf.lock()) {
-                        std::make_shared<AMessage>(VEAudioRender::kWhatRender, self)->post();
+                        self->postRender();
                     }
                     return 0;
                 };
@@ -112,42 +119,57 @@ namespace VE {
                 break;
             }
             case kWhatStart: {
-                if (m_AudioRenderer) {
-                    std::make_shared<AMessage>(kWhatRender,shared_from_this())->post();
+                if (m_AudioRenderer && !m_IsStarted) {
+                    m_IsStarted = true;
+                    postRender();
                     m_AudioRenderer->start();
                 }
                 break;
             }
             case kWhatStop: {
+                m_IsStarted = false;
+                ++m_Epoch;
                 if (m_AudioRenderer) {
                     m_AudioRenderer->stop();
                 }
+                postMessage(VE_NOTIFY_EVENT_STOP_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatPause:{
+                m_IsStarted = false;
+                ++m_Epoch;
                 if (m_AudioRenderer) {
                     m_AudioRenderer->pause();
                 }
+                postMessage(VE_NOTIFY_EVENT_PAUSE_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatFlush:{
+                m_IsStarted = false;
+                ++m_Epoch;
                 if (m_AudioRenderer) {
                     m_AudioRenderer->flush();
                 }
+                postMessage(VE_NOTIFY_EVENT_FLUSH_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatRender:{
+                int32_t epoch = 0;
+                msg->findInt32("epoch", &epoch);
+                if (epoch != m_Epoch || !m_IsStarted) {
+                    // seek/pause 之前投递的渲染消息，丢弃
+                    break;
+                }
                 onRender();
                 break;
             }
             case kWhatSeek:{
+                // 丢弃在途的渲染回调，并清掉设备缓冲里 seek 之前的 PCM
+                m_IsStarted = false;
+                ++m_Epoch;
                 if (m_AudioRenderer) {
                     m_AudioRenderer->flush();
                 }
-//                std::shared_ptr<AMessage> msg = m_Notify->dup();
-//                msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER);
-//                msg->setInt32("ret",VE_OK);
-//                msg->post();
                 postMessage(VE_NOTIFY_EVENT_SEEK_DONE,0,0,0, nullptr);
                 break;
             }
@@ -169,12 +191,14 @@ namespace VE {
             VEResult ret = m_AudioDecoder->readFrame(frame);
             ALOGI("VEAudioRender::%s enter#1", __FUNCTION__);
             if (ret == VE_NOT_ENOUGH_DATA) {
-                ALOGI("VEAudioRender::%s - needMoreFrame", __FUNCTION__);
+                ALOGI("VEAudioRender::%s - underrun, feeding silence", __FUNCTION__);
+                // 用静音帧维持 SLES 的回调链：回调是整个音频渲染的唯一驱动源，
+                // 一旦断开就再也不会有回调来消费后续数据。
                 frame = std::make_shared<VEFrame>();
-                VEResult result = m_AudioRenderer->renderFrame(frame);
-                if (result != SL_RESULT_SUCCESS) {
-                    ALOGE("VEAudioRender failed: %d", result);
-                    return VE_UNKNOWN_ERROR;
+                if (m_AudioRenderer->renderFrame(frame) != SL_RESULT_SUCCESS) {
+                    // 静音帧也入队失败，回调链已断，改由延时消息自行重启
+                    ALOGW("VEAudioRender::%s - silence enqueue failed, retry later", __FUNCTION__);
+                    postRender(kUnderrunRetryUs);
                 }
                 return VE_NOT_ENOUGH_DATA;
             }
@@ -220,6 +244,12 @@ namespace VE {
             }
         }
         return 0;
+    }
+
+    void VEAudioRender::postRender(int64_t delayUs) {
+        auto msg = std::make_shared<AMessage>(kWhatRender, shared_from_this());
+        msg->setInt32("epoch", m_Epoch);
+        msg->post(delayUs);
     }
 
     VEResult VEAudioRender::postMessage(int32_t event, int32_t arg1, int32_t arg2, int64_t arg3,

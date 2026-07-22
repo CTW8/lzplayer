@@ -3,6 +3,7 @@
 
 #include <string>
 #include <functional>
+#include <atomic>
 #include <android/native_window_jni.h>
 #include "IVEComponent.h"
 #include "VEDemux.h"
@@ -135,7 +136,28 @@ namespace VE {
             kWhatPause = 'paus',
             kWhatStop = 'stop',
             kWhatComponentEvent = 'renE',
-            kWhatRelease = 'rele'
+            kWhatRelease = 'rele',
+            kWhatAckTimeout = 'ackT'
+        };
+
+        /// 播放器内部状态。与 VEPlayerDriver 的状态机职责不同：
+        /// Driver 负责校验 Java 层 API 调用是否合法，这里负责编排内部流程。
+        enum PlayerState {
+            STATE_IDLE,
+            STATE_PREPARED,
+            STATE_STARTED,
+            STATE_PAUSED,
+            STATE_SEEKING,
+            STATE_COMPLETED,
+            STATE_ERROR
+        };
+
+        /// seek 的分阶段流程，每一阶段都要等齐相关组件的回执才能进入下一阶段
+        enum SeekStage {
+            SEEK_STAGE_NONE,
+            SEEK_STAGE_PAUSING,   ///< 等各组件停止消费数据
+            SEEK_STAGE_SEEKING,   ///< 等 demux 定位 + 解码器 flush 完成
+            SEEK_STAGE_PRIMING    ///< 等 seek 后的第一帧上屏
         };
 
         VEResult onSetDataSource(std::shared_ptr<AMessage> msg);
@@ -156,11 +178,28 @@ namespace VE {
 
         VEResult onSurfaceChanged(ANativeWindow *win,int viewWidth,int viewHeight);
 
-        VEResult onVideoRenderEvent(std::shared_ptr<AMessage> msg);
-        VEResult onAudioRenderEvent(std::shared_ptr<AMessage> msg);
-        VEResult onVideoDecoderEvent(std::shared_ptr<AMessage> msg);
-        VEResult onAudioDecoderEvent(std::shared_ptr<AMessage> msg);
-        VEResult onDemuxEvent(std::shared_ptr<AMessage> msg);
+        VEResult onComponentEvent(const std::shared_ptr<AMessage> &msg);
+
+        // ---- 回执聚合：把"给 N 个组件发命令"变成"等齐 N 个回执后再继续" ----
+
+        /// 已创建组件的位掩码
+        uint32_t activeComponentMask() const;
+
+        /// 等待 mask 中所有组件回报 event，齐了之后执行 next
+        void awaitAcks(uint32_t mask, int32_t event, std::function<void()> next);
+
+        /// 收到某个组件的回执，清位；清空后触发后续动作
+        void onComponentAck(int32_t type, int32_t event);
+
+        /// 回执超时：不让一个丢失的回执把 seek 永久卡住
+        void onAckTimeout(const std::shared_ptr<AMessage> &msg);
+
+        // ---- seek 流程 ----
+        void startSeek(double timestampMs);
+        void seekStagePause();
+        void seekStageSeek();
+        void seekStagePrime();
+        void seekFinish();
 
         pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
         std::shared_ptr<VEDemux> mDemux = nullptr;
@@ -187,7 +226,23 @@ namespace VE {
         bool mVideoEOS = false;
         bool mAudioEOS = false;
 
-        bool mEnableLoop = false;
+        /// setLooping 由调用方线程写入，播放器线程读取
+        std::atomic<bool> mEnableLoop{false};
+
+        PlayerState mState = STATE_IDLE;
+
+        // 回执聚合状态
+        uint32_t mPendingAcks = 0;
+        int32_t mExpectedAckEvent = 0;
+        int32_t mAckGeneration = 0;
+        std::function<void()> mAckContinuation;
+
+        // seek 流程状态
+        SeekStage mSeekStage = SEEK_STAGE_NONE;
+        double mSeekTargetMs = 0;
+        PlayerState mStateBeforeSeek = STATE_IDLE;
+        bool mHasPendingSeek = false;
+        double mPendingSeekMs = 0;
 
         ANativeWindow *mWindow = nullptr;
         int mViewWidth = 0;

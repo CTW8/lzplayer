@@ -57,11 +57,11 @@ namespace VE {
         return 0;
     }
 
-    VEResult VEVideoDecoder::seekTo(double timestamp) {
-        ALOGI("VEVideoDecoder::seekTo enter");
+    VEResult VEVideoDecoder::seekTo(double timestampMs) {
+        ALOGI("VEVideoDecoder::seekTo enter timestampMs:%f", timestampMs);
 
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
-        msg->setDouble("timestamp",timestamp);
+        msg->setDouble("timestamp", timestampMs);
         msg->post();
         return VE_OK;
     }
@@ -151,17 +151,29 @@ namespace VE {
             }
             case kWhatPause: {
                 onPause();
+                // 走到这里说明排在前面的解码消息都已处理完，之后的解码消息会因
+                // mIsStarted=false 被丢弃，可以安全地告知上层"已停止消费"
+                postMessage(VE_NOTIFY_EVENT_PAUSE_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatStop: {
                 onStop();
+                postMessage(VE_NOTIFY_EVENT_STOP_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatFlush: {
                 onFlush();
+                postMessage(VE_NOTIFY_EVENT_FLUSH_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatDecode: {
+                int32_t epoch = 0;
+                msg->findInt32("epoch", &epoch);
+                if (epoch != mEpoch) {
+                    // flush/seek 之前投递的解码消息，丢弃
+                    ALOGI("VEVideoDecoder::onDecode stale decode msg, epoch=%d cur=%d", epoch, mEpoch);
+                    break;
+                }
                 if (!mIsStarted) {
                     ALOGI("VEVideoDecoder::onDecode is not started, exiting");
                     break;
@@ -169,11 +181,13 @@ namespace VE {
 
                 VEResult ret = onDecode();
                 if (ret == VE_OK) {
-                    auto decodeMsg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
-                    decodeMsg->post();
+                    postDecode();
                 } else {
-                    ALOGE("VEVideoDecoder::onMessageReceived onDecode failed, ret=%d", ret);
+                    ALOGI("VEVideoDecoder::onMessageReceived onDecode stopped, ret=%d", ret);
                     mIsStarted = false;
+                    if (ret != VE_NOT_ENOUGH_DATA && ret != VE_EOS && ret != VE_NO_MEMORY) {
+                        postMessage(VE_NOTIFY_EVENT_ERROR, ret, 0, 0, nullptr);
+                    }
                 }
                 break;
             }
@@ -186,11 +200,9 @@ namespace VE {
                 break;
             }
             case kWhatSeek:{
-                mIsEOS = false;
-//                std::shared_ptr<AMessage> msg = mNofityEvent->dup();
-//                msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER);
-//                msg->setInt32("ret",VE_OK);
-//                msg->post();
+                double timestampMs = 0;
+                msg->findDouble("timestamp", &timestampMs);
+                onSeek(timestampMs);
                 postMessage(VE_NOTIFY_EVENT_SEEK_DONE,0,0,0, nullptr);
                 break;
             }
@@ -265,8 +277,7 @@ namespace VE {
         }
         mIsEOS = false;
         mIsStarted = true;
-        auto decodeMsg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
-        decodeMsg->post();
+        postDecode();
         return VE_OK;
     }
 
@@ -287,6 +298,11 @@ namespace VE {
 
     VEResult VEVideoDecoder::onFlush() {
         ALOGI("VEVideoDecoder::onFlush enter");
+        // 递增 epoch，使 flush 之前投递的解码消息全部失效
+        ++mEpoch;
+        mIsStarted = false;
+        mIsEOS = false;
+        mNeedMoreData = false;
         if (mVideoCtx) {
             avcodec_flush_buffers(mVideoCtx);
         }
@@ -294,6 +310,22 @@ namespace VE {
             mFrameQueue->clear();
         }
         return VE_OK;
+    }
+
+    VEResult VEVideoDecoder::onSeek(double timestampMs) {
+        ALOGI("VEVideoDecoder::onSeek enter timestampMs:%f", timestampMs);
+        // seek 必须真正清空 codec 内部参考帧和已解出的帧，
+        // 否则 seek 后会渲染出目标位置之前的残留画面
+        onFlush();
+        // demux 只能定位到关键帧，这里记录目标位置，解码时丢弃其之前的帧
+        mSeekTargetUs = static_cast<int64_t>(timestampMs * 1000);
+        return VE_OK;
+    }
+
+    void VEVideoDecoder::postDecode() {
+        auto decodeMsg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
+        decodeMsg->setInt32("epoch", mEpoch);
+        decodeMsg->post();
     }
 
     VEResult VEVideoDecoder::onDecode() {
@@ -316,6 +348,19 @@ namespace VE {
                 return VE_EOS;
             }
             if (ret >= 0) {
+                // 精准 seek：解码器从关键帧开始出帧，目标之前的帧直接丢弃，
+                // 不做 YUV 拷贝也不入队，只是继续解码
+                if (mSeekTargetUs != kNoSeekTarget) {
+                    int64_t pts = frame->getFrame()->pts;
+                    if (pts != AV_NOPTS_VALUE && pts < mSeekTargetUs) {
+                        ALOGD("VEVideoDecoder::onDecode drop frame pts=%" PRId64
+                                      " until %" PRId64, pts, mSeekTargetUs);
+                        return VE_OK;
+                    }
+                    ALOGI("VEVideoDecoder::onDecode reached seek target pts=%" PRId64, pts);
+                    mSeekTargetUs = kNoSeekTarget;
+                }
+
                 auto videoFrame = std::make_shared<VEFrame>(
                         frame->getFrame()->width,
                         frame->getFrame()->height,
@@ -403,10 +448,9 @@ namespace VE {
         mNotifyMore = notifyMsg;
         mNeedMoreData = true;
 
-        if (!mIsStarted) {
+        if (!mIsStarted && !mIsEOS) {
             mIsStarted = true;
-            auto decodeMsg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
-            decodeMsg->post();
+            postDecode();
         }
         return VE_OK;
     }

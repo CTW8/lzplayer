@@ -41,21 +41,15 @@ namespace VE {
             return true;
         });
 
-        // 设置播放结束回调
+        // 设置播放结束回调。循环播放由 VEPlayer 内部处理(开启循环时不会回调到这里)，
+        // 这里收到就意味着真的播完了。
         mPlayer->setOnCompletionListener([this]() {
             ALOGD("VEPlayerDriver --> VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION enter!!!");
-            bool looping;
             {
-                // seekTo() 内部会取 mMutex，这里必须先释放再调用
                 std::lock_guard<std::mutex> lk(mMutex);
-                looping = mEnableLooping;
-                currentState = looping ? MEDIA_PLAYER_STARTED : MEDIA_PLAYER_PLAYBACK_COMPLETE;
+                currentState = MEDIA_PLAYER_PLAYBACK_COMPLETE;
             }
-            if (looping) {
-                seekTo(0);
-            } else {
-                notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION, 0, 0, nullptr);
-            }
+            notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION, 0, 0, nullptr);
         });
 
         mPlayer->setOnPreparedListener([this]() {
@@ -69,14 +63,13 @@ namespace VE {
         });
 
         mPlayer->setOnSeekComplateListener([this]() {
-            std::lock_guard<std::mutex> lk(mMutex);
-            mIsSeeking = false;
-            ALOGD("VEPlayerDriver --> VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE enter!!!");
-            if (currentState == MEDIA_PLAYER_STARTED) {
-                mPlayer->start();
-            } else if (currentState == MEDIA_PLAYER_PAUSED) {
-                mPlayer->pause();
+            {
+                std::lock_guard<std::mutex> lk(mMutex);
+                mIsSeeking = false;
             }
+            // 播放/暂停状态的恢复由 VEPlayer 的 seek 流程内部完成，
+            // 这里再插手会和它的分阶段推进打架
+            ALOGD("VEPlayerDriver --> VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE enter!!!");
             notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE, 0, 0, nullptr);
         });
 
@@ -208,9 +201,9 @@ namespace VE {
 
     VEResult VEPlayerDriver::setLooping(bool looping) {
         std::lock_guard<std::mutex> lk(mMutex);
-//        mPlayer->setLooping(looping);
         mEnableLooping = looping;
-        return 0;
+        mPlayer->setLooping(looping);
+        return VE_OK;
     }
 
     VEResult VEPlayerDriver::setSpeedRate(float speed) {
@@ -235,22 +228,13 @@ namespace VE {
             return -1;
         }
 
-        if (mIsSeeking) {
-            ALOGI("VEPlayerDriver::%s timestampMs:%f drop seek", __FUNCTION__, timestampMs);
-            return VE_INVALID_OPERATION;
-        }
+        // 不在这里丢弃重复 seek：VEPlayer 会合并进行中的 seek 请求，
+        // 拖动进度条时按最后一次目标定位，比直接丢弃体验更好
         mIsSeeking = true;
 
-
-        if (currentState == MEDIA_PLAYER_STARTED) {
-            mPlayer->pause();
-        }
-
         ALOGI("VEPlayerDriver::%s timestampMs:%f exe seek", __FUNCTION__, timestampMs);
-        int result = mPlayer->seek(timestampMs);
-        if (result == 0) {
-
-        } else {
+        VEResult result = mPlayer->seek(timestampMs);
+        if (result != VE_OK) {
             currentState = MEDIA_PLAYER_STATE_ERROR;
         }
         return result;

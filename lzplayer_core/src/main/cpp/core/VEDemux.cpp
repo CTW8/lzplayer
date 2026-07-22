@@ -172,16 +172,23 @@ namespace VE {
             }
             case kWhatStop: {
                 mIsStart = false;
+                onStop();
+                postMessage(VE_NOTIFY_EVENT_STOP_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatPause: {
+                // 处理到这条消息即代表读取循环已停止：kWhatRead 会检查 mIsStart，
+                // 排在它之前的读取消息此时都已执行完毕。
                 mIsStart = false;
+                onPause();
+                postMessage(VE_NOTIFY_EVENT_PAUSE_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatSeek: {
                 double pos = 0;
                 msg->findDouble("posMs", &pos);
-                int32_t ret = onSeek(pos);
+                VEResult ret = onSeek(pos);
+                postMessage(VE_NOTIFY_EVENT_SEEK_DONE, ret, 0, 0, nullptr);
                 break;
             }
             case kWhatRead: {
@@ -195,6 +202,10 @@ namespace VE {
                                                                                shared_from_this());
                     msg->post();
                 }
+                break;
+            }
+            case kWhatNeedMore: {
+                onNeedMorePacket(msg);
                 break;
             }
             case kWhatRelease:{
@@ -414,59 +425,58 @@ namespace VE {
 
     void VEDemux::putPacket(std::shared_ptr<VEPacket> packet, bool isAudio) {
         ALOGI("VEDemux::%s enter", __FUNCTION__);
-        if (!isAudio) {
-            if (!mVideoPacketQueue->put(packet)) {
-                ALOGD("VEDemux::putPacket Video queue is full, stopping read.");
-                mIsStart = false;
-            } else {
-                ALOGD("VEDemux::putPacket Video queue mNeedVideoMore:%d", mNeedVideoMore);
-                std::lock_guard<std::mutex> lk(mMutexVideo);
+        // 只在 demux 自己的 looper 线程上执行，无需加锁
+        std::shared_ptr<VEPacketQueue> &queue = isAudio ? mAudioPacketQueue : mVideoPacketQueue;
+        bool &needMore = isAudio ? mNeedAudioMore : mNeedVideoMore;
+        std::shared_ptr<AMessage> &notify = isAudio ? mAudioNotify : mVideoNotify;
 
-                if (mNeedVideoMore) {
-                    mNeedVideoMore = false;
-                    if (mVideoNotify) {
-                        ALOGD("VEDemux::putPacket Video queue post notify");
-                        mVideoNotify->post();
-                    }
-                }
-            }
-        } else {
-            if (!mAudioPacketQueue->put(packet)) {
-                ALOGD("VEDemux::putPacket Audio queue is full, stopping read.");
-                mIsStart = false;
-            } else {
-                ALOGD("VEDemux::putPacket Audio queue mNeedAudioMore:%d", mNeedAudioMore);
-                std::lock_guard<std::mutex> lk(mMutexAudio);
-                if (mNeedAudioMore) {
-                    mNeedAudioMore = false;
-                    if (mAudioNotify) {
-                        ALOGD("VEDemux::putPacket Video queue post notify");
-                        mAudioNotify->post();
-                    }
-                }
+        if (!queue->put(packet)) {
+            ALOGD("VEDemux::putPacket %s queue is full, stopping read.", isAudio ? "Audio" : "Video");
+            mIsStart = false;
+        } else if (needMore) {
+            needMore = false;
+            if (notify) {
+                ALOGD("VEDemux::putPacket %s queue post notify", isAudio ? "Audio" : "Video");
+                notify->post();
             }
         }
         ALOGI("VEDemux::%s exit", __FUNCTION__);
     }
 
     void VEDemux::needMorePacket(std::shared_ptr<AMessage> msg, int type) {
+        // 由解码器线程调用：必须转成消息投递到 demux 自己的 looper，
+        // 否则会与读取循环并发读写 mNeedXxxMore / mXxxNotify / mIsStart。
+        ALOGI("VEDemux::%s enter type:%d", __FUNCTION__, type);
+        auto needMsg = std::make_shared<AMessage>(kWhatNeedMore, shared_from_this());
+        needMsg->setObject("notify", msg);
+        needMsg->setInt32("type", type);
+        needMsg->post();
+    }
+
+    VEResult VEDemux::onNeedMorePacket(const std::shared_ptr<AMessage> &msg) {
         ALOGI("VEDemux::%s enter", __FUNCTION__);
+        std::shared_ptr<void> tmp;
+        if (!msg->findObject("notify", &tmp)) {
+            ALOGW("VEDemux::onNeedMorePacket notify not found");
+            return VE_INVALID_PARAMS;
+        }
+        int32_t type = 0;
+        msg->findInt32("type", &type);
+
         if (type == 1) {
-            mAudioNotify = msg;
+            mAudioNotify = std::static_pointer_cast<AMessage>(tmp);
             mNeedAudioMore = true;
-            ALOGI("VEDemux::needMorePacket - Need more packets for type audio.");
         } else {
-            mVideoNotify = msg;
+            mVideoNotify = std::static_pointer_cast<AMessage>(tmp);
             mNeedVideoMore = true;
-            ALOGI("VEDemux::needMorePacket - Need more packets for type: video.");
         }
 
-        if (mIsStart == false) {
+        if (!mIsStart && !mIsEOS) {
             mIsStart = true;
-            ALOGI("VEDemux::needMorePacket - Starting to read packets.");
+            ALOGI("VEDemux::onNeedMorePacket - Starting to read packets.");
             std::make_shared<AMessage>(kWhatRead, shared_from_this())->post();
         }
-        ALOGI("VEDemux::%s exit", __FUNCTION__);
+        return VE_OK;
     }
 
     VEResult

@@ -53,6 +53,10 @@ namespace VE {
 #define VE_NOTIFY_EVENT_EOS                          105
 #define VE_NOTIFY_EVENT_PROGRESS                     106
 #define VE_NOTIFY_EVENT_ERROR                        107
+/// 组件已停止消费数据(pause 命令在组件自己的 looper 上处理完毕)
+#define VE_NOTIFY_EVENT_PAUSE_DONE                   108
+/// seek 后渲染出的第一帧，用于判定 seek 真正完成
+#define VE_NOTIFY_EVENT_FIRST_FRAME                  109
 
 }
 
