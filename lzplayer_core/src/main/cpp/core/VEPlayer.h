@@ -121,6 +121,9 @@ namespace VE {
         /// 按固定顺序遍历已创建的组件，缺失的链路自动跳过
         void forEachComponent(const std::function<void(const std::shared_ptr<IVEComponent> &)> &fn);
 
+        /// 按 停数据流 → 释放资源 → 停线程 → 丢对象 的顺序拆掉整条管线
+        void teardownComponents();
+
     private:
         enum {
             kWhatSetDataSource = '=DaS',

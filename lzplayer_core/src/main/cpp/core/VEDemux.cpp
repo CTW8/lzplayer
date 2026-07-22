@@ -24,7 +24,8 @@ namespace VE {
 
     VEDemux::~VEDemux() {
         ALOGI("VEDemux::%s enter", __FUNCTION__);
-        release();
+        // 析构期间不能用 shared_from_this() 投递消息，直接同步清理
+        onRelease();
         ALOGI("VEDemux::%s exit", __FUNCTION__);
     }
 
@@ -493,18 +494,37 @@ namespace VE {
     }
 
     VEResult VEDemux::onPause() {
+        // 读取循环已由 mIsStart 停下，这里不需要额外动作
         return VE_OK;
     }
 
     VEResult VEDemux::onStop() {
+        // 停止读取并丢掉已缓存的包，避免下次 start 时吐出上一轮的残留数据
+        mIsStart = false;
+        mIsEOS = false;
+        mNeedAudioMore = false;
+        mNeedVideoMore = false;
+        if (mAudioPacketQueue) mAudioPacketQueue->clear();
+        if (mVideoPacketQueue) mVideoPacketQueue->clear();
         return VE_OK;
     }
 
     VEResult VEDemux::onFlush() {
+        mIsEOS = false;
+        mNeedAudioMore = false;
+        mNeedVideoMore = false;
+        if (mAudioPacketQueue) mAudioPacketQueue->clear();
+        if (mVideoPacketQueue) mVideoPacketQueue->clear();
         return VE_OK;
     }
 
     VEResult VEDemux::onRelease() {
+        mIsStart = false;
+        mAudioNotify.reset();
+        mVideoNotify.reset();
+        if (mAudioPacketQueue) mAudioPacketQueue->clear();
+        if (mVideoPacketQueue) mVideoPacketQueue->clear();
+
         if (mFormatContext) {
             avformat_close_input(&mFormatContext);
             mFormatContext = nullptr;

@@ -153,6 +153,10 @@ namespace VE {
                 postMessage(VE_NOTIFY_EVENT_SEEK_DONE, 0, 0, 0, nullptr);
                 break;
             }
+            case kWhatRelease:{
+                onRelease(msg);
+                break;
+            }
             default:{
                 break;
             }
@@ -240,7 +244,15 @@ namespace VE {
     VEResult VEVideoDisplay::onRelease(std::shared_ptr<AMessage> msg) {
         ALOGI("VEVideoDisplay::onRelease enter");
         m_IsStarted = false;
-        return 0;
+        ++m_Epoch;
+        if (m_pVideoRender) {
+            // 必须在渲染线程上销毁 EGL 环境
+            m_pVideoRender->uninitialize();
+            m_pVideoRender.reset();
+        }
+        m_pVideoDec.reset();
+        mWin = nullptr;
+        return VE_OK;
     }
 
     VEResult VEVideoDisplay::onRender(std::shared_ptr<AMessage> msg) {

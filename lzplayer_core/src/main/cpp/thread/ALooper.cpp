@@ -40,16 +40,11 @@ struct ALooper::LooperThread{
 
     bool threadLoop() {
         mThreadId = std::this_thread::get_id();
-        do{
-            bool ret = mLooper->loop();
-            std::lock_guard<std::mutex> lk(mLock);
-            if(ret == false || mExitPending){
-                ALOGE("exit pending thread");
-                mExitPending = false;
-                break;
-            }
-        }while(1);
-
+        // 退出与否完全由 loop() 决定：停止时它会先把队列里剩余的消息处理完
+        // 再返回 false，这样组件的资源释放消息不会被丢弃。
+        while (mLooper->loop()) {
+        }
+        ALOGD("looper thread exit");
         return true;
     }
 
@@ -180,7 +175,7 @@ status_t ALooper::stop() {
         thread->requestExit();
     }
 
-    mQueueChangedCondition.notify_one();
+    mQueueChangedCondition.notify_all();
     {
         std::lock_guard<std::mutex> autoLock(mRepliesLock);
         mRepliesCondition.notify_all();
@@ -227,30 +222,40 @@ bool ALooper::loop() {
 //    ALOGD("ALooper::loop enter thread name: %s, event queue size: %zu", mName.c_str(), mEventQueue.size());
     {
         std::unique_lock<std::mutex> autoLock(mLock);
+
         if (mThread == NULL && !mRunningLocally) {
-            ALOGW("exit loop");
-            return false;
-        }
-        if (mEventQueue.empty()) {
-            mQueueChangedCondition.wait(autoLock);
-            return true;
-        }
-        int64_t whenUs = (*mEventQueue.begin()).mWhenUs;
-        int64_t nowUs = GetNowUs();
-
-        if (whenUs > nowUs) {
-            int64_t delayUs = whenUs - nowUs;
-            if (delayUs > INT64_MAX / 1000) {
-                delayUs = INT64_MAX / 1000;
+            // 正在停止：把队列排空后再退出。停止流程会先投递 release 之类的
+            // 清理消息，直接返回会让这些消息连同资源一起被丢掉。
+            // mDrainBudget 防止自我重投的消息导致排空过程不收敛。
+            if (mEventQueue.empty() || mDrainBudget-- <= 0) {
+                ALOGW("exit loop, %zu message(s) dropped", mEventQueue.size());
+                return false;
             }
-            // mQueueChangedCondition.waitRelative(mLock, delayUs * 1000ll);
-            mQueueChangedCondition.wait_for(autoLock,std::chrono::nanoseconds(delayUs * 1000ll));
+            // 排空阶段忽略延时，剩余消息立即执行
+            event = *mEventQueue.begin();
+            mEventQueue.erase(mEventQueue.begin());
+        } else {
+            if (mEventQueue.empty()) {
+                mQueueChangedCondition.wait(autoLock);
+                return true;
+            }
+            int64_t whenUs = (*mEventQueue.begin()).mWhenUs;
+            int64_t nowUs = GetNowUs();
 
-            return true;
+            if (whenUs > nowUs) {
+                int64_t delayUs = whenUs - nowUs;
+                if (delayUs > INT64_MAX / 1000) {
+                    delayUs = INT64_MAX / 1000;
+                }
+                // mQueueChangedCondition.waitRelative(mLock, delayUs * 1000ll);
+                mQueueChangedCondition.wait_for(autoLock,std::chrono::nanoseconds(delayUs * 1000ll));
+
+                return true;
+            }
+
+            event = *mEventQueue.begin();
+            mEventQueue.erase(mEventQueue.begin());
         }
-
-        event = *mEventQueue.begin();
-        mEventQueue.erase(mEventQueue.begin());
 
 //        ALOGD("ALooper::loop thread name: %s, event queue size: %zu", mName.c_str(), mEventQueue.size());
     }

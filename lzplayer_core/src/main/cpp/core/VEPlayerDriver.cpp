@@ -80,7 +80,24 @@ namespace VE {
         });
     }
 
-    VEPlayerDriver::~VEPlayerDriver() {}
+    VEPlayerDriver::~VEPlayerDriver() {
+        ALOGI("VEPlayerDriver::%s enter", __FUNCTION__);
+        // 顺序很重要：先同步释放播放器(内部会停掉并 join 所有组件线程)，
+        // 再停掉 player looper。反过来做的话组件线程还在跑就把对象销毁了。
+        if (mPlayer) {
+            mPlayer->release();
+        }
+        if (mPlayerLooper) {
+            if (mPlayer) {
+                mPlayerLooper->unregisterHandler(mPlayer->id());
+            }
+            mPlayerLooper->stop();
+        }
+        mPlayer.reset();
+        mPlayerLooper.reset();
+        mListener.reset();
+        ALOGI("VEPlayerDriver::%s exit", __FUNCTION__);
+    }
 
     VEResult VEPlayerDriver::setDataSource(std::string path) {
         std::lock_guard<std::mutex> lk(mMutex);

@@ -18,6 +18,7 @@ public class NativeLib {
     private long mHandle = 0;
     private IVEPlayerListener mListener;
     private EventHandler mEventHandler;
+    private HandlerThread mEventThread;
     private static final String TAG = "NativeLib";
 
     // Used to load the 'lzplayer_core' library on application startup.
@@ -31,9 +32,12 @@ public class NativeLib {
 
     public int init(String path){
         if(mHandle != 0){
-            HandlerThread handlerThread = new HandlerThread("veplayer");
-            handlerThread.start();
-            mEventHandler = new EventHandler(this,handlerThread.getLooper());
+            // 重复 init 时复用已有的事件线程，避免每次都新起一个线程泄漏
+            if(mEventThread == null){
+                mEventThread = new HandlerThread("veplayer");
+                mEventThread.start();
+                mEventHandler = new EventHandler(this, mEventThread.getLooper());
+            }
             return nativeInit(new WeakReference<NativeLib>(this), mHandle, path);
         }
         return -1;
@@ -93,11 +97,22 @@ public class NativeLib {
         }
     }
 
-    public int release(){
-        if(mHandle != 0){
-            return nativeRelease(mHandle);
+    public synchronized int release(){
+        if(mHandle == 0){
+            return -1;
         }
-        return -1;
+        // 先置零再释放：nativeRelease 会 delete 掉底层对象，
+        // 句柄不清空的话第二次 release 就是 double free。
+        long handle = mHandle;
+        mHandle = 0;
+        int ret = nativeRelease(handle);
+
+        if(mEventThread != null){
+            mEventThread.quitSafely();
+            mEventThread = null;
+            mEventHandler = null;
+        }
+        return ret;
     }
 
     public long getDuration(){
@@ -139,7 +154,8 @@ public class NativeLib {
 
     private static void postEventFromNative(Object player_ref ,int what, int arg1, double arg2,Object obj){
         final NativeLib mp = (NativeLib)((WeakReference)player_ref).get();
-        if (mp.mEventHandler != null) {
+        // 播放器已被回收/释放时，native 侧仍可能有在途回调
+        if (mp != null && mp.mEventHandler != null) {
             Log.d(TAG,"postEventFromNative what:" + what + " arg1:" + arg1 + " arg2:" + arg2 + " obj:" + obj);
             Message m = Message.obtain();
             m.what = what;

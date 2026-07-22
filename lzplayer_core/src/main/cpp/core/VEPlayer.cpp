@@ -84,9 +84,15 @@ namespace VE {
 
     VEResult VEPlayer::release() {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        std::make_shared<AMessage>(kWhatRelease, shared_from_this())->post();
+        // 同步等待：返回后各组件线程都已退出、资源已释放，调用方才能安全销毁播放器
+        auto msg = std::make_shared<AMessage>(kWhatRelease, shared_from_this());
+        std::shared_ptr<AMessage> response;
+        if (msg->postAndAwaitResponse(&response) != OK) {
+            ALOGW("VEPlayer::%s post release failed, looper may be gone", __FUNCTION__);
+            return VE_UNKNOWN_ERROR;
+        }
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
+        return VE_OK;
     }
 
     VEResult VEPlayer::seek(double timestampMs) {
@@ -195,7 +201,14 @@ namespace VE {
             ALOGE("VEPlayer::%s - Invalid path", __FUNCTION__);
             return VE_UNKNOWN_ERROR; // Define this error code
         }
+        // 允许不经 reset 直接换片源：先拆掉上一套组件，否则会再建一套 looper
+        if (mDemux != nullptr) {
+            ALOGI("VEPlayer::%s tear down previous pipeline first", __FUNCTION__);
+            teardownComponents();
+        }
+
         mPath = path;
+        mState = STATE_IDLE;
 
         mRenderNotifyMsg = std::make_shared<AMessage>(kWhatComponentEvent, shared_from_this());
 
@@ -368,26 +381,85 @@ namespace VE {
         return VE_OK;
     }
 
-    VEResult VEPlayer::onReset(std::shared_ptr<AMessage> msg) {
+    void VEPlayer::teardownComponents() {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->flush(); });
-        if (mDemux) {
-            mDemux->seekTo(0);
+
+        // 中断正在进行的流程，避免拆解过程中还有回调想往下推进
+        mSeekStage = SEEK_STAGE_NONE;
+        mHasPendingSeek = false;
+        mPendingAcks = 0;
+        mAckContinuation = nullptr;
+        ++mAckGeneration;
+
+        // ① 先停数据流：demux 停止读取，解码器/渲染器停止消费
+        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->stop(); });
+
+        // ② 投递释放消息。looper 停止时会把队列排空，这些消息保证会被执行到，
+        //    编解码器上下文/EGL/SLES 都在各自的线程上销毁。
+        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->release(); });
+
+        // ③ 逐个停止并 join 组件线程(会先排空队列，执行上面的释放消息)
+        const std::shared_ptr<ALooper> loopers[] = {
+                mVideoRenderLooper, mAudioOutputLooper,
+                mVideoDecodeLooper, mAudioDecodeLooper, mDemuxLooper
+        };
+        for (const auto &looper : loopers) {
+            if (looper) {
+                looper->stop();
+            }
         }
+
+        // ④ 组件线程已退出，可以安全丢掉对象
+        mVideoRender.reset();
+        mAudioOutput.reset();
+        mVideoDecoder.reset();
+        mAudioDecoder.reset();
+        mDemux.reset();
+
+        mVideoRenderLooper.reset();
+        mAudioOutputLooper.reset();
+        mVideoDecodeLooper.reset();
+        mAudioDecodeLooper.reset();
+        mDemuxLooper.reset();
+
+        mAVSync.reset();
+        mMediaInfo.reset();
+
         mVideoEOS = false;
         mAudioEOS = false;
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
+    }
+
+    VEResult VEPlayer::onReset(std::shared_ptr<AMessage> msg) {
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        // reset 后应能重新 setDataSource：必须真正拆掉这一套组件和线程，
+        // 否则再次 setDataSource 会又建一套 looper，线程只增不减。
+        teardownComponents();
+        mPath.clear();
+        mState = STATE_IDLE;
+        ALOGI("VEPlayer::%s exit", __FUNCTION__);
+        return VE_OK;
     }
 
     VEResult VEPlayer::onRelease(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        teardownComponents();
+
         if (mWindow) {
             ANativeWindow_release(mWindow);
             mWindow = nullptr;
         }
+        mState = STATE_IDLE;
+
+        // release 是同步调用：调用方(Driver 析构)要等这里做完才能销毁 player looper
+        std::shared_ptr<AReplyToken> replyID;
+        if (msg->senderAwaitsResponse(replyID)) {
+            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
+            response->setInt32("ret", VE_OK);
+            response->postReply(replyID);
+        }
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
+        return VE_OK;
     }
 
     void VEPlayer::setLooping(bool enable) {

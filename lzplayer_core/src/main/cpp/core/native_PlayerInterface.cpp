@@ -206,6 +206,8 @@ namespace VE {
         ALOGD("nativeRelease called with handle: %ld", handle);
         VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
         CHECK_NULL();
+        // 析构里会同步停掉并 join 所有内部线程后才返回，
+        // Java 侧已把句柄置零，不会有第二次进入。
         delete vePlayer;
         return 0;
     }

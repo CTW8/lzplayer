@@ -174,9 +174,14 @@ namespace VE {
                 break;
             }
             case kWhatRelease:{
+                m_IsStarted = false;
+                ++m_Epoch;
                 if (m_AudioRenderer) {
                     m_AudioRenderer->release();
+                    // 置空，避免析构时二次 release
+                    m_AudioRenderer.reset();
                 }
+                m_AudioDecoder.reset();
                 break;
             }
             default:{

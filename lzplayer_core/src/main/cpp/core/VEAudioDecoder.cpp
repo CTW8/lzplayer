@@ -18,7 +18,10 @@ namespace VE {
     }
 
     VEAudioDecoder::~VEAudioDecoder() {
-        release();
+        // 不能调 release()：它内部要用 shared_from_this() 投递消息，
+        // 而析构期间对象已不再被 shared_ptr 持有，会抛 bad_weak_ptr。
+        // 正常路径下 onRelease 已由 release() 流程执行过，这里只是兜底。
+        onRelease();
     }
 
     VEResult VEAudioDecoder::prepare(std::shared_ptr<VEDemux> demux) {
@@ -373,12 +376,23 @@ namespace VE {
 
     VEResult VEAudioDecoder::onRelease() {
         ALOGI("VEAudioDecoder::%s enter", __FUNCTION__);
+        mIsStarted = false;
         if (mAudioCtx) {
             avcodec_free_context(&mAudioCtx);
+            mAudioCtx = nullptr;
         }
-
+        if (mSwrCtx) {
+            swr_free(&mSwrCtx);
+            mSwrCtx = nullptr;
+        }
+        if (mFrameQueue) {
+            mFrameQueue->clear();
+            mFrameQueue.reset();
+        }
+        mDemux.reset();
+        mNotifyMore.reset();
         mMediaInfo = nullptr;
-        return false;
+        return VE_OK;
     }
 
     VEResult VEAudioDecoder::onStart() {
