@@ -182,6 +182,7 @@ namespace VE {
                     m_AudioRenderer.reset();
                 }
                 m_AudioDecoder.reset();
+                postMessage(VE_NOTIFY_EVENT_RELEASE_DONE, 0, 0, 0, nullptr);
                 break;
             }
             default:{

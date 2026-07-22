@@ -12,6 +12,10 @@ namespace VE {
         /// 进度上报间隔。原先每渲染一帧上报一次(30fps 即每秒 30 条跨线程消息
         /// 加 30 次 JNI 回调)，且纯音频文件因为没有视频渲染完全收不到进度。
         constexpr int64_t kProgressIntervalUs = 500000;
+
+        /// 拆解阶段的回执超时。release 是同步调用(通常来自主线程的 onDestroy)，
+        /// 两个阶段各等 2s 会逼近 ANR 阈值，所以这里收紧。
+        constexpr int64_t kTeardownAckTimeoutUs = 800000;
     }
 
     VEPlayer::VEPlayer() {
@@ -209,12 +213,19 @@ namespace VE {
             ALOGE("VEPlayer::%s - Invalid path", __FUNCTION__);
             return VE_UNKNOWN_ERROR; // Define this error code
         }
-        // 允许不经 reset 直接换片源：先拆掉上一套组件，否则会再建一套 looper
+        // 允许不经 reset 直接换片源：先拆掉上一套组件(异步握手)，
+        // 拆干净了再建新链路，否则会再建一套 looper 导致线程只增不减
         if (mDemux != nullptr) {
             ALOGI("VEPlayer::%s tear down previous pipeline first", __FUNCTION__);
-            teardownComponents();
+            teardownComponents([this, path] { setupDataSource(path); });
+            return VE_OK;
         }
 
+        return setupDataSource(path);
+    }
+
+    VEResult VEPlayer::setupDataSource(const std::string &path) {
+        ALOGI("VEPlayer::%s path:%s", __FUNCTION__, path.c_str());
         mPath = path;
         mState = STATE_IDLE;
 
@@ -226,8 +237,7 @@ namespace VE {
 
         mDemux = std::make_shared<VEDemux>(mRenderNotifyMsg);
         mDemuxLooper->registerHandler(mDemux);
-        ALOGV("VEPlayer::%s exit", __FUNCTION__);
-        return 0;
+        return VE_OK;
     }
 
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
@@ -335,7 +345,7 @@ namespace VE {
 
     VEResult VEPlayer::onStart(std::shared_ptr<AMessage> msg) {
         ALOGV("VEPlayer::%s enter", __FUNCTION__);
-        if (mState == STATE_IDLE || mState == STATE_ERROR) {
+        if (mState == STATE_IDLE || mState == STATE_ERROR || mState == STATE_RELEASING) {
             ALOGW("VEPlayer::%s ignored in state %d", __FUNCTION__, mState);
             return VE_INVALID_OPERATION;
         }
@@ -358,6 +368,10 @@ namespace VE {
 
     VEResult VEPlayer::onStop(std::shared_ptr<AMessage> msg) {
         ALOGV("VEPlayer::%s enter", __FUNCTION__);
+        if (mState == STATE_RELEASING) {
+            ALOGW("VEPlayer::%s ignored while releasing", __FUNCTION__);
+            return VE_INVALID_OPERATION;
+        }
         mSeekStage = SEEK_STAGE_NONE;
         mHasPendingSeek = false;
         mPendingAcks = 0;
@@ -403,8 +417,8 @@ namespace VE {
         return VE_OK;
     }
 
-    void VEPlayer::teardownComponents() {
-        ALOGV("VEPlayer::%s enter", __FUNCTION__);
+    void VEPlayer::teardownComponents(std::function<void()> onDone) {
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
 
         // 中断正在进行的流程，避免拆解过程中还有回调想往下推进
         stopProgressTick();
@@ -413,26 +427,51 @@ namespace VE {
         mPendingAcks = 0;
         mAckContinuation = nullptr;
         ++mAckGeneration;
+        mState = STATE_RELEASING;
 
-        // ① 先停数据流：demux 停止读取，解码器/渲染器停止消费
+        // ① 停数据流：demux 停止读取，解码器/渲染器停止消费。
+        //    等齐 STOP_DONE 才能确认没有组件还在动数据。
+        uint32_t mask = activeComponentMask();
         forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->stop(); });
 
-        // ② 投递释放消息。looper 停止时会把队列排空，这些消息保证会被执行到，
-        //    编解码器上下文/EGL/SLES 都在各自的线程上销毁。
-        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->release(); });
+        awaitAcks(mask, VE_NOTIFY_EVENT_STOP_DONE, [this, onDone] {
+            // ② 释放资源。编解码器上下文/EGL/SLES 都必须在各自的线程上销毁，
+            //    所以只能投递消息过去，等 RELEASE_DONE 回执确认做完。
+            ALOGI("VEPlayer::teardown stage 2/2 - releasing component resources");
+            uint32_t releaseMask = activeComponentMask();
+            forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->release(); });
 
-        // ③ 逐个停止并 join 组件线程(会先排空队列，执行上面的释放消息)
+            awaitAcks(releaseMask, VE_NOTIFY_EVENT_RELEASE_DONE, [this, onDone] {
+                // ③ 资源已释放干净，此时停 looper 丢消息也不会漏掉任何清理
+                finishTeardown();
+                if (onDone) {
+                    onDone();
+                }
+            }, kTeardownAckTimeoutUs);
+        }, kTeardownAckTimeoutUs);
+    }
+
+    void VEPlayer::finishTeardown() {
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
+
+        // 停止并 join 组件线程。资源已在上一步释放完，
+        // 队列里即便还有残留消息也只是过期的解码/渲染消息，丢掉无妨。
         const std::shared_ptr<ALooper> loopers[] = {
                 mVideoRenderLooper, mAudioOutputLooper,
                 mVideoDecodeLooper, mAudioDecodeLooper, mDemuxLooper
         };
-        for (const auto &looper : loopers) {
-            if (looper) {
-                looper->stop();
+        const std::shared_ptr<AHandler> handlers[] = {
+                mVideoRender, mAudioOutput, mVideoDecoder, mAudioDecoder, mDemux
+        };
+        for (size_t i = 0; i < sizeof(loopers) / sizeof(loopers[0]); ++i) {
+            if (loopers[i] && handlers[i]) {
+                loopers[i]->unregisterHandler(handlers[i]->id());
+            }
+            if (loopers[i]) {
+                loopers[i]->stop();
             }
         }
 
-        // ④ 组件线程已退出，可以安全丢掉对象
         mVideoRender.reset();
         mAudioOutput.reset();
         mVideoDecoder.reset();
@@ -451,38 +490,43 @@ namespace VE {
 
         mVideoEOS = false;
         mAudioEOS = false;
-        ALOGV("VEPlayer::%s exit", __FUNCTION__);
+        ALOGI("VEPlayer::%s exit", __FUNCTION__);
     }
 
     VEResult VEPlayer::onReset(std::shared_ptr<AMessage> msg) {
-        ALOGV("VEPlayer::%s enter", __FUNCTION__);
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
         // reset 后应能重新 setDataSource：必须真正拆掉这一套组件和线程，
         // 否则再次 setDataSource 会又建一套 looper，线程只增不减。
-        teardownComponents();
-        mPath.clear();
-        mState = STATE_IDLE;
-        ALOGV("VEPlayer::%s exit", __FUNCTION__);
+        teardownComponents([this] {
+            mPath.clear();
+            mState = STATE_IDLE;
+            ALOGI("VEPlayer::onReset done");
+        });
         return VE_OK;
     }
 
     VEResult VEPlayer::onRelease(std::shared_ptr<AMessage> msg) {
-        ALOGV("VEPlayer::%s enter", __FUNCTION__);
-        teardownComponents();
+        ALOGI("VEPlayer::%s enter", __FUNCTION__);
 
-        if (mWindow) {
-            ANativeWindow_release(mWindow);
-            mWindow = nullptr;
-        }
-        mState = STATE_IDLE;
-
-        // release 是同步调用：调用方(Driver 析构)要等这里做完才能销毁 player looper
+        // release 是同步调用(Driver 析构在等)，但拆解要跨多轮消息握手，
+        // 所以先扣下 replyToken，等整条链走完再回复。
         std::shared_ptr<AReplyToken> replyID;
-        if (msg->senderAwaitsResponse(replyID)) {
-            std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
-            response->setInt32("ret", VE_OK);
-            response->postReply(replyID);
-        }
-        ALOGV("VEPlayer::%s exit", __FUNCTION__);
+        bool wantsReply = msg->senderAwaitsResponse(replyID);
+
+        teardownComponents([this, replyID, wantsReply] {
+            if (mWindow) {
+                ANativeWindow_release(mWindow);
+                mWindow = nullptr;
+            }
+            mState = STATE_IDLE;
+            ALOGI("VEPlayer::onRelease done");
+
+            if (wantsReply) {
+                std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
+                response->setInt32("ret", VE_OK);
+                response->postReply(replyID);
+            }
+        });
         return VE_OK;
     }
 
@@ -692,7 +736,8 @@ namespace VE {
         return mask;
     }
 
-    void VEPlayer::awaitAcks(uint32_t mask, int32_t event, std::function<void()> next) {
+    void VEPlayer::awaitAcks(uint32_t mask, int32_t event, std::function<void()> next,
+                             int64_t timeoutUs) {
         mPendingAcks = mask;
         mExpectedAckEvent = event;
         mAckContinuation = std::move(next);
@@ -713,7 +758,7 @@ namespace VE {
         // 丢失回执时的兜底，避免流程永久停在某一阶段
         auto timeoutMsg = std::make_shared<AMessage>(kWhatAckTimeout, shared_from_this());
         timeoutMsg->setInt32("generation", mAckGeneration);
-        timeoutMsg->post(kAckTimeoutUs);
+        timeoutMsg->post(timeoutUs > 0 ? timeoutUs : kAckTimeoutUs);
     }
 
     void VEPlayer::onComponentAck(int32_t type, int32_t event) {
@@ -796,7 +841,7 @@ namespace VE {
     // ---------------------------------------------------------------------
 
     void VEPlayer::startSeek(double timestampMs) {
-        if (mState == STATE_IDLE || mState == STATE_ERROR) {
+        if (mState == STATE_IDLE || mState == STATE_ERROR || mState == STATE_RELEASING) {
             ALOGW("VEPlayer::startSeek ignored in state %d", mState);
             return;
         }

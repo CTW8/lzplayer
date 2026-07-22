@@ -155,6 +155,7 @@ namespace VE {
             }
             case kWhatRelease:{
                 onRelease(msg);
+                postMessage(VE_NOTIFY_EVENT_RELEASE_DONE, 0, 0, 0, nullptr);
                 break;
             }
             default:{

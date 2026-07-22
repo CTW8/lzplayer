@@ -135,6 +135,7 @@ namespace VE {
             }
             case kWhatUninit: {
                 onRelease();
+                postMessage(VE_NOTIFY_EVENT_RELEASE_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatNeedMore: {

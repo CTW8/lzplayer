@@ -74,10 +74,6 @@ private:
     std::shared_ptr<LooperThread> mThread;
     bool mRunningLocally;
 
-    /// stop() 后允许继续处理的消息数上限，防止自我重投的消息让排空过程不收敛
-    static const int32_t kMaxDrainMessages = 4096;
-    int32_t mDrainBudget = kMaxDrainMessages;
-
     // use a separate lock for reply handling, as it is always on another thread
     // use a central lock, however, to avoid creating a mutex for each reply
     std::mutex mRepliesLock;

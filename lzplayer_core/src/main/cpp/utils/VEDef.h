@@ -57,6 +57,9 @@ namespace VE {
 #define VE_NOTIFY_EVENT_PAUSE_DONE                   108
 /// seek 后渲染出的第一帧，用于判定 seek 真正完成
 #define VE_NOTIFY_EVENT_FIRST_FRAME                  109
+/// 组件已在自己的线程上释放完资源(编解码器上下文/EGL/SLES)，
+/// 收齐后才能停掉它的 looper
+#define VE_NOTIFY_EVENT_RELEASE_DONE                 110
 
 }
 

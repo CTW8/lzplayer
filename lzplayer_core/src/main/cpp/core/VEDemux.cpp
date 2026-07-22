@@ -211,6 +211,8 @@ namespace VE {
             }
             case kWhatRelease:{
                 onRelease();
+                // 资源已在本线程释放完毕，上层收齐回执后才会停这条 looper
+                postMessage(VE_NOTIFY_EVENT_RELEASE_DONE, 0, 0, 0, nullptr);
                 break;
             }
             default:{

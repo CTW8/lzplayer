@@ -121,8 +121,16 @@ namespace VE {
         /// 按固定顺序遍历已创建的组件，缺失的链路自动跳过
         void forEachComponent(const std::function<void(const std::shared_ptr<IVEComponent> &)> &fn);
 
-        /// 按 停数据流 → 释放资源 → 停线程 → 丢对象 的顺序拆掉整条管线
-        void teardownComponents();
+        /// 按 停数据流 → 释放资源 → 停线程 → 丢对象 的顺序拆掉整条管线。
+        /// 前两步靠组件回执握手完成(资源必须在各自线程上释放)，
+        /// 因此整个过程是异步的，结束后回调 onDone。
+        void teardownComponents(std::function<void()> onDone);
+
+        /// 回执齐了之后的收尾：停 looper、丢对象
+        void finishTeardown();
+
+        /// setDataSource 的实际建链部分，拆解完旧管线后才执行
+        VEResult setupDataSource(const std::string &path);
 
     private:
         enum {
@@ -153,6 +161,7 @@ namespace VE {
             STATE_PAUSED,
             STATE_SEEKING,
             STATE_COMPLETED,
+            STATE_RELEASING,   ///< 正在拆解管线，期间拒绝一切播放控制命令
             STATE_ERROR
         };
 
@@ -189,8 +198,10 @@ namespace VE {
         /// 已创建组件的位掩码
         uint32_t activeComponentMask() const;
 
-        /// 等待 mask 中所有组件回报 event，齐了之后执行 next
-        void awaitAcks(uint32_t mask, int32_t event, std::function<void()> next);
+        /// 等待 mask 中所有组件回报 event，齐了之后执行 next。
+        /// timeoutUs<=0 时用默认超时。
+        void awaitAcks(uint32_t mask, int32_t event, std::function<void()> next,
+                       int64_t timeoutUs = 0);
 
         /// 收到某个组件的回执，清位；清空后触发后续动作
         void onComponentAck(int32_t type, int32_t event);
