@@ -53,12 +53,10 @@ namespace VE {
     }
 
     VEResult VEAudioRender::seekTo(double_t timestamp) {
-        int32_t ret = VE_OK;
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
-        std::shared_ptr<AMessage> response;
-        msg->postAndAwaitResponse(&response);
-        response->findInt32("ret", &ret);
-        return ret;
+        msg->setDouble("timestamp", timestamp);
+        msg->post();
+        return VE_OK;
     }
 
     VEResult VEAudioRender::flush() {

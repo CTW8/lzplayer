@@ -2,7 +2,9 @@
 #define __VEPLAYER__
 
 #include <string>
+#include <functional>
 #include <android/native_window_jni.h>
+#include "IVEComponent.h"
 #include "VEDemux.h"
 #include "VEAudioDecoder.h"
 #include "VEVideoDecoder.h"
@@ -102,11 +104,21 @@ namespace VE {
             }
         }
 
+        void notifyError(int code, const std::string &msg) {
+            ALOGE("VEPlayer error code:%d msg:%s", code, msg.c_str());
+            if (onErrorCallback) {
+                onErrorCallback(code, msg);
+            }
+        }
+
     private:
 
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
         void onEOS();
+
+        /// 按固定顺序遍历已创建的组件，缺失的链路自动跳过
+        void forEachComponent(const std::function<void(const std::shared_ptr<IVEComponent> &)> &fn);
 
     private:
         enum {

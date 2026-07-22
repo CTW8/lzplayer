@@ -18,9 +18,6 @@ namespace VE {
         // 获取基于音频的当前时间
         double getCurrentMediaTime() const;
 
-        // 计算视频渲染的时间
-        double getVideoRenderTime(double videoPts) const;
-
         // 重置时钟
         void resetClock();
 
@@ -29,7 +26,6 @@ namespace VE {
 
     private:
         double m_AudioTimestamp;       // 最近更新的音频时间戳
-        mutable double m_VideoTimestamp; // 最近更新的视频时间戳 (允许在 const 函数中修改)
         int64_t m_BaseSystemTime;      // 系统基准时间 (单位：微秒)
         int64_t m_AudioSystemTime;     // 音频系统时间 (单位：微秒)
         double m_PlaybackSpeed;        // 播放速度

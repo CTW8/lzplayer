@@ -232,11 +232,16 @@ namespace VE {
         VEBundle params;
         params.set("path", mPath);
         if (mDemux->prepare(params) != VE_OK) {
-            //notify error
-            onErrorCallback(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
+            notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
+            return VE_UNKNOWN_ERROR;
         }
 
         mMediaInfo = mDemux->getFileInfo();
+        if (mMediaInfo == nullptr ||
+            (mMediaInfo->audio_stream_index == -1 && mMediaInfo->video_stream_index == -1)) {
+            notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "no playable stream found!!");
+            return VE_UNKNOWN_ERROR;
+        }
         mAVSync = std::make_shared<VEAVsync>();
 
         if(mMediaInfo->audio_stream_index != -1) {
@@ -292,44 +297,42 @@ namespace VE {
 //            }
         }
 
-        onPreparedCallback();
+        if (onPreparedCallback) {
+            onPreparedCallback();
+        }
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
+    void VEPlayer::forEachComponent(const std::function<void(const std::shared_ptr<IVEComponent> &)> &fn) {
+        // 固定顺序遍历，缺失的组件(如纯音频文件没有视频链路)自动跳过
+        const std::shared_ptr<IVEComponent> components[] = {
+                mVideoRender, mAudioOutput, mVideoDecoder, mAudioDecoder, mDemux
+        };
+        for (const auto &component : components) {
+            if (component) {
+                fn(component);
+            }
+        }
+    }
+
     VEResult VEPlayer::onStart(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        mVideoRender->start();
-        mAudioOutput->start();
-
-        mVideoDecoder->start();
-        mAudioDecoder->start();
-
-        mDemux->start();
+        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEPlayer::onStop(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        mVideoRender->stop();
-        mAudioOutput->stop();
-
-        mVideoDecoder->stop();
-        mAudioDecoder->stop();
-
-        mDemux->stop();
+        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->stop(); });
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEPlayer::onPause(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        mVideoRender->pause();
-        mAudioOutput->pause();
-        mVideoDecoder->pause();
-        mAudioDecoder->pause();
-        mDemux->pause();
+        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->pause(); });
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
@@ -338,13 +341,15 @@ namespace VE {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         double timestampMs;
         if (msg->findDouble("timestampMs", &timestampMs)) {
-            mVideoRender->seekTo(timestampMs);
-            mAudioOutput->seekTo(timestampMs);
-            mVideoDecoder->seekTo(timestampMs);
-            mAudioDecoder->seekTo(timestampMs);
-            mDemux->seekTo(timestampMs);
+            forEachComponent([timestampMs](const std::shared_ptr<IVEComponent> &c) {
+                c->seekTo(timestampMs);
+            });
+            mVideoEOS = false;
+            mAudioEOS = false;
             //从这里发出时不对的，应该在精准seek解码后渲染完成后发出
-            onSeekComplateCallback();
+            if (onSeekComplateCallback) {
+                onSeekComplateCallback();
+            }
         }
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
@@ -352,9 +357,12 @@ namespace VE {
 
     VEResult VEPlayer::onReset(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        mVideoDecoder->flush();
-        mAudioDecoder->flush();
-        mDemux->seekTo(0);
+        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->flush(); });
+        if (mDemux) {
+            mDemux->seekTo(0);
+        }
+        mVideoEOS = false;
+        mAudioEOS = false;
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
         return 0;
     }
@@ -446,11 +454,17 @@ namespace VE {
 
     void VEPlayer::onEOS() {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        if (mVideoEOS && mAudioEOS) {
+        // 只统计实际存在的链路：纯音频/纯视频文件不该等一条永远不会到来的 EOS
+        bool videoDone = (mVideoRender == nullptr) || mVideoEOS;
+        bool audioDone = (mAudioOutput == nullptr) || mAudioEOS;
+
+        if (videoDone && audioDone) {
             ALOGI("VEPlayer::%s play complate", __FUNCTION__);
-            onCompleteCallback();
             mVideoEOS = false;
             mAudioEOS = false;
+            if (onCompleteCallback) {
+                onCompleteCallback();
+            }
         }
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
     }

@@ -5,6 +5,11 @@
 #include "VEPlayerDriver.h"
 #include "VEDef.h"
 namespace VE {
+    namespace {
+        // 同步 prepare() 的最长等待时间，超时视为底层异常
+        const std::chrono::seconds kPrepareTimeout(10);
+    }
+
     VEPlayerDriver::VEPlayerDriver()
             : currentState(MEDIA_PLAYER_IDLE), mPlayer(std::make_shared<VEPlayer>()) {
 
@@ -25,7 +30,12 @@ namespace VE {
         // 设置出错回调
         mPlayer->setOnErrorListener([this](int msg1, std::string msg2) {
             // 遇到错误直接切换到 MEDIA_PLAYER_STATE_ERROR
-            currentState = MEDIA_PLAYER_STATE_ERROR;
+            {
+                std::lock_guard<std::mutex> lk(mMutex);
+                currentState = MEDIA_PLAYER_STATE_ERROR;
+            }
+            // prepare() 可能正阻塞等待，错误态也要唤醒它，否则调用线程永久挂起
+            mCond.notify_all();
             ALOGD("VEPlayerDriver --> VE_PLAYER_NOTIFY_EVENT_ON_ERROR enter!!!");
             notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_ERROR, msg1, 0, &msg2);
             return true;
@@ -33,20 +43,27 @@ namespace VE {
 
         // 设置播放结束回调
         mPlayer->setOnCompletionListener([this]() {
-            // 否则进入播放完成状态
-            currentState = MEDIA_PLAYER_PLAYBACK_COMPLETE;
             ALOGD("VEPlayerDriver --> VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION enter!!!");
-            if(mEnableLooping){
-                currentState = MEDIA_PLAYER_STARTED;
+            bool looping;
+            {
+                // seekTo() 内部会取 mMutex，这里必须先释放再调用
+                std::lock_guard<std::mutex> lk(mMutex);
+                looping = mEnableLooping;
+                currentState = looping ? MEDIA_PLAYER_STARTED : MEDIA_PLAYER_PLAYBACK_COMPLETE;
+            }
+            if (looping) {
                 seekTo(0);
-            }else{
+            } else {
                 notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION, 0, 0, nullptr);
             }
         });
 
         mPlayer->setOnPreparedListener([this]() {
-            currentState = MEDIA_PLAYER_PREPARED;
-            mCond.notify_one();
+            {
+                std::lock_guard<std::mutex> lk(mMutex);
+                currentState = MEDIA_PLAYER_PREPARED;
+            }
+            mCond.notify_all();
             ALOGD("VEPlayerDriver --> VE_PLAYER_NOTIFY_EVENT_ON_PREPARED enter!!!");
             notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_PREPARED, 0, 0, nullptr);
         });
@@ -100,11 +117,23 @@ namespace VE {
             return VE_UNKNOWN_ERROR;
         }
 
+        currentState = MEDIA_PLAYER_PREPARING;
         mPlayer->prepare();
 
-        mCond.wait(lk);
+        // 带谓词等待，避免 prepare 在 wait 之前完成导致的唤醒丢失；
+        // 加超时兜底，底层卡住时不至于把调用线程永久挂起。
+        bool done = mCond.wait_for(lk, kPrepareTimeout, [this] {
+            return currentState == MEDIA_PLAYER_PREPARED ||
+                   currentState == MEDIA_PLAYER_STATE_ERROR;
+        });
 
-        return VE_OK;
+        if (!done) {
+            ALOGE("VEPlayerDriver::%s prepare timed out", __FUNCTION__);
+            currentState = MEDIA_PLAYER_STATE_ERROR;
+            return VE_TIMED_OUT;
+        }
+
+        return currentState == MEDIA_PLAYER_PREPARED ? VE_OK : VE_UNKNOWN_ERROR;
     }
 
     VEResult VEPlayerDriver::prepareAsync() {

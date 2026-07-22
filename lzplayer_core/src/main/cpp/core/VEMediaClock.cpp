@@ -3,7 +3,7 @@ using namespace std::chrono;
 ///时间单位都是微秒
 namespace VE {
     VEMediaClock::VEMediaClock()
-            : m_AudioTimestamp(0), m_VideoTimestamp(0), m_BaseSystemTime(0), m_AudioSystemTime(0),
+            : m_AudioTimestamp(0), m_BaseSystemTime(0), m_AudioSystemTime(0),
               m_PlaybackSpeed(1.0) {}
 
     VEMediaClock::~VEMediaClock() {}
@@ -34,18 +34,10 @@ namespace VE {
         return elapsedTime * m_PlaybackSpeed + m_AudioTimestamp;
     }
 
-    double VEMediaClock::getVideoRenderTime(double videoPts) const {
-        std::lock_guard<std::mutex> lock(m_Mutex);
-
-        m_VideoTimestamp = videoPts;
-        return getCurrentMediaTime() - videoPts;
-    }
-
     void VEMediaClock::resetClock() {
         std::lock_guard<std::mutex> lock(m_Mutex);
 
         m_AudioTimestamp = 0;
-        m_VideoTimestamp = 0;
         m_BaseSystemTime = 0;
         m_AudioSystemTime = 0;
     }

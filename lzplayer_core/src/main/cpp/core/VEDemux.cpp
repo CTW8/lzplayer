@@ -2,6 +2,8 @@
 #include "VEPacket.h"
 #include "VEError.h"
 
+#include <algorithm>
+
 extern "C"{
     #include"libavcodec/avcodec.h"
     #include"libavformat/avformat.h"
@@ -16,8 +18,6 @@ namespace VE {
         mAudioCodecParams = nullptr;
         mVideoCodecParams = nullptr;
         mFormatContext = nullptr;
-        mAudioStartPts = -1;
-        mVideoStartPts = -1;
         mNotifyEvent = notify;
         ALOGI("VEDemux::%s exit", __FUNCTION__);
     }
@@ -30,11 +30,20 @@ namespace VE {
 
     VEResult VEDemux::prepare(VE::VEBundle params){
         ALOGI("VEDemux::%s enter", __FUNCTION__);
+        // 必须同步：调用方紧接着就会 getFileInfo()，异步 post 会读到尚未填充的媒体信息
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
         msg->setString("filePath", params.get<std::string >("path"));
-        msg->post();
-        ALOGI("VEDemux::%s exit", __FUNCTION__);
-        return VE_OK;
+
+        std::shared_ptr<AMessage> response;
+        if (msg->postAndAwaitResponse(&response) != OK || response == nullptr) {
+            ALOGE("VEDemux::%s post prepare failed", __FUNCTION__);
+            return VE_UNKNOWN_ERROR;
+        }
+
+        int32_t ret = VE_UNKNOWN_ERROR;
+        response->findInt32("ret", &ret);
+        ALOGI("VEDemux::%s exit ret:%d", __FUNCTION__, ret);
+        return ret;
     }
 
 
@@ -145,7 +154,14 @@ namespace VE {
             case kWhatPrepare: {
                 std::string path;
                 msg->findString("filePath", path);
-                onPrepare(path);
+                VEResult ret = onPrepare(path);
+
+                std::shared_ptr<AReplyToken> replyID;
+                if (msg->senderAwaitsResponse(replyID)) {
+                    std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
+                    response->setInt32("ret", ret);
+                    response->postReply(replyID);
+                }
                 break;
             }
             case kWhatStart: {
@@ -183,6 +199,7 @@ namespace VE {
             }
             case kWhatRelease:{
                 onRelease();
+                break;
             }
             default:{
                 ALOGW("VEDemux::%s unknown message: %d", __FUNCTION__, msg->what());
@@ -241,6 +258,22 @@ namespace VE {
                 mFps = stream->r_frame_rate.num / stream->r_frame_rate.den;
             }
         }
+
+        // 音视频必须使用同一个时间零点，否则 AVSync 比较的是两条不同基准的时间轴。
+        // 取各流 start_time 的较小值作为全局偏移：既把播放起点归一到 0，
+        // 又保留了两条流之间真实存在的相对偏移。
+        mStartTimeOffset = 0;
+        int64_t offset = INT64_MAX;
+        if (mVideo_index != -1 && mVStartTime != AV_NOPTS_VALUE) {
+            offset = std::min(offset, av_rescale_q(mVStartTime, mVideoTimeBase, AV_TIME_BASE_Q));
+        }
+        if (mAudio_index != -1 && mAStartTime != AV_NOPTS_VALUE) {
+            offset = std::min(offset, av_rescale_q(mAStartTime, mAudioTimeBase, AV_TIME_BASE_Q));
+        }
+        if (offset != INT64_MAX && offset > 0) {
+            mStartTimeOffset = offset;
+        }
+        ALOGI("VEDemux::%s start time offset:%" PRId64, __FUNCTION__, mStartTimeOffset);
 
         mAudioPacketQueue = std::make_shared<VEPacketQueue>(AUDIO_QUEUE_SIZE);
         mVideoPacketQueue = std::make_shared<VEPacketQueue>(VIDEO_QUEUE_SIZE);
@@ -301,40 +334,35 @@ namespace VE {
             return VE_UNKNOWN_ERROR;
         }
 
-        int64_t pts = av_rescale_q(packet->getPacket()->pts,
-                                   mFormatContext->streams[packet->getPacket()->stream_index]->time_base,
-                                   AV_TIME_BASE_Q);
-        int64_t dts = av_rescale_q(packet->getPacket()->dts,
-                                   mFormatContext->streams[packet->getPacket()->stream_index]->time_base,
-                                   AV_TIME_BASE_Q);
+        const AVRational streamTimeBase =
+                mFormatContext->streams[packet->getPacket()->stream_index]->time_base;
+
+        // AV_NOPTS_VALUE 不能参与 rescale，否则会得到一个巨大的伪时间戳
+        auto toMicros = [&](int64_t ts) -> int64_t {
+            if (ts == AV_NOPTS_VALUE) {
+                return AV_NOPTS_VALUE;
+            }
+            return av_rescale_q(ts, streamTimeBase, AV_TIME_BASE_Q) - mStartTimeOffset;
+        };
+
+        int64_t pts = toMicros(packet->getPacket()->pts);
+        int64_t dts = toMicros(packet->getPacket()->dts);
 
         if (packet->getPacket()->stream_index == mAudio_index) {
             packet->setPacketType(E_PACKET_TYPE_AUDIO);
-            if (mAudioStartPts == -1) {
-                mAudioStartPts = pts;
-            }
-
             packet->setPts(pts);
             packet->setDts(dts);
-            packet->getPacket()->pts = packet->getPts();
-            packet->getPacket()->dts = packet->getDts();
-            ALOGD("VEDemux::onRead Audio packet pts (original): %" PRId64 ", converted: %" PRId64 " | dts (original): %" PRId64 ", converted: %" PRId64,
-                  packet->getPacket()->pts, packet->getPts(), packet->getPacket()->dts,
-                  packet->getDts());
+            packet->getPacket()->pts = pts;
+            packet->getPacket()->dts = dts;
+            ALOGD("VEDemux::onRead Audio packet pts:%" PRId64 " dts:%" PRId64, pts, dts);
             putPacket(packet, true);
         } else if (packet->getPacket()->stream_index == mVideo_index) {
             packet->setPacketType(E_PACKET_TYPE_VIDEO);
-            if (mVideoStartPts == -1) {
-                mVideoStartPts = pts;
-            }
-
-            packet->setPts(pts - mVideoStartPts);
+            packet->setPts(pts);
             packet->setDts(dts);
-            packet->getPacket()->pts = packet->getPts();
-            packet->getPacket()->dts = packet->getDts();
-            ALOGD("VEDemux::onRead Video packet pts (original): %" PRId64 ", converted: %" PRId64 " | dts (original): %" PRId64 ", converted: %" PRId64,
-                  packet->getPacket()->pts, packet->getPts(), packet->getPacket()->dts,
-                  packet->getDts());
+            packet->getPacket()->pts = pts;
+            packet->getPacket()->dts = dts;
+            ALOGD("VEDemux::onRead Video packet pts:%" PRId64 " dts:%" PRId64, pts, dts);
             putPacket(packet, false);
         } else {
             ALOGD("VEDemux::onRead may be not use");
@@ -353,26 +381,31 @@ namespace VE {
 
         ALOGD("VEDemux::onSeek posMs:%f", posMs);
 
-        // 将毫秒转换为目标时间戳
-        int64_t targetPts = static_cast<int64_t>(posMs * 1000);
+        // 目标位置是相对于归一化后的时间轴，回退到容器原始时间轴需加回偏移
+        int64_t targetPts = static_cast<int64_t>(posMs * 1000) + mStartTimeOffset;
 
-        // 目标流的时间基
-        AVRational timeBase = mFormatContext->streams[mVideo_index]->time_base;
+        // 优先按视频流定位(关键帧对齐)；纯音频文件退化为音频流
+        int seekStreamIndex = (mVideo_index != -1) ? mVideo_index : mAudio_index;
+        if (seekStreamIndex == -1) {
+            ALOGE("VEDemux::onSeek no seekable stream");
+            return VE_INVALID_PARAMS;
+        }
 
-        // 目标时间戳转换到流时间基
-        int64_t seekTarget = av_rescale_q(targetPts, AV_TIME_BASE_Q, timeBase);
+        int64_t seekTarget = av_rescale_q(targetPts, AV_TIME_BASE_Q,
+                                          mFormatContext->streams[seekStreamIndex]->time_base);
 
-        // 使用 avformat_seek_file 执行 Seek
-        int ret = avformat_seek_file(mFormatContext, mVideo_index, INT64_MIN, seekTarget, INT64_MAX,
-                                     AVSEEK_FLAG_BACKWARD);
+        int ret = avformat_seek_file(mFormatContext, seekStreamIndex, INT64_MIN, seekTarget,
+                                     INT64_MAX, AVSEEK_FLAG_BACKWARD);
         if (ret < 0) {
             ALOGE("VEDemux::onSeek Error: Couldn't seek using avformat_seek_file.\n");
             ALOGI("VEDemux::%s exit", __FUNCTION__);
-            return -1;
+            return VE_UNKNOWN_ERROR;
         }
 
         mAudioPacketQueue->clear();
         mVideoPacketQueue->clear();
+        // seek 后重新回到"有数据可读"状态，否则 EOS 标志会让读取循环不再启动
+        mIsEOS = false;
 
         ALOGD("VEDemux::onSeek Successful to posMs: %f", posMs);
         ALOGI("VEDemux::%s exit", __FUNCTION__);

@@ -92,17 +92,11 @@ private:
 
 // static
 int64_t ALooper::GetNowUs() {
-    // return systemTime(SYSTEM_TIME_MONOTONIC) / 1000LL;
-
-    // 获取当前时间点
-    auto now = std::chrono::system_clock::now();
-
-    // 获取时间点相对于纪元的时间间隔
+    // 必须用单调时钟：所有延时消息(视频帧按 waitTime 投递)都基于它，
+    // system_clock 会被 NTP 校时/用户改时间回拨，导致渲染时序错乱。
+    auto now = std::chrono::steady_clock::now();
     auto duration = now.time_since_epoch();
-
-    // 转换为微秒
-    auto micros = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
-    return micros;
+    return std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
 }
 
 ALooper::ALooper()

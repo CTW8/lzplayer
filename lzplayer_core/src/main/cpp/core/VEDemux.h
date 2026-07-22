@@ -104,8 +104,8 @@ namespace VE {
         std::mutex mMutexVideo;
         std::condition_variable mCondVideo;
 
-        int64_t mAudioStartPts = 0;
-        int64_t mVideoStartPts = 0;
+        // 音视频共用的时间零点偏移(微秒)，保证两条流落在同一时间轴上
+        int64_t mStartTimeOffset = 0;
 
         bool mIsEOS = false;
 
