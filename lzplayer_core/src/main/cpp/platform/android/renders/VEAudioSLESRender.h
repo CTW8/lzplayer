@@ -33,7 +33,8 @@ namespace VE {
         SLPlayItf mPlayerPlay;
         SLAndroidSimpleBufferQueueItf mBufferQueue;
 
-        // 帧队列管理
+        // 在途缓冲队列：与 SLES 设备队列一一对应(FIFO)。Enqueue 不拷贝数据，
+        // 帧必须持有到播放完成回调；静音缓冲以 nullptr 占位。
         std::deque<std::shared_ptr<VEFrame>> m_FrameQueue;
         std::mutex m_Mutex;
         std::condition_variable m_Cond;

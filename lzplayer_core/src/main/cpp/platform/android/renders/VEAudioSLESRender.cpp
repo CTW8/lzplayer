@@ -7,6 +7,13 @@ namespace VE {
         VEAudioSLESRender * pThis = (VEAudioSLESRender*)context;
         if(pThis){
             ALOGD("===>VEAudioSLESRender bufferQueueCallback notify play!!!");
+            {
+                // 队首缓冲已播完，释放对应的帧引用(静音占位为 nullptr)
+                std::lock_guard<std::mutex> lock(pThis->m_Mutex);
+                if (!pThis->m_FrameQueue.empty()) {
+                    pThis->m_FrameQueue.pop_front();
+                }
+            }
             pThis->m_AudioCallback();
         }
     }
@@ -218,18 +225,22 @@ namespace VE {
 
         std::lock_guard<std::mutex> lock(m_Mutex);
 
-        // 清空帧队列
+        // 先清设备队列再释放帧引用：设备可能还握着在途缓冲的指针
+        if (mBufferQueue != NULL) {
+            (*mBufferQueue)->Clear(mBufferQueue);
+        }
         while (!m_FrameQueue.empty()) {
             m_FrameQueue.pop_front();
         }
 
-        // 清空OpenSL ES缓冲区队列
         if (mBufferQueue != NULL) {
-            (*mBufferQueue)->Clear(mBufferQueue);
 
-            // 重新预填充静音缓冲区
+            // 重新预填充静音缓冲区，在途队列同步补上占位，保持与设备队列一一对应
             for (int i = 0; i < BUFFER_QUEUE_SIZE; i++) {
-                (*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize);
+                if ((*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize)
+                        == SL_RESULT_SUCCESS) {
+                    m_FrameQueue.push_back(nullptr);
+                }
             }
         }
 
@@ -247,7 +258,10 @@ namespace VE {
             m_IsPlaying = false;
         }
 
-        // 清空帧队列
+        // 释放帧引用前必须先清掉设备队列，否则设备还握着这些缓冲的指针
+        if (mBufferQueue != NULL) {
+            (*mBufferQueue)->Clear(mBufferQueue);
+        }
         while (!m_FrameQueue.empty()) {
             m_FrameQueue.pop_front();
         }
@@ -270,18 +284,27 @@ namespace VE {
 
             const size_t data_size = static_cast<size_t>(frame->getFrame()->nb_samples) * channels * bytes_per_sample;
 
-            // 入队音频数据
+            // 入队音频数据。SLES 不拷贝数据，缓冲要到播放完成回调才失效，
+            // 必须持有帧引用直到该缓冲被消费(回调中按 FIFO 弹出)。
             SLresult result = (*mBufferQueue)->Enqueue(mBufferQueue,
                                                        frame->getFrame()->data[0],
                                                        data_size);
             if (result != SL_RESULT_SUCCESS) {
                 ALOGE("VEAudioSLESRender Failed to enqueue buffer: %d", result);
                 // 入队失败时提供静音数据
-                (*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize);
+                if ((*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize)
+                        == SL_RESULT_SUCCESS) {
+                    m_FrameQueue.push_back(nullptr);
+                }
+            } else {
+                m_FrameQueue.push_back(frame);
             }
         } else {
-            // 提供静音数据
-            (*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize);
+            // 提供静音数据(m_TempBuffer 生命周期由本对象管理，用 nullptr 占位对齐 FIFO)
+            if ((*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize)
+                    == SL_RESULT_SUCCESS) {
+                m_FrameQueue.push_back(nullptr);
+            }
         }
 
         return VE_OK;
