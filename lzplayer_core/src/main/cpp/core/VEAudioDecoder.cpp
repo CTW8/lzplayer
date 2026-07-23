@@ -355,7 +355,11 @@ namespace VE {
         ret = mDemux->read(true, packet);
         if (ret == VE_NOT_ENOUGH_DATA) {
             ALOGV("VEAudioDecoder::onDecode not enough data");
-            mDemux->needMorePacket(std::make_shared<AMessage>(kWhatDecode, shared_from_this()), 1);
+            // 唤醒消息必须用 kWhatStart(与视频解码器一致)：此刻上层会把
+            // mIsStarted 置 false，且 kWhatDecode 需要携带 epoch 才不会被
+            // 当作过期消息丢弃——直接投 kWhatDecode 的唤醒必然被丢，
+            // 造成音频链路永久停摆。onStart 会重新置位并按当前 epoch 续投。
+            mDemux->needMorePacket(std::make_shared<AMessage>(kWhatStart, shared_from_this()), 1);
             return VE_NOT_ENOUGH_DATA;
         }
 
