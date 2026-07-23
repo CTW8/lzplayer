@@ -53,6 +53,9 @@ namespace VE {
         // OpenGL ES资源
         GLuint mProgram;
         GLuint mTextures[3];  // Y, U, V纹理
+        /// 顶点数据(位置+纹理坐标交错)。glVertexAttribPointer 记录的是
+        /// 客户端指针，draw 时才读取，必须常驻成员
+        GLfloat mVertices[16] = {0};
 
         // Shader位置
         GLint positionLoc;

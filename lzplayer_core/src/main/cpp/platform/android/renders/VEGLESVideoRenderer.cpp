@@ -58,8 +58,6 @@ void main() {
         uTextureLoc = -1;
         vTextureLoc = -1;
 
-        fp = fopen("/data/local/tmp/dump_video.rgb","wb+");
-
         ALOGD("VEGLESVideoRenderer constructed");
     }
 
@@ -554,33 +552,39 @@ void main() {
         calculateTransformMatrix(mFrameWidth, mFrameHeight, transformMatrix);
         glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transformMatrix));
 
-        // 计算缩放比例
-        float screenAspectRatio = (float) mViewWidth / mViewHeight;
-        float imageAspectRatio = (float) mFrameWidth / mFrameHeight;
-        float scaleX, scaleY;
-
-        if (mFrameWidth < mFrameHeight) {
-            // 横向图片
-            scaleX = 1.0f;
-            scaleY = screenAspectRatio / imageAspectRatio;
-        } else {
-            // 纵向图片
-            scaleX = imageAspectRatio / screenAspectRatio;
-            scaleY = 1.0f;
+        // 计算缩放比例：fit-inside 按宽高比大小比较，不能按帧的横竖朝向判断，
+        // 否则横屏视频在竖屏上会放大裁掉大半画面
+        float scaleX = 1.0f, scaleY = 1.0f;
+        if (mViewWidth > 0 && mViewHeight > 0 && mFrameWidth > 0 && mFrameHeight > 0) {
+            float screenAspectRatio = (float) mViewWidth / mViewHeight;
+            float imageAspectRatio = (float) mFrameWidth / mFrameHeight;
+            if (imageAspectRatio > screenAspectRatio) {
+                // 画面比屏幕宽：横向占满，纵向留黑边
+                scaleX = 1.0f;
+                scaleY = screenAspectRatio / imageAspectRatio;
+            } else {
+                // 画面比屏幕窄：纵向占满，横向留黑边
+                scaleX = imageAspectRatio / screenAspectRatio;
+                scaleY = 1.0f;
+            }
         }
 
-        static GLfloat vertices[] = {
+        // 顶点数据必须常驻成员：glVertexAttribPointer 记录的是客户端指针，
+        // glDrawArrays 在本函数返回之后才执行。之前用函数级 static 数组，
+        // 初始化只跑一次，换视频/转屏后画幅比例永远停在进程第一帧。
+        const GLfloat vertices[] = {
                 -scaleX, -scaleY, 0.0f, 0.0f,
                 scaleX, -scaleY, 1.0f, 0.0f,
                 -scaleX, scaleY, 0.0f, 1.0f,
                 scaleX, scaleY, 1.0f, 1.0f,
         };
+        memcpy(mVertices, vertices, sizeof(vertices));
 
         // 设置顶点属性
-        glVertexAttribPointer(positionLoc, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices);
+        glVertexAttribPointer(positionLoc, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), mVertices);
         glEnableVertexAttribArray(positionLoc);
 
-        glVertexAttribPointer(texCoordLoc, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices + 2);
+        glVertexAttribPointer(texCoordLoc, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), mVertices + 2);
         glEnableVertexAttribArray(texCoordLoc);
     }
 
