@@ -272,12 +272,14 @@ namespace VE {
             notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "no data source!!");
             return VE_UNKNOWN_ERROR;
         }
-        if (mDemux->prepare(mPath) != VE_OK) {
-            mState = STATE_ERROR;
-            notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
-            return VE_UNKNOWN_ERROR;
-        }
+        // 异步 prepare：player looper 不再被 avformat_open_input 挂住，
+        // 期间到来的命令由 Flow 队列排队；PREPARE_DONE 回执驱动建链后半段
+        mState = STATE_PREPARING;
+        mDemux->prepare(mPath);
+        return VE_OK;
+    }
 
+    VEResult VEPlayer::continuePrepare() {
         {
             // 与 getCurrentPosition/getDuration 的跨线程读互斥
             std::lock_guard<std::mutex> lk(mMutex);
@@ -464,7 +466,8 @@ namespace VE {
     // ---------------------------------------------------------------------
 
     bool VEPlayer::isFlowBusy() const {
-        return mSeekStage != SEEK_STAGE_NONE || mState == STATE_RELEASING;
+        return mSeekStage != SEEK_STAGE_NONE || mState == STATE_RELEASING ||
+               mState == STATE_PREPARING;
     }
 
     void VEPlayer::processPendingActions() {
@@ -618,8 +621,12 @@ namespace VE {
     VEResult VEPlayer::onReset(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         if (isFlowBusy()) {
-            // 排到当前流程完成后执行；若在途的是 seek，请求其尽快中止
+            // 排到当前流程完成后执行；若在途的是 seek，请求其尽快中止；
+            // 若在途的是 prepare，中断其阻塞 IO 让它尽快失败返回
             mAbortSeek = (mSeekStage != SEEK_STAGE_NONE);
+            if (mState == STATE_PREPARING && mDemux) {
+                mDemux->abort();
+            }
             dropQueuedSeeks();
             PendingAction action;
             action.type = PendingAction::ACTION_RESET;
@@ -650,8 +657,12 @@ namespace VE {
 
         if (isFlowBusy()) {
             // 排到当前流程完成后执行；在途的 seek 请求尽快中止，
-            // 保证 onDestroy 的同步 release 不被慢 seek 拖满整个阶段链
+            // 保证 onDestroy 的同步 release 不被慢 seek 拖满整个阶段链；
+            // 在途的 prepare 中断其阻塞 IO
             mAbortSeek = (mSeekStage != SEEK_STAGE_NONE);
+            if (mState == STATE_PREPARING && mDemux) {
+                mDemux->abort();
+            }
             dropQueuedSeeks();
             PendingAction action;
             action.type = PendingAction::ACTION_RELEASE;
@@ -910,6 +921,26 @@ namespace VE {
                 notifyError(code, "component reported error");
                 dropQueuedSeeks();
                 processPendingActions();   // 排队的 reset/release 是 ERROR 态的唯一出路
+                break;
+            }
+            case VE_NOTIFY_EVENT_PREPARE_DONE: {
+                if (mState != STATE_PREPARING ||
+                    type != EComponentType::E_COMPONENT_TYPE_DEMUX) {
+                    ALOGW("VEPlayer::%s stray PREPARE_DONE in state %d, ignored",
+                          __FUNCTION__, mState);
+                    break;
+                }
+                int32_t ret = VE_UNKNOWN_ERROR;
+                msg->findInt32("arg1", &ret);
+                if (ret != VE_OK) {
+                    converge();
+                    mState = STATE_ERROR;
+                    notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
+                } else {
+                    continuePrepare();
+                }
+                // prepare 流程结束，接力排队的操作
+                processPendingActions();
                 break;
             }
             case VE_NOTIFY_EVENT_FIRST_FRAME: {

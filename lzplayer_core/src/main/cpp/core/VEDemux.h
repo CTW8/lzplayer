@@ -27,8 +27,12 @@ namespace VE {
 
         ~VEDemux() override;
 
-        // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口
+        // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口。
+        // prepare 为异步：完成后回 VE_NOTIFY_EVENT_PREPARE_DONE(arg1=结果)
         VEResult prepare(const std::string &path);
+
+        /// 中断阻塞中的 FFmpeg IO(open/read)。可从任意线程调用。
+        void abort();
 
         VEResult seekTo(double timestamp);
 
@@ -103,6 +107,10 @@ namespace VE {
         std::atomic<bool> mContinuePending{false};
         /// 终态：release 之后拒绝一切数据面活动，防止超时强推后被复活
         std::atomic<bool> mReleased{false};
+        /// FFmpeg 中断标志：stop/release/abort 置位，prepare 入口清零
+        std::atomic<bool> mAbortRequest{false};
+
+        static int interruptCallback(void *opaque);
 
         // 音视频共用的时间零点偏移(微秒)，保证两条流落在同一时间轴上
         int64_t mStartTimeOffset = 0;

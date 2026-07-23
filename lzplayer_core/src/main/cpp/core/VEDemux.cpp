@@ -37,20 +37,25 @@ namespace VE {
 
     VEResult VEDemux::prepare(const std::string &path){
         ALOGV("VEDemux::%s enter", __FUNCTION__);
-        // 必须同步：调用方紧接着就会 getFileInfo()，异步 post 会读到尚未填充的媒体信息
+        // 纯异步：完成后回 PREPARE_DONE 事件。原同步版会把 player looper
+        // 挂在 avformat_open_input 上，坏文件/网络源可卡死整条命令通道。
+        mAbortRequest = false;
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
         msg->setString("filePath", path);
+        msg->post();
+        return VE_OK;
+    }
 
-        std::shared_ptr<AMessage> response;
-        if (msg->postAndAwaitResponse(&response) != OK || response == nullptr) {
-            ALOGE("VEDemux::%s post prepare failed", __FUNCTION__);
-            return VE_UNKNOWN_ERROR;
-        }
+    void VEDemux::abort() {
+        // 可从任意线程调用：让卡在 avformat_open_input/av_read_frame 里的
+        // demux 线程尽快返回 AVERROR_EXIT
+        mAbortRequest = true;
+    }
 
-        int32_t ret = VE_UNKNOWN_ERROR;
-        response->findInt32("ret", &ret);
-        ALOGV("VEDemux::%s exit ret:%d", __FUNCTION__, ret);
-        return ret;
+    // FFmpeg 中断回调：返回非 0 即中断当前阻塞的 IO/解析操作
+    int VEDemux::interruptCallback(void *opaque) {
+        auto *self = static_cast<VEDemux *>(opaque);
+        return (self != nullptr && self->mAbortRequest.load()) ? 1 : 0;
     }
 
 
@@ -64,6 +69,9 @@ namespace VE {
 
     VEResult VEDemux::stop() {
         ALOGV("VEDemux::%s enter", __FUNCTION__);
+        // 先置中断标志再投消息：若线程正卡在 open/read 的阻塞 IO 里，
+        // 它会立即以 AVERROR_EXIT 返回，stop 消息才能尽快被处理
+        mAbortRequest = true;
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStop, shared_from_this());
         msg->post();
         ALOGV("VEDemux::%s exit", __FUNCTION__);
@@ -132,6 +140,7 @@ namespace VE {
 
     VEResult VEDemux::release(){
         ALOGV("VEDemux::%s enter", __FUNCTION__);
+        mAbortRequest = true;   // 同 stop：先解除阻塞 IO
         std::make_shared<AMessage>(kWhatRelease,shared_from_this())->post();
         ALOGV("VEDemux::%s exit", __FUNCTION__);
         return 0;
@@ -174,18 +183,13 @@ namespace VE {
                 std::string path;
                 msg->findString("filePath", path);
                 VEResult ret = onPrepare(path);
-
-                std::shared_ptr<AReplyToken> replyID;
-                if (msg->senderAwaitsResponse(replyID)) {
-                    std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
-                    response->setInt32("ret", ret);
-                    response->postReply(replyID);
-                }
+                postMessage(VE_NOTIFY_EVENT_PREPARE_DONE, ret, 0, 0, nullptr);
                 break;
             }
             case kWhatStart: {
                 mIsStart = true;
                 mIsEOS = false;
+                mAbortRequest = false;   // stop 后重新 start：解除中断标志
                 onStart();
                 break;
             }
@@ -264,8 +268,18 @@ namespace VE {
 
         mFilePath = path;
 
+        // 挂中断回调：stop/release/abort 置位后，卡在 open/read 的线程
+        // 能立即以 AVERROR_EXIT 返回，teardown 不再受阻塞 IO 摆布
+        mFormatContext = avformat_alloc_context();
+        if (mFormatContext == nullptr) {
+            return VE_NO_MEMORY;
+        }
+        mFormatContext->interrupt_callback.callback = &VEDemux::interruptCallback;
+        mFormatContext->interrupt_callback.opaque = this;
+
         if (avformat_open_input(&mFormatContext, mFilePath.c_str(), nullptr, nullptr) != 0) {
             fprintf(stderr, "Error: Couldn't open input file.\n");
+            // open 失败时 FFmpeg 已释放并置空 mFormatContext
             ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }

@@ -151,6 +151,7 @@ namespace VE {
         /// Driver 负责校验 Java 层 API 调用是否合法，这里负责编排内部流程。
         enum PlayerState {
             STATE_IDLE,
+            STATE_PREPARING,   ///< demux 异步 prepare 进行中，属长流程(Flow)
             STATE_PREPARED,
             STATE_STARTED,
             STATE_PAUSED,
@@ -266,8 +267,12 @@ namespace VE {
         /// RESET/RELEASE 请求中止当前 seek：当前阶段回执到齐后走这里
         void abortSeekForAction();
 
-        /// prepare 的实际执行体(排队解耦后从 onPrepare 拆出)
+        /// prepare 的实际执行体(排队解耦后从 onPrepare 拆出)：
+        /// 发起 demux 异步 prepare 后即返回
         VEResult doPrepare();
+
+        /// demux 回 PREPARE_DONE 后的建链后半段
+        VEResult continuePrepare();
 
         /// reset/release 的实际执行体
         void executeReset();
