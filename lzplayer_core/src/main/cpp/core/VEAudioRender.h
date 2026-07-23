@@ -61,6 +61,8 @@ private:
 
         std::shared_ptr<VEAVsync> m_AVSync = nullptr;
         uint8_t * mSliceBuffer = nullptr;
+        /// 因设备队列满被打回的帧，延时重试时优先消费；stop/flush/seek 时丢弃
+        std::shared_ptr<VEFrame> m_PendingFrame = nullptr;
 
         bool m_IsStarted = false;
         /// 渲染消息代次；由 SLES 回调线程读取，故用原子量

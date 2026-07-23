@@ -129,6 +129,7 @@ namespace VE {
             case kWhatStop: {
                 m_IsStarted = false;
                 ++m_Epoch;
+                m_PendingFrame.reset();
                 if (m_AudioRenderer) {
                     m_AudioRenderer->stop();
                 }
@@ -147,6 +148,7 @@ namespace VE {
             case kWhatFlush:{
                 m_IsStarted = false;
                 ++m_Epoch;
+                m_PendingFrame.reset();
                 if (m_AudioRenderer) {
                     m_AudioRenderer->flush();
                 }
@@ -167,6 +169,7 @@ namespace VE {
                 // 丢弃在途的渲染回调，并清掉设备缓冲里 seek 之前的 PCM
                 m_IsStarted = false;
                 ++m_Epoch;
+                m_PendingFrame.reset();
                 if (m_AudioRenderer) {
                     m_AudioRenderer->flush();
                 }
@@ -176,6 +179,7 @@ namespace VE {
             case kWhatRelease:{
                 m_IsStarted = false;
                 ++m_Epoch;
+                m_PendingFrame.reset();
                 if (m_AudioRenderer) {
                     m_AudioRenderer->release();
                     // 置空，避免析构时二次 release
@@ -194,19 +198,24 @@ namespace VE {
     VEResult VEAudioRender::onRender() {
         if (m_AudioRenderer != nullptr) {
             std::shared_ptr<VEFrame> frame = nullptr;
-            VEResult ret = m_AudioDecoder->readFrame(frame);
-            ALOGV("VEAudioRender::%s enter#1", __FUNCTION__);
-            if (ret == VE_NOT_ENOUGH_DATA) {
-                ALOGV("VEAudioRender::%s - underrun, feeding silence", __FUNCTION__);
-                // 用静音帧维持 SLES 的回调链：回调是整个音频渲染的唯一驱动源，
-                // 一旦断开就再也不会有回调来消费后续数据。
-                frame = std::make_shared<VEFrame>();
-                if (m_AudioRenderer->renderFrame(frame) != SL_RESULT_SUCCESS) {
-                    // 静音帧也入队失败，回调链已断，改由延时消息自行重启
-                    ALOGW("VEAudioRender::%s - silence enqueue failed, retry later", __FUNCTION__);
-                    postRender(kUnderrunRetryUs);
+            if (m_PendingFrame != nullptr) {
+                // 上次因设备队列满被打回的帧：优先重试，不从解码器取新帧
+                frame = m_PendingFrame;
+            } else {
+                VEResult ret = m_AudioDecoder->readFrame(frame);
+                ALOGV("VEAudioRender::%s enter#1", __FUNCTION__);
+                if (ret == VE_NOT_ENOUGH_DATA) {
+                    ALOGV("VEAudioRender::%s - underrun, feeding silence", __FUNCTION__);
+                    // 用静音帧维持 SLES 的回调链：回调是整个音频渲染的唯一驱动源，
+                    // 一旦断开就再也不会有回调来消费后续数据。
+                    frame = std::make_shared<VEFrame>();
+                    if (m_AudioRenderer->renderFrame(frame) != VE_OK) {
+                        // 静音帧也入队失败(队列满或回调链已断)，改由延时消息自行重启
+                        ALOGW("VEAudioRender::%s - silence enqueue failed, retry later", __FUNCTION__);
+                        postRender(kUnderrunRetryUs);
+                    }
+                    return VE_NOT_ENOUGH_DATA;
                 }
-                return VE_NOT_ENOUGH_DATA;
             }
             ALOGV("VEAudioRender::%s enter#2", __FUNCTION__);
             if (frame != nullptr) {
@@ -239,7 +248,15 @@ namespace VE {
 
 
                 VEResult result = m_AudioRenderer->renderFrame(frame);
-                if (result != SL_RESULT_SUCCESS) {
+                if (result == VE_WOULD_BLOCK) {
+                    // 设备队列满(典型是 seek 后刚预填过静音)：留住这一帧延时重试。
+                    // 不推进时钟——这帧还没被播放。
+                    m_PendingFrame = frame;
+                    postRender(kUnderrunRetryUs);
+                    return VE_WOULD_BLOCK;
+                }
+                m_PendingFrame.reset();
+                if (result != VE_OK) {
                     ALOGE("VEAudioRender failed: %d", result);
                     return VE_UNKNOWN_ERROR;
                 }

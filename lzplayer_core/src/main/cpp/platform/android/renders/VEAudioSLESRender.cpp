@@ -234,13 +234,11 @@ namespace VE {
         }
 
         if (mBufferQueue != NULL) {
-
-            // 重新预填充静音缓冲区，在途队列同步补上占位，保持与设备队列一一对应
-            for (int i = 0; i < BUFFER_QUEUE_SIZE; i++) {
-                if ((*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize)
-                        == SL_RESULT_SUCCESS) {
-                    m_FrameQueue.push_back(nullptr);
-                }
+            // 只预填 1 个静音缓冲：够在恢复播放时拉起回调链，同时留出
+            // 空位给 seek 后的第一帧真实数据——填满的话首帧必然入队失败。
+            if ((*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize)
+                    == SL_RESULT_SUCCESS) {
+                m_FrameQueue.push_back(nullptr);
             }
         }
 
@@ -290,21 +288,20 @@ namespace VE {
                                                        frame->getFrame()->data[0],
                                                        data_size);
             if (result != SL_RESULT_SUCCESS) {
-                ALOGE("VEAudioSLESRender Failed to enqueue buffer: %d", result);
-                // 入队失败时提供静音数据
-                if ((*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize)
-                        == SL_RESULT_SUCCESS) {
-                    m_FrameQueue.push_back(nullptr);
-                }
-            } else {
-                m_FrameQueue.push_back(frame);
+                // 典型场景是设备队列满(如 seek 后刚预填过静音)。如实上报，
+                // 由调用方留住这一帧稍后重试；这里不能垫静音顶掉空位，
+                // 否则这帧数据被静默丢弃、时钟还会被没播的帧推进。
+                ALOGW("VEAudioSLESRender enqueue would block: %d", result);
+                return VE_WOULD_BLOCK;
             }
+            m_FrameQueue.push_back(frame);
         } else {
             // 提供静音数据(m_TempBuffer 生命周期由本对象管理，用 nullptr 占位对齐 FIFO)
             if ((*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize)
-                    == SL_RESULT_SUCCESS) {
-                m_FrameQueue.push_back(nullptr);
+                    != SL_RESULT_SUCCESS) {
+                return VE_WOULD_BLOCK;
             }
+            m_FrameQueue.push_back(nullptr);
         }
 
         return VE_OK;
