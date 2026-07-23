@@ -168,6 +168,19 @@ namespace VE {
             SEEK_STAGE_PRIMING    ///< 等 seek 后的第一帧上屏
         };
 
+        /// 按角色的组件状态机(仿 NuPlayer mFlushingAudio/mFlushingVideo)。
+        /// 回执只有在对应的 *ING 态才被接受——这就是防过期/重复回执的守卫：
+        /// fire-and-forget 命令产生的回执、被中止流程的迟到回执，到达时
+        /// 角色不在等待态，直接丢弃。
+        enum RoleState {
+            ROLE_NONE,            ///< 该链路不存在(纯音频/纯视频)
+            ROLE_ACTIVE,
+            ROLE_PAUSING,   ROLE_PAUSED,     ///< seek 阶段①
+            ROLE_SEEKING,   ROLE_SEEK_DONE,  ///< seek 阶段②
+            ROLE_STOPPING,  ROLE_STOPPED,    ///< teardown 阶段①
+            ROLE_RELEASING, ROLE_RELEASED    ///< teardown 阶段②
+        };
+
         VEResult onSetDataSource(std::shared_ptr<AMessage> msg);
 
         VEResult onPrepare(std::shared_ptr<AMessage> msg);
@@ -188,21 +201,37 @@ namespace VE {
 
         VEResult onComponentEvent(const std::shared_ptr<AMessage> &msg);
 
-        // ---- 回执聚合：把"给 N 个组件发命令"变成"等齐 N 个回执后再继续" ----
+        // ---- 角色状态机：每个组件一个状态变量，回执按角色守卫接收 ----
 
-        /// 已创建组件的位掩码
-        uint32_t activeComponentMask() const;
+        /// EComponentType → 对应角色状态变量；未知类型返回 nullptr
+        RoleState *roleStateFor(int32_t type);
 
-        /// 等待 mask 中所有组件回报 event，齐了之后执行 next。
-        /// timeoutUs<=0 时用默认超时。
-        void awaitAcks(uint32_t mask, int32_t event, std::function<void()> next,
-                       int64_t timeoutUs = 0);
+        /// 守卫式接收：仅当该角色正处于 expectIng 才推进到 done 并返回 true
+        bool acceptAck(int32_t type, RoleState expectIng, RoleState done);
 
-        /// 收到某个组件的回执，清位；清空后触发后续动作
-        void onComponentAck(int32_t type, int32_t event);
+        /// 所有存在(非 NONE)的角色是否都已到达 done 状态
+        bool rolesAllIn(RoleState done) const;
 
-        /// 回执超时：不让一个丢失的回执把 seek 永久卡住
-        void onAckTimeout(const std::shared_ptr<AMessage> &msg);
+        /// 把所有非 NONE 角色统一置为 s(流程结束/中止时收拢用)
+        void setAllRoles(RoleState s);
+
+        /// 是否还有任何组件存在
+        bool anyRoleExists() const;
+
+        /// 投递当前流程阶段的超时兜底消息(带 mFlowSeq，阶段推进后自动作废)
+        void postFlowTimeout(int64_t delayUs);
+
+        /// 流程阶段超时：teardown 强推收尾；seek 视为组件故障走错误收敛
+        void onFlowTimeout(const std::shared_ptr<AMessage> &msg);
+
+        /// teardown 阶段②：停数据流回执齐后释放各组件资源
+        void enterTeardownReleaseStage();
+
+        /// teardown 收尾并执行续接动作(mTeardownDone)
+        void finishTeardownAndContinue();
+
+        /// seek 超时的中止路径
+        void abortSeekOnTimeout();
 
         // ---- 进度上报：按固定间隔读时钟，而不是每渲染一帧发一条消息 ----
         void startProgressTick();
@@ -252,11 +281,22 @@ namespace VE {
 
         PlayerState mState = STATE_IDLE;
 
-        // 回执聚合状态
-        uint32_t mPendingAcks = 0;
-        int32_t mExpectedAckEvent = 0;
-        int32_t mAckGeneration = 0;
-        std::function<void()> mAckContinuation;
+        // 角色状态机
+        RoleState mSourceState = ROLE_NONE;
+        RoleState mAudioDecState = ROLE_NONE;
+        RoleState mVideoDecState = ROLE_NONE;
+        RoleState mAudioRenderState = ROLE_NONE;
+        RoleState mVideoDisplayState = ROLE_NONE;
+
+        /// 管线代次：盖在 notify 模板上，teardown 超时强推后旧组件的
+        /// 迟到事件带着旧代次，无法污染新建的管线
+        int32_t mPipelineGen = 0;
+
+        /// 流程阶段序号：只用于作废自己发出的超时兜底消息
+        int32_t mFlowSeq = 0;
+
+        /// teardown 完成后的续接动作(reset 清状态 / release 回复 reply)
+        std::function<void()> mTeardownDone;
 
         /// 进度上报定时器的代次，stop/pause 时递增以作废在途的 tick
         int32_t mProgressGeneration = 0;

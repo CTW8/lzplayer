@@ -131,7 +131,7 @@ namespace VE {
                 break;
             }
             case kWhatAckTimeout: {
-                onAckTimeout(msg);
+                onFlowTimeout(msg);
                 break;
             }
             case kWhatProgressTick: {
@@ -241,6 +241,9 @@ namespace VE {
         mState = STATE_IDLE;
 
         mRenderNotifyMsg = std::make_shared<AMessage>(kWhatComponentEvent, shared_from_this());
+        // 管线代次盖在 notify 模板上(组件 dup 时自动携带)：
+        // 上一代管线被强推拆掉后，其迟到事件无法污染新管线
+        mRenderNotifyMsg->setInt32("plGen", ++mPipelineGen);
 
         mDemuxLooper = std::make_shared<ALooper>();
         mDemuxLooper->setName("demux_thread");
@@ -248,6 +251,7 @@ namespace VE {
 
         mDemux = std::make_shared<VEDemux>(mRenderNotifyMsg);
         mDemuxLooper->registerHandler(mDemux);
+        mSourceState = ROLE_ACTIVE;
         return VE_OK;
     }
 
@@ -314,6 +318,8 @@ namespace VE {
             mAudioOutputLooper->registerHandler(mAudioOutput);
             mAudioOutput->prepare(std::static_pointer_cast<IMediaDecoder>(mAudioDecoder),
                                   audioOut);
+            mAudioDecState = ROLE_ACTIVE;
+            mAudioRenderState = ROLE_ACTIVE;
         }
 
         if(mMediaInfo->video_stream_index != -1) {
@@ -333,6 +339,8 @@ namespace VE {
 
             mVideoRender->prepare(std::static_pointer_cast<IMediaDecoder>(mVideoDecoder),
                                   mWindow, mViewWidth, mViewHeight, mMediaInfo->fps);
+            mVideoDecState = ROLE_ACTIVE;
+            mVideoDisplayState = ROLE_ACTIVE;
         }
 
         mState = STATE_PREPARED;
@@ -392,8 +400,8 @@ namespace VE {
         }
         mSeekStage = SEEK_STAGE_NONE;
         mHasPendingSeek = false;
-        mPendingAcks = 0;
-        mAckContinuation = nullptr;
+        ++mFlowSeq;                 // 作废在途的 seek 阶段超时
+        setAllRoles(ROLE_ACTIVE);   // seek 中途被 stop：角色收拢回稳态
         mState = STATE_PREPARED;
         stopProgressTick();
         if (mMediaClock) {
@@ -450,39 +458,49 @@ namespace VE {
         stopProgressTick();
         mSeekStage = SEEK_STAGE_NONE;
         mHasPendingSeek = false;
-        mPendingAcks = 0;
-        mAckContinuation = nullptr;
-        ++mAckGeneration;
         mState = STATE_RELEASING;
+        mTeardownDone = std::move(onDone);
+        ++mFlowSeq;
+
+        if (!anyRoleExists()) {
+            // 没有任何组件(重复 reset/release)：直接收尾
+            finishTeardownAndContinue();
+            return;
+        }
 
         // ① 停数据流：demux 停止读取，解码器/渲染器停止消费。
-        //    等齐 STOP_DONE 才能确认没有组件还在动数据。
-        uint32_t mask = activeComponentMask();
-        if (mVideoRender)  mVideoRender->stop();
-        if (mAudioOutput)  mAudioOutput->stop();
-        if (mVideoDecoder) mVideoDecoder->stop();
-        if (mAudioDecoder) mAudioDecoder->stop();
-        if (mDemux)        mDemux->stop();
+        //    每个存在的角色都要回 STOP_DONE 才能确认没有组件还在动数据。
+        ALOGI("VEPlayer::teardown stage 1/2 - stopping data flow");
+        if (mVideoRender)  { mVideoRender->stop();  mVideoDisplayState = ROLE_STOPPING; }
+        if (mAudioOutput)  { mAudioOutput->stop();  mAudioRenderState  = ROLE_STOPPING; }
+        if (mVideoDecoder) { mVideoDecoder->stop(); mVideoDecState     = ROLE_STOPPING; }
+        if (mAudioDecoder) { mAudioDecoder->stop(); mAudioDecState     = ROLE_STOPPING; }
+        if (mDemux)        { mDemux->stop();        mSourceState       = ROLE_STOPPING; }
+        postFlowTimeout(kTeardownAckTimeoutUs);
+    }
 
-        awaitAcks(mask, VE_NOTIFY_EVENT_STOP_DONE, [this, onDone] {
-            // ② 释放资源。编解码器上下文/EGL/SLES 都必须在各自的线程上销毁，
-            //    所以只能投递消息过去，等 RELEASE_DONE 回执确认做完。
-            ALOGI("VEPlayer::teardown stage 2/2 - releasing component resources");
-            uint32_t releaseMask = activeComponentMask();
-            if (mVideoRender)  mVideoRender->release();
-            if (mAudioOutput)  mAudioOutput->release();
-            if (mVideoDecoder) mVideoDecoder->release();
-            if (mAudioDecoder) mAudioDecoder->release();
-            if (mDemux)        mDemux->release();
+    void VEPlayer::enterTeardownReleaseStage() {
+        // ② 释放资源。编解码器上下文/EGL/SLES 都必须在各自的线程上销毁，
+        //    所以只能投递消息过去，等 RELEASE_DONE 回执确认做完。
+        ALOGI("VEPlayer::teardown stage 2/2 - releasing component resources");
+        ++mFlowSeq;
+        if (mVideoRender)  { mVideoRender->release();  mVideoDisplayState = ROLE_RELEASING; }
+        if (mAudioOutput)  { mAudioOutput->release();  mAudioRenderState  = ROLE_RELEASING; }
+        if (mVideoDecoder) { mVideoDecoder->release(); mVideoDecState     = ROLE_RELEASING; }
+        if (mAudioDecoder) { mAudioDecoder->release(); mAudioDecState     = ROLE_RELEASING; }
+        if (mDemux)        { mDemux->release();        mSourceState       = ROLE_RELEASING; }
+        postFlowTimeout(kTeardownAckTimeoutUs);
+    }
 
-            awaitAcks(releaseMask, VE_NOTIFY_EVENT_RELEASE_DONE, [this, onDone] {
-                // ③ 资源已释放干净，此时停 looper 丢消息也不会漏掉任何清理
-                finishTeardown();
-                if (onDone) {
-                    onDone();
-                }
-            }, kTeardownAckTimeoutUs);
-        }, kTeardownAckTimeoutUs);
+    void VEPlayer::finishTeardownAndContinue() {
+        // ③ 资源已释放干净，此时停 looper 丢消息也不会漏掉任何清理
+        ++mFlowSeq;
+        finishTeardown();
+        auto done = std::move(mTeardownDone);
+        mTeardownDone = nullptr;
+        if (done) {
+            done();
+        }
     }
 
     void VEPlayer::finishTeardown() {
@@ -528,6 +546,7 @@ namespace VE {
 
         mVideoEOS = false;
         mAudioEOS = false;
+        setAllRoles(ROLE_NONE);
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
     }
 
@@ -756,6 +775,15 @@ namespace VE {
         msg->findInt32("type", &type);
         msg->findInt32("event", &event);
 
+        // 管线代次校验：上一代管线的迟到事件一律丢弃
+        int32_t plGen = 0;
+        msg->findInt32("plGen", &plGen);
+        if (plGen != mPipelineGen) {
+            ALOGW("VEPlayer::%s stale pipeline event type:%d event:%d gen:%d cur:%d",
+                  __FUNCTION__, type, event, plGen, mPipelineGen);
+            return VE_OK;
+        }
+
         switch (event) {
             case VE_NOTIFY_EVENT_EOS: {
                 if (type == EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER) {
@@ -784,12 +812,50 @@ namespace VE {
                 int64_t pts = 0;
                 msg->findInt64("arg3", &pts);
                 notifyProgress(pts);
-                onComponentAck(type, event);
+                if (mSeekStage == SEEK_STAGE_PRIMING &&
+                    type == EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER) {
+                    seekFinish();
+                } else {
+                    ALOGD("VEPlayer::%s first frame outside priming, ignore", __FUNCTION__);
+                }
+                break;
+            }
+            case VE_NOTIFY_EVENT_PAUSE_DONE: {
+                // 只在 seek 阶段①被接受；fire-and-forget pause 的回执在此被丢弃
+                if (mSeekStage == SEEK_STAGE_PAUSING &&
+                    acceptAck(type, ROLE_PAUSING, ROLE_PAUSED) &&
+                    rolesAllIn(ROLE_PAUSED)) {
+                    seekStageSeek();
+                }
+                break;
+            }
+            case VE_NOTIFY_EVENT_SEEK_DONE: {
+                if (mSeekStage == SEEK_STAGE_SEEKING &&
+                    acceptAck(type, ROLE_SEEKING, ROLE_SEEK_DONE) &&
+                    rolesAllIn(ROLE_SEEK_DONE)) {
+                    seekStagePrime();
+                }
+                break;
+            }
+            case VE_NOTIFY_EVENT_STOP_DONE: {
+                // 只在 teardown 阶段①被接受；onStop 的 fire-and-forget 回执被丢弃
+                if (mState == STATE_RELEASING &&
+                    acceptAck(type, ROLE_STOPPING, ROLE_STOPPED) &&
+                    rolesAllIn(ROLE_STOPPED)) {
+                    enterTeardownReleaseStage();
+                }
+                break;
+            }
+            case VE_NOTIFY_EVENT_RELEASE_DONE: {
+                if (mState == STATE_RELEASING &&
+                    acceptAck(type, ROLE_RELEASING, ROLE_RELEASED) &&
+                    rolesAllIn(ROLE_RELEASED)) {
+                    finishTeardownAndContinue();
+                }
                 break;
             }
             default: {
-                // SEEK_DONE / FLUSH_DONE / PAUSE_DONE / STOP_DONE 等命令回执
-                onComponentAck(type, event);
+                ALOGD("VEPlayer::%s unhandled event type:%d event:%d", __FUNCTION__, type, event);
                 break;
             }
         }
@@ -797,66 +863,109 @@ namespace VE {
     }
 
     // ---------------------------------------------------------------------
-    // 回执聚合
+    // 角色状态机
     // ---------------------------------------------------------------------
 
-    uint32_t VEPlayer::activeComponentMask() const {
-        uint32_t mask = 0;
-        if (mVideoRender)  mask |= 1u << EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER;
-        if (mAudioOutput)  mask |= 1u << EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER;
-        if (mVideoDecoder) mask |= 1u << EComponentType::E_COMPONENT_TYPE_VIDEO_DECODER;
-        if (mAudioDecoder) mask |= 1u << EComponentType::E_COMPONENT_TYPE_AUDIO_DECODER;
-        if (mDemux)        mask |= 1u << EComponentType::E_COMPONENT_TYPE_DEMUX;
-        return mask;
+    VEPlayer::RoleState *VEPlayer::roleStateFor(int32_t type) {
+        switch (type) {
+            case EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER:  return &mVideoDisplayState;
+            case EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER:  return &mAudioRenderState;
+            case EComponentType::E_COMPONENT_TYPE_VIDEO_DECODER: return &mVideoDecState;
+            case EComponentType::E_COMPONENT_TYPE_AUDIO_DECODER: return &mAudioDecState;
+            case EComponentType::E_COMPONENT_TYPE_DEMUX:         return &mSourceState;
+            default:                                             return nullptr;
+        }
     }
 
-    void VEPlayer::awaitAcks(uint32_t mask, int32_t event, std::function<void()> next,
-                             int64_t timeoutUs) {
-        mPendingAcks = mask;
-        mExpectedAckEvent = event;
-        mAckContinuation = std::move(next);
-        ++mAckGeneration;
-
-        ALOGI("VEPlayer::awaitAcks mask:0x%x event:%d gen:%d", mask, event, mAckGeneration);
-
-        if (mPendingAcks == 0) {
-            auto continuation = mAckContinuation;
-            mAckContinuation = nullptr;
-            mExpectedAckEvent = 0;
-            if (continuation) {
-                continuation();
-            }
-            return;
+    bool VEPlayer::acceptAck(int32_t type, RoleState expectIng, RoleState done) {
+        RoleState *state = roleStateFor(type);
+        if (state == nullptr) {
+            return false;
         }
+        if (*state != expectIng) {
+            // 过期/重复回执：角色不在等待态，丢弃。这是防污染的核心守卫。
+            ALOGW("VEPlayer::acceptAck drop stale ack type:%d state:%d expect:%d",
+                  type, *state, expectIng);
+            return false;
+        }
+        *state = done;
+        ALOGI("VEPlayer::acceptAck type:%d -> %d", type, done);
+        return true;
+    }
 
-        // 丢失回执时的兜底，避免流程永久停在某一阶段
+    bool VEPlayer::rolesAllIn(RoleState done) const {
+        const RoleState roles[] = { mSourceState, mAudioDecState, mVideoDecState,
+                                    mAudioRenderState, mVideoDisplayState };
+        for (RoleState s : roles) {
+            if (s != ROLE_NONE && s != done) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void VEPlayer::setAllRoles(RoleState s) {
+        if (mSourceState != ROLE_NONE)       mSourceState = s;
+        if (mAudioDecState != ROLE_NONE)     mAudioDecState = s;
+        if (mVideoDecState != ROLE_NONE)     mVideoDecState = s;
+        if (mAudioRenderState != ROLE_NONE)  mAudioRenderState = s;
+        if (mVideoDisplayState != ROLE_NONE) mVideoDisplayState = s;
+    }
+
+    bool VEPlayer::anyRoleExists() const {
+        return mSourceState != ROLE_NONE || mAudioDecState != ROLE_NONE ||
+               mVideoDecState != ROLE_NONE || mAudioRenderState != ROLE_NONE ||
+               mVideoDisplayState != ROLE_NONE;
+    }
+
+    void VEPlayer::postFlowTimeout(int64_t delayUs) {
         auto timeoutMsg = std::make_shared<AMessage>(kWhatAckTimeout, shared_from_this());
-        timeoutMsg->setInt32("generation", mAckGeneration);
-        timeoutMsg->post(timeoutUs > 0 ? timeoutUs : kAckTimeoutUs);
+        timeoutMsg->setInt32("seq", mFlowSeq);
+        timeoutMsg->post(delayUs > 0 ? delayUs : kAckTimeoutUs);
     }
 
-    void VEPlayer::onComponentAck(int32_t type, int32_t event) {
-        if (mPendingAcks == 0 || event != mExpectedAckEvent) {
-            ALOGD("VEPlayer::onComponentAck ignore type:%d event:%d (expect:%d pending:0x%x)",
-                  type, event, mExpectedAckEvent, mPendingAcks);
-            return;
-        }
-        if (type < 0) {
-            return;
+    void VEPlayer::onFlowTimeout(const std::shared_ptr<AMessage> &msg) {
+        int32_t seq = 0;
+        msg->findInt32("seq", &seq);
+        if (seq != mFlowSeq) {
+            return; // 阶段已推进，超时兜底作废
         }
 
-        mPendingAcks &= ~(1u << type);
-        ALOGI("VEPlayer::onComponentAck type:%d event:%d remaining:0x%x", type, event, mPendingAcks);
-
-        if (mPendingAcks == 0) {
-            auto continuation = mAckContinuation;
-            mAckContinuation = nullptr;
-            mExpectedAckEvent = 0;
-            ++mAckGeneration;   // 让在途的超时消息失效
-            if (continuation) {
-                continuation();
+        if (mState == STATE_RELEASING) {
+            // teardown 超时：release 必须有界，强推收尾。
+            // 阶段①卡住 → 跳过等待直接进入释放阶段；阶段②卡住 → 直接收尾。
+            // 残余风险(旧组件迟到事件)由 pipelineGen 兜底。
+            if (rolesAllIn(ROLE_RELEASED) || mSourceState == ROLE_RELEASING ||
+                mAudioDecState == ROLE_RELEASING || mVideoDecState == ROLE_RELEASING ||
+                mAudioRenderState == ROLE_RELEASING || mVideoDisplayState == ROLE_RELEASING) {
+                ALOGW("VEPlayer::onFlowTimeout teardown release stage timed out, force finish");
+                finishTeardownAndContinue();
+            } else {
+                ALOGW("VEPlayer::onFlowTimeout teardown stop stage timed out, force release");
+                enterTeardownReleaseStage();
             }
+            return;
         }
+
+        if (mSeekStage != SEEK_STAGE_NONE) {
+            // seek 阶段超时：不再"强推装作完成"(那是过期回执的制造者)，
+            // 组件卡死就是故障，如实报错并收敛。
+            ALOGE("VEPlayer::onFlowTimeout seek stage %d timed out", mSeekStage);
+            abortSeekOnTimeout();
+        }
+    }
+
+    void VEPlayer::abortSeekOnTimeout() {
+        ++mFlowSeq;
+        mSeekStage = SEEK_STAGE_NONE;
+        mHasPendingSeek = false;
+        setAllRoles(ROLE_ACTIVE);
+        stopProgressTick();
+        if (mMediaClock) {
+            mMediaClock->pause();
+        }
+        mState = STATE_ERROR;
+        notifyError(VE_TIMED_OUT, "seek timed out, component not responding");
     }
 
     // ---------------------------------------------------------------------
@@ -891,25 +1000,6 @@ namespace VE {
         next->post(kProgressIntervalUs);
     }
 
-    void VEPlayer::onAckTimeout(const std::shared_ptr<AMessage> &msg) {
-        int32_t generation = 0;
-        msg->findInt32("generation", &generation);
-        if (generation != mAckGeneration || mPendingAcks == 0) {
-            return; // 回执已齐或已进入下一阶段
-        }
-
-        ALOGW("VEPlayer::onAckTimeout event:%d still pending:0x%x, continue anyway",
-              mExpectedAckEvent, mPendingAcks);
-
-        mPendingAcks = 0;
-        auto continuation = mAckContinuation;
-        mAckContinuation = nullptr;
-        mExpectedAckEvent = 0;
-        if (continuation) {
-            continuation();
-        }
-    }
-
     // ---------------------------------------------------------------------
     // seek：分阶段推进，每阶段等齐回执后再进入下一阶段
     // ---------------------------------------------------------------------
@@ -942,41 +1032,47 @@ namespace VE {
         // ① 先让所有组件停止消费数据，避免 flush 与解码并发
         ALOGI("VEPlayer::seek stage 1/3 - pausing components");
         mSeekStage = SEEK_STAGE_PAUSING;
-        if (mAVSync) {
+        ++mFlowSeq;
+        if (mMediaClock) {
             mMediaClock->pause();
         }
 
-        uint32_t mask = activeComponentMask();
-        if (mVideoRender)  mVideoRender->pause();
-        if (mAudioOutput)  mAudioOutput->pause();
-        if (mVideoDecoder) mVideoDecoder->pause();
-        if (mAudioDecoder) mAudioDecoder->pause();
-        if (mDemux)        mDemux->pause();
-        awaitAcks(mask, VE_NOTIFY_EVENT_PAUSE_DONE, [this] { seekStageSeek(); });
+        if (mVideoRender)  { mVideoRender->pause();  mVideoDisplayState = ROLE_PAUSING; }
+        if (mAudioOutput)  { mAudioOutput->pause();  mAudioRenderState  = ROLE_PAUSING; }
+        if (mVideoDecoder) { mVideoDecoder->pause(); mVideoDecState     = ROLE_PAUSING; }
+        if (mAudioDecoder) { mAudioDecoder->pause(); mAudioDecState     = ROLE_PAUSING; }
+        if (mDemux)        { mDemux->pause();        mSourceState       = ROLE_PAUSING; }
+        postFlowTimeout(kAckTimeoutUs);
     }
 
     void VEPlayer::seekStageSeek() {
         // ② demux 定位到目标关键帧，解码器 flush 并记下精准 seek 目标
         ALOGI("VEPlayer::seek stage 2/3 - seeking demux & flushing decoders");
         mSeekStage = SEEK_STAGE_SEEKING;
+        ++mFlowSeq;
 
-        uint32_t mask = activeComponentMask();
         const double target = mSeekTargetMs;
-        if (mVideoRender)  mVideoRender->seekTo(target);
-        if (mAudioOutput)  mAudioOutput->seekTo(target);
-        if (mVideoDecoder) mVideoDecoder->seekTo(target);
-        if (mAudioDecoder) mAudioDecoder->seekTo(target);
-        if (mDemux)        mDemux->seekTo(target);
-        awaitAcks(mask, VE_NOTIFY_EVENT_SEEK_DONE, [this] { seekStagePrime(); });
+        if (mVideoRender)  { mVideoRender->seekTo(target);  mVideoDisplayState = ROLE_SEEKING; }
+        if (mAudioOutput)  { mAudioOutput->seekTo(target);  mAudioRenderState  = ROLE_SEEKING; }
+        if (mVideoDecoder) { mVideoDecoder->seekTo(target); mVideoDecState     = ROLE_SEEKING; }
+        if (mAudioDecoder) { mAudioDecoder->seekTo(target); mAudioDecState     = ROLE_SEEKING; }
+        if (mDemux)        { mDemux->seekTo(target);        mSourceState       = ROLE_SEEKING; }
+        postFlowTimeout(kAckTimeoutUs);
     }
 
     void VEPlayer::seekStagePrime() {
         // ③ 把时钟重新定位到目标位置后重启管线，等第一帧真正上屏
         ALOGI("VEPlayer::seek stage 3/3 - priming first frame");
         mSeekStage = SEEK_STAGE_PRIMING;
+        ++mFlowSeq;
+        // 本轮 seek 的命令-回执循环到此为止，角色收拢回稳态；
+        // 阶段③只等视频显示的 FIRST_FRAME 事件(由 mSeekStage 守卫)
+        setAllRoles(ROLE_ACTIVE);
 
-        if (mAVSync) {
+        if (mMediaClock) {
             mMediaClock->resetTo(mSeekTargetMs * 1000.0);
+        }
+        if (mAVSync) {
             mAVSync->reset(mSeekTargetMs * 1000.0);
         }
 
@@ -990,8 +1086,7 @@ namespace VE {
             if (mStateBeforeSeek == STATE_STARTED && mAudioOutput) {
                 mAudioOutput->start();
             }
-            uint32_t mask = 1u << EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER;
-            awaitAcks(mask, VE_NOTIFY_EVENT_FIRST_FRAME, [this] { seekFinish(); });
+            postFlowTimeout(kAckTimeoutUs);
         } else {
             // 纯音频：没有画面可等，恢复播放即视为完成
             if (mStateBeforeSeek == STATE_STARTED) {
@@ -1006,6 +1101,8 @@ namespace VE {
     void VEPlayer::seekFinish() {
         ALOGI("VEPlayer::seekFinish, restore state %d", mStateBeforeSeek);
         mSeekStage = SEEK_STAGE_NONE;
+        ++mFlowSeq;   // 作废阶段③的超时兜底
+        setAllRoles(ROLE_ACTIVE);
 
         if (mStateBeforeSeek == STATE_STARTED) {
             mState = STATE_STARTED;
