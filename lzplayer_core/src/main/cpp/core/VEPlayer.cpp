@@ -264,9 +264,7 @@ namespace VE {
             notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "no data source!!");
             return VE_UNKNOWN_ERROR;
         }
-        VEBundle params;
-        params.set("path", mPath);
-        if (mDemux->prepare(params) != VE_OK) {
+        if (mDemux->prepare(mPath) != VE_OK) {
             mState = STATE_ERROR;
             notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "demux open failed!!");
             return VE_UNKNOWN_ERROR;
@@ -314,12 +312,8 @@ namespace VE {
 
             mAudioOutput = std::make_shared<VEAudioRender>(mRenderNotifyMsg, mAVSync);
             mAudioOutputLooper->registerHandler(mAudioOutput);
-            VEBundle params;
-            params.set("samplerate", audioOut.sampleRate);
-            params.set("channel", audioOut.channels);
-            params.set("format", audioOut.format);
-            params.set("decode", std::static_pointer_cast<IMediaDecoder>(mAudioDecoder));
-            mAudioOutput->prepare(params);
+            mAudioOutput->prepare(std::static_pointer_cast<IMediaDecoder>(mAudioDecoder),
+                                  audioOut);
         }
 
         if(mMediaInfo->video_stream_index != -1) {
@@ -337,19 +331,8 @@ namespace VE {
             mVideoRender = std::make_shared<VEVideoDisplay>(mRenderNotifyMsg, mAVSync);
             mVideoRenderLooper->registerHandler(mVideoRender);
 
-//            mVideoRender->prepare(mVideoDecoder, mWindow, mViewWidth, mViewHeight, mMediaInfo->fps);
-
-            VEBundle params;
-            params.set("surface",mWindow);
-            params.set("width",mViewWidth);
-            params.set("height",mViewHeight);
-            params.set("fps",mMediaInfo->fps);
-            params.set("decoder", std::static_pointer_cast<IMediaDecoder>(mVideoDecoder));
-            mVideoRender->prepare(params);
-            // 如果Surface已经设置，则在初始化后调用setSurface
-//            if (mWindow != nullptr) {
-//                mVideoRender->setSurface(mWindow, mViewWidth, mViewHeight);
-//            }
+            mVideoRender->prepare(std::static_pointer_cast<IMediaDecoder>(mVideoDecoder),
+                                  mWindow, mViewWidth, mViewHeight, mMediaInfo->fps);
         }
 
         mState = STATE_PREPARED;
@@ -358,18 +341,6 @@ namespace VE {
         }
         ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return 0;
-    }
-
-    void VEPlayer::forEachComponent(const std::function<void(const std::shared_ptr<IVEComponent> &)> &fn) {
-        // 固定顺序遍历，缺失的组件(如纯音频文件没有视频链路)自动跳过
-        const std::shared_ptr<IVEComponent> components[] = {
-                mVideoRender, mAudioOutput, mVideoDecoder, mAudioDecoder, mDemux
-        };
-        for (const auto &component : components) {
-            if (component) {
-                fn(component);
-            }
-        }
     }
 
     VEResult VEPlayer::onStart(std::shared_ptr<AMessage> msg) {
@@ -403,7 +374,11 @@ namespace VE {
             }
             mMediaClock->resume();
         }
-        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
+        if (mVideoRender)  mVideoRender->start();
+        if (mAudioOutput)  mAudioOutput->start();
+        if (mVideoDecoder) mVideoDecoder->start();
+        if (mAudioDecoder) mAudioDecoder->start();
+        if (mDemux)        mDemux->start();
         startProgressTick();
         ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
@@ -424,7 +399,11 @@ namespace VE {
         if (mMediaClock) {
             mMediaClock->resetClock();
         }
-        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->stop(); });
+        if (mVideoRender)  mVideoRender->stop();
+        if (mAudioOutput)  mAudioOutput->stop();
+        if (mVideoDecoder) mVideoDecoder->stop();
+        if (mAudioDecoder) mAudioDecoder->stop();
+        if (mDemux)        mDemux->stop();
         ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
@@ -445,7 +424,11 @@ namespace VE {
         if (mMediaClock) {
             mMediaClock->pause();
         }
-        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->pause(); });
+        if (mVideoRender)  mVideoRender->pause();
+        if (mAudioOutput)  mAudioOutput->pause();
+        if (mVideoDecoder) mVideoDecoder->pause();
+        if (mAudioDecoder) mAudioDecoder->pause();
+        if (mDemux)        mDemux->pause();
         ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
@@ -475,14 +458,22 @@ namespace VE {
         // ① 停数据流：demux 停止读取，解码器/渲染器停止消费。
         //    等齐 STOP_DONE 才能确认没有组件还在动数据。
         uint32_t mask = activeComponentMask();
-        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->stop(); });
+        if (mVideoRender)  mVideoRender->stop();
+        if (mAudioOutput)  mAudioOutput->stop();
+        if (mVideoDecoder) mVideoDecoder->stop();
+        if (mAudioDecoder) mAudioDecoder->stop();
+        if (mDemux)        mDemux->stop();
 
         awaitAcks(mask, VE_NOTIFY_EVENT_STOP_DONE, [this, onDone] {
             // ② 释放资源。编解码器上下文/EGL/SLES 都必须在各自的线程上销毁，
             //    所以只能投递消息过去，等 RELEASE_DONE 回执确认做完。
             ALOGI("VEPlayer::teardown stage 2/2 - releasing component resources");
             uint32_t releaseMask = activeComponentMask();
-            forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->release(); });
+            if (mVideoRender)  mVideoRender->release();
+            if (mAudioOutput)  mAudioOutput->release();
+            if (mVideoDecoder) mVideoDecoder->release();
+            if (mAudioDecoder) mAudioDecoder->release();
+            if (mDemux)        mDemux->release();
 
             awaitAcks(releaseMask, VE_NOTIFY_EVENT_RELEASE_DONE, [this, onDone] {
                 // ③ 资源已释放干净，此时停 looper 丢消息也不会漏掉任何清理
@@ -956,7 +947,11 @@ namespace VE {
         }
 
         uint32_t mask = activeComponentMask();
-        forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->pause(); });
+        if (mVideoRender)  mVideoRender->pause();
+        if (mAudioOutput)  mAudioOutput->pause();
+        if (mVideoDecoder) mVideoDecoder->pause();
+        if (mAudioDecoder) mAudioDecoder->pause();
+        if (mDemux)        mDemux->pause();
         awaitAcks(mask, VE_NOTIFY_EVENT_PAUSE_DONE, [this] { seekStageSeek(); });
     }
 
@@ -966,8 +961,12 @@ namespace VE {
         mSeekStage = SEEK_STAGE_SEEKING;
 
         uint32_t mask = activeComponentMask();
-        double target = mSeekTargetMs;
-        forEachComponent([target](const std::shared_ptr<IVEComponent> &c) { c->seekTo(target); });
+        const double target = mSeekTargetMs;
+        if (mVideoRender)  mVideoRender->seekTo(target);
+        if (mAudioOutput)  mAudioOutput->seekTo(target);
+        if (mVideoDecoder) mVideoDecoder->seekTo(target);
+        if (mAudioDecoder) mAudioDecoder->seekTo(target);
+        if (mDemux)        mDemux->seekTo(target);
         awaitAcks(mask, VE_NOTIFY_EVENT_SEEK_DONE, [this] { seekStagePrime(); });
     }
 
@@ -996,7 +995,9 @@ namespace VE {
         } else {
             // 纯音频：没有画面可等，恢复播放即视为完成
             if (mStateBeforeSeek == STATE_STARTED) {
-                forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
+                if (mAudioOutput)  mAudioOutput->start();
+                if (mAudioDecoder) mAudioDecoder->start();
+                if (mDemux)        mDemux->start();
             }
             seekFinish();
         }
@@ -1008,7 +1009,11 @@ namespace VE {
 
         if (mStateBeforeSeek == STATE_STARTED) {
             mState = STATE_STARTED;
-            forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
+            if (mVideoRender)  mVideoRender->start();
+            if (mAudioOutput)  mAudioOutput->start();
+            if (mVideoDecoder) mVideoDecoder->start();
+            if (mAudioDecoder) mAudioDecoder->start();
+            if (mDemux)        mDemux->start();
             if (mMediaClock) {
                 mMediaClock->resume();
             }
@@ -1017,7 +1022,11 @@ namespace VE {
         } else {
             // 暂停态 seek：预览帧已经上屏，重新回到暂停
             mState = STATE_PAUSED;
-            forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->pause(); });
+            if (mVideoRender)  mVideoRender->pause();
+            if (mAudioOutput)  mAudioOutput->pause();
+            if (mVideoDecoder) mVideoDecoder->pause();
+            if (mAudioDecoder) mAudioDecoder->pause();
+            if (mDemux)        mDemux->pause();
             if (mMediaClock) {
                 // 冻结时钟，否则暂停期间它会一直外推，恢复播放时视频会被判定为落后
                 mMediaClock->pause();

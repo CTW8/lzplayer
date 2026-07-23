@@ -6,7 +6,6 @@
 #include <atomic>
 #include <mutex>
 #include <android/native_window_jni.h>
-#include "IVEComponent.h"
 #include "VEDemux.h"
 #include "VEAudioDecoder.h"
 #include "VEVideoDecoder.h"
@@ -17,8 +16,6 @@
 #include "VEError.h"
 #include "jni.h"
 #include "thread/AHandler.h"
-#include "VEVideoRender.h"
-#include "AudioOpenSLESOutput.h"
 #include "VEDef.h"
 #include "VEAudioRender.h"
 #include "VEVideoDisplay.h"
@@ -118,9 +115,6 @@ namespace VE {
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
 
         void onEOS();
-
-        /// 按固定顺序遍历已创建的组件，缺失的链路自动跳过
-        void forEachComponent(const std::function<void(const std::shared_ptr<IVEComponent> &)> &fn);
 
         /// 按 停数据流 → 释放资源 → 停线程 → 丢对象 的顺序拆掉整条管线。
         /// 前两步靠组件回执握手完成(资源必须在各自线程上释放)，

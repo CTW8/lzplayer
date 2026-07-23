@@ -17,15 +17,15 @@ namespace VE {
 
     }
 
-    VEResult VEVideoDisplay::prepare(VEBundle params) {
+    VEResult VEVideoDisplay::prepare(const std::shared_ptr<IMediaDecoder> &decoder,
+                                     ANativeWindow *win, int width, int height, int fps) {
         ALOGV("VEVideoDisplay::%s enter",__FUNCTION__ );
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
-        ANativeWindow *win = params.get<ANativeWindow *>("surface");
         msg->setPointer("win", win);
-        msg->setInt32("width", params.get<int>("width"));
-        msg->setInt32("height", params.get<int>("height"));
-        msg->setInt32("fps", params.get<int>("fps"));
-        msg->setObject("vdec", params.get<std::shared_ptr<IMediaDecoder>>("decoder"));
+        msg->setInt32("width", width);
+        msg->setInt32("height", height);
+        msg->setInt32("fps", fps);
+        msg->setObject("vdec", decoder);
         msg->post();
         return 0;
     }

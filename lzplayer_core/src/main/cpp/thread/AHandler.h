@@ -54,6 +54,8 @@ struct AHandler : public std::enable_shared_from_this<AHandler> {
     }
 
 protected:
+    virtual ~AHandler() = default;
+
     virtual void onMessageReceived(const std::shared_ptr<AMessage> &msg) = 0;
 
 private:

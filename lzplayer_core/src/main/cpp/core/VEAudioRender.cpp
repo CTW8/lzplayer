@@ -1,5 +1,4 @@
 #include "VEAudioRender.h"
-#include "AudioOpenSLESOutput.h"
 #include "renders/VEAudioSLESRender.h"
 
 namespace VE {
@@ -35,16 +34,17 @@ namespace VE {
         }
     }
 
-    VEResult VEAudioRender::prepare(VEBundle params) {
-        if(!params.contains("samplerate") || !params.contains("channel") || !params.contains("format")){
+    VEResult VEAudioRender::prepare(const std::shared_ptr<IMediaDecoder> &decoder,
+                                    const VEAudioOutputConfig &config) {
+        if (decoder == nullptr) {
             return VE_INVALID_PARAMS;
         }
 
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
-        msg->setInt32("samplerate",params.get<int>("samplerate"));
-        msg->setInt32("channel",params.get<int>("channel"));
-        msg->setInt32("format",params.get<int>("format"));
-        msg->setObject("decode",params.get<std::shared_ptr<IMediaDecoder>>("decode"));
+        msg->setInt32("samplerate", config.sampleRate);
+        msg->setInt32("channel", config.channels);
+        msg->setInt32("format", config.format);
+        msg->setObject("decode", decoder);
         msg->post();
         return 0;
     }
@@ -225,13 +225,10 @@ namespace VE {
             if (frame != nullptr) {
                 if (frame->getFrameType() == E_FRAME_TYPE_EOF) {
                     ALOGI("VEAudioRender::%s - End of Stream (EOS) detected", __FUNCTION__);
-//                    std::shared_ptr<AMessage> eosMsg = m_Notify->dup();
-//                    eosMsg->setInt32("type", kWhatEOS);
-//                    eosMsg->post();
+                    // 只上报，不越权命令解码器：渲染器 pause 解码器会产生一条
+                    // VEPlayer 不知情的 PAUSE_DONE 回执污染命令协议。到达 EOS 的
+                    // 解码器本来就已自停(mIsEOS)，收敛动作统一归 VEPlayer。
                     postMessage(VE_NOTIFY_EVENT_EOS,0,0,0, nullptr);
-
-                    m_AudioDecoder->pause();
-
                     return VE_EOS;
                 }
 

@@ -1,6 +1,5 @@
 #include "VEAudioDecoder.h"
 #include "VEError.h"
-#include "VEBundle.h"
 
 #define AUDIO_FRAME_QUEUE_SIZE 50
 
@@ -493,9 +492,6 @@ namespace VE {
         return VE_OK;
     }
 
-    VEResult VEAudioDecoder::prepare(VEBundle params) {
-        return 0;
-    }
 
     VEResult VEAudioDecoder::seekTo(double timestamp) {
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());

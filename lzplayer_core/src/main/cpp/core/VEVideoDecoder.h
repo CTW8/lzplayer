@@ -10,9 +10,7 @@
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "VEDemux.h"
-#include "IVEComponent.h"
 #include "IMediaDecoder.h"
-#include "VEBundle.h"
 
 extern "C" {
 #include "libavformat/avformat.h"
@@ -24,30 +22,29 @@ extern "C" {
 
 namespace VE {
     class VEVideoDecoder
-            : public IMediaDecoder{
+            : public AHandler, public IMediaDecoder{
     public:
         VEVideoDecoder(std::shared_ptr<AMessage> &nofity);
         ~VEVideoDecoder() override;
 
         VEResult prepare(std::shared_ptr<IMediaSource> source);
 
-        VEResult prepare(VEBundle params) override;
+        // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口
+        VEResult start();
 
-        VEResult start() override;
+        VEResult pause();
 
-        VEResult pause() override;
+        VEResult stop();
 
-        VEResult stop() override;
+        VEResult flush();
 
-        VEResult flush() override;
-
-        VEResult seekTo(double timestampMs) override;
+        VEResult seekTo(double timestampMs);
 
         VEResult readFrame(std::shared_ptr<VEFrame> &frame) override;
 
         void needMoreFrame(std::shared_ptr<AMessage> msg) override;
 
-        VEResult release() override;
+        VEResult release();
 
     protected:
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;

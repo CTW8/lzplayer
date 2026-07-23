@@ -35,11 +35,11 @@ namespace VE {
         ALOGV("VEDemux::%s exit", __FUNCTION__);
     }
 
-    VEResult VEDemux::prepare(VE::VEBundle params){
+    VEResult VEDemux::prepare(const std::string &path){
         ALOGV("VEDemux::%s enter", __FUNCTION__);
         // 必须同步：调用方紧接着就会 getFileInfo()，异步 post 会读到尚未填充的媒体信息
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
-        msg->setString("filePath", params.get<std::string >("path"));
+        msg->setString("filePath", path);
 
         std::shared_ptr<AMessage> response;
         if (msg->postAndAwaitResponse(&response) != OK || response == nullptr) {

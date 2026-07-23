@@ -1,5 +1,4 @@
 #include "VEVideoDecoder.h"
-#include "VEBundle.h"
 #include <iostream>
 
 /// 解码帧队列深度。帧现在是引用而非整帧拷贝，但仍占住解码器的缓冲池，
@@ -40,17 +39,6 @@ namespace VE {
         return VE_OK;
     }
 
-    VEResult VEVideoDecoder::prepare(VEBundle params) {
-        std::shared_ptr<VEDemux> demux = params.get<std::shared_ptr<VEDemux>>("demux");
-        if (!demux) {
-            ALOGE("VEVideoDecoder::prepare demux is null");
-            return VE_INVALID_PARAMS;
-        }
-        auto msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
-        msg->setObject("demux", demux);
-        msg->post();
-        return 0;
-    }
 
     VEResult VEVideoDecoder::seekTo(double timestampMs) {
         ALOGV("VEVideoDecoder::seekTo enter timestampMs:%f", timestampMs);

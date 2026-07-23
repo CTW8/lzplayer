@@ -4,6 +4,7 @@
 #include "IAudioRender.h"
 #include "IMediaDecoder.h"
 #include "VEAudioDecoder.h"
+#include "VEAudioOutputConfig.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "VEAVsync.h"
@@ -13,25 +14,27 @@
 #include <atomic>
 #include <condition_variable>
 namespace VE {
-class VEAudioRender : public IVEComponent{
+class VEAudioRender : public AHandler{
     public:
         VEAudioRender(const std::shared_ptr<AMessage> &notify,const std::shared_ptr<VEAVsync> &avSync);
 
         ~VEAudioRender() override;
 
-        VEResult prepare(VEBundle params) override;
+        VEResult prepare(const std::shared_ptr<IMediaDecoder> &decoder,
+                         const VEAudioOutputConfig &config);
 
-        VEResult start() override;
+        // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口
+        VEResult start();
 
-        VEResult stop() override;
+        VEResult stop();
 
-        VEResult seekTo(double timestamp) override;
+        VEResult seekTo(double timestamp);
 
-        VEResult flush() override;
+        VEResult flush();
 
-        VEResult pause() override;
+        VEResult pause();
 
-        VEResult release() override;
+        VEResult release();
 
         /// 由 OpenSL ES 回调线程调用：投递一条带当前代次的渲染消息
         void postRender(int64_t delayUs = 0);

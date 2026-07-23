@@ -10,7 +10,6 @@
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "VEError.h"
-#include "IVEComponent.h"
 #include "IMediaSource.h"
 
 extern "C"
@@ -21,26 +20,27 @@ extern "C"
     #include "libavutil/timestamp.h"
 }
 namespace VE {
-    class VEDemux : public IMediaSource {
+    class VEDemux : public AHandler, public IMediaSource {
 
     public:
         explicit VEDemux(std::shared_ptr<AMessage> &notify);
 
         ~VEDemux() override;
 
-        VEResult prepare(VEBundle params) override;
+        // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口
+        VEResult prepare(const std::string &path);
 
-        VEResult seekTo(double timestamp) override;
+        VEResult seekTo(double timestamp);
 
-        VEResult flush() override;
+        VEResult flush();
 
-        VEResult release() override;
+        VEResult release();
 
-        VEResult start() override;
+        VEResult start();
 
-        VEResult stop() override;
+        VEResult stop();
 
-        VEResult pause() override;
+        VEResult pause();
 
     public:
         void needMorePacket(std::shared_ptr<AMessage> msg, int type) override;
