@@ -75,7 +75,7 @@ namespace VE {
         VEResult postMessage(int32_t event,int32_t arg1,int32_t arg2,int64_t arg3,void*params);
 
         /// 投递带当前 epoch 的解码消息，flush 后旧消息会被自动丢弃
-        void postDecode();
+        void postDecode(int64_t delayUs = 0);
 
         // 帧入队列
         void queueFrame(std::shared_ptr<VEFrame> frame);

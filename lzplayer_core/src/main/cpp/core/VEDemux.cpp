@@ -110,12 +110,24 @@ namespace VE {
 
             packet = mVideoPacketQueue->get();
         }
-        if(mVideoPacketQueue->getRemainingSize()>0 && mAudioPacketQueue->getRemainingSize()>0 && !mIsEOS && !mIsStart){
-            std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
-            msg->post();
-        }
+        // 拉取触发补货(仿 GenericSource::dequeueAccessUnit)：不再用 kWhatStart
+        // 命令消息复活 demux——数据面事件不允许触碰命令通道
+        scheduleContinueReadIfNeeded();
         ALOGV("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
+    }
+
+    void VEDemux::scheduleContinueReadIfNeeded() {
+        if (mReleased || mIsEOS) {
+            return;
+        }
+        if ((mAudioPacketQueue && mAudioPacketQueue->getDataSize() < AUDIO_QUEUE_SIZE / 2) ||
+            (mVideoPacketQueue && mVideoPacketQueue->getDataSize() < VIDEO_QUEUE_SIZE / 2)) {
+            // exchange 去重：已有在途的续读消息就不再投
+            if (!mContinuePending.exchange(true)) {
+                std::make_shared<AMessage>(kWhatContinueRead, shared_from_this())->post();
+            }
+        }
     }
 
     VEResult VEDemux::release(){
@@ -218,8 +230,13 @@ namespace VE {
                 // VE_EOS/致命错误：停止续投(致命路径已复位 mIsStart 并上报)
                 break;
             }
-            case kWhatNeedMore: {
-                onNeedMorePacket(msg);
+            case kWhatContinueRead: {
+                mContinuePending = false;
+                // 数据面唤醒只重新拉起读循环，不触碰命令态：
+                // 停止(stop)/EOS/已释放 时即便被叫醒也不动
+                if (mIsStart && !mIsEOS && !mReleased) {
+                    std::make_shared<AMessage>(kWhatRead, shared_from_this())->post();
+                }
                 break;
             }
             case kWhatRelease:{
@@ -320,16 +337,22 @@ namespace VE {
     VEResult VEDemux::onRead() {
         ALOGV("VEDemux::%s enter", __FUNCTION__);
 
+        if (mReleased || mFormatContext == nullptr) {
+            // 终态防护：teardown 超时强推后可能有迟到的读消息
+            ALOGW("VEDemux::onRead after release, ignore");
+            return VE_UNKNOWN_ERROR;
+        }
+
+        // 队列满 → 停止续投(隐式 park)。这里不动 mIsStart：它是命令态，
+        // 由 start/stop 管理；读循环的恢复由消费端拉取触发(kWhatContinueRead)。
         if (mAudioPacketQueue->getDataSize() >= AUDIO_QUEUE_SIZE) {
-            ALOGD("VEDemux::onRead Audio queue is full, stopping read.");
-            mIsStart = false;
+            ALOGD("VEDemux::onRead Audio queue is full, parking read loop.");
             ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_NO_MEMORY;
         }
 
         if (mVideoPacketQueue->getDataSize() >= VIDEO_QUEUE_SIZE) {
-            ALOGD("VEDemux::onRead Video queue is full, stopping read.");
-            mIsStart = false;
+            ALOGD("VEDemux::onRead Video queue is full, parking read loop.");
             ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_NO_MEMORY;
         }
@@ -453,59 +476,18 @@ namespace VE {
 
     void VEDemux::putPacket(std::shared_ptr<VEPacket> packet, bool isAudio) {
         ALOGV("VEDemux::%s enter", __FUNCTION__);
-        // 只在 demux 自己的 looper 线程上执行，无需加锁
+        // 只在 demux 自己的 looper 线程上执行，无需加锁。
+        // 消费者饥饿时按 10ms 轮询重试(NuPlayer DecoderBase 的做法)，
+        // 不再需要"有数据就通知"的登记机制。
         std::shared_ptr<VEPacketQueue> &queue = isAudio ? mAudioPacketQueue : mVideoPacketQueue;
-        bool &needMore = isAudio ? mNeedAudioMore : mNeedVideoMore;
-        std::shared_ptr<AMessage> &notify = isAudio ? mAudioNotify : mVideoNotify;
-
         if (!queue->put(packet)) {
-            ALOGD("VEDemux::putPacket %s queue is full, stopping read.", isAudio ? "Audio" : "Video");
-            mIsStart = false;
-        } else if (needMore) {
-            needMore = false;
-            if (notify) {
-                ALOGD("VEDemux::putPacket %s queue post notify", isAudio ? "Audio" : "Video");
-                notify->post();
-            }
+            // onRead 入口已做满检查，单生产者下不应走到这里
+            ALOGW("VEDemux::putPacket %s queue full, packet dropped",
+                  isAudio ? "audio" : "video");
         }
         ALOGV("VEDemux::%s exit", __FUNCTION__);
     }
 
-    void VEDemux::needMorePacket(std::shared_ptr<AMessage> msg, int type) {
-        // 由解码器线程调用：必须转成消息投递到 demux 自己的 looper，
-        // 否则会与读取循环并发读写 mNeedXxxMore / mXxxNotify / mIsStart。
-        ALOGV("VEDemux::%s enter type:%d", __FUNCTION__, type);
-        auto needMsg = std::make_shared<AMessage>(kWhatNeedMore, shared_from_this());
-        needMsg->setObject("notify", msg);
-        needMsg->setInt32("type", type);
-        needMsg->post();
-    }
-
-    VEResult VEDemux::onNeedMorePacket(const std::shared_ptr<AMessage> &msg) {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
-        std::shared_ptr<void> tmp;
-        if (!msg->findObject("notify", &tmp)) {
-            ALOGW("VEDemux::onNeedMorePacket notify not found");
-            return VE_INVALID_PARAMS;
-        }
-        int32_t type = 0;
-        msg->findInt32("type", &type);
-
-        if (type == 1) {
-            mAudioNotify = std::static_pointer_cast<AMessage>(tmp);
-            mNeedAudioMore = true;
-        } else {
-            mVideoNotify = std::static_pointer_cast<AMessage>(tmp);
-            mNeedVideoMore = true;
-        }
-
-        if (!mIsStart && !mIsEOS) {
-            mIsStart = true;
-            ALOGI("VEDemux::onNeedMorePacket - Starting to read packets.");
-            std::make_shared<AMessage>(kWhatRead, shared_from_this())->post();
-        }
-        return VE_OK;
-    }
 
     VEResult
     VEDemux::postMessage(int32_t event, int32_t arg1, int32_t arg2, int64_t arg3, void *params) {
@@ -529,8 +511,6 @@ namespace VE {
         // 停止读取并丢掉已缓存的包，避免下次 start 时吐出上一轮的残留数据
         mIsStart = false;
         mIsEOS = false;
-        mNeedAudioMore = false;
-        mNeedVideoMore = false;
         if (mAudioPacketQueue) mAudioPacketQueue->clear();
         if (mVideoPacketQueue) mVideoPacketQueue->clear();
         return VE_OK;
@@ -538,8 +518,6 @@ namespace VE {
 
     VEResult VEDemux::onFlush() {
         mIsEOS = false;
-        mNeedAudioMore = false;
-        mNeedVideoMore = false;
         if (mAudioPacketQueue) mAudioPacketQueue->clear();
         if (mVideoPacketQueue) mVideoPacketQueue->clear();
         return VE_OK;
@@ -547,8 +525,8 @@ namespace VE {
 
     VEResult VEDemux::onRelease() {
         mIsStart = false;
-        mAudioNotify.reset();
-        mVideoNotify.reset();
+        // 终态：此后拒绝一切数据面活动(read/续读)，防止被迟到消息复活
+        mReleased = true;
         if (mAudioPacketQueue) mAudioPacketQueue->clear();
         if (mVideoPacketQueue) mVideoPacketQueue->clear();
 

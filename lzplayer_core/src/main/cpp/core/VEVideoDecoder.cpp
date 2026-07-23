@@ -5,6 +5,9 @@
 /// 不宜过深；够吸收渲染抖动即可。
 #define  FRAME_QUEUE_MAX_SIZE 6
 
+/// 上游包耗尽时的轮询重试间隔(同 NuPlayer DecoderBase 的 10ms)
+#define kStarveRetryUs 10000
+
 namespace VE {
     namespace {
         /// 渲染器按 3 平面 8bit YUV420 上传纹理，这两种格式可以直接送过去
@@ -169,10 +172,13 @@ namespace VE {
                 VEResult ret = onDecode();
                 if (ret == VE_OK) {
                     postDecode();
+                } else if (ret == VE_NOT_ENOUGH_DATA) {
+                    // 上游饥饿是数据面状态：onDecode 已投延时重试，
+                    // 不动命令态(mIsStarted)——这就是命令/数据分离
                 } else {
                     ALOGI("VEVideoDecoder::onMessageReceived onDecode stopped, ret=%d", ret);
                     mIsStarted = false;
-                    if (ret != VE_NOT_ENOUGH_DATA && ret != VE_EOS && ret != VE_NO_MEMORY) {
+                    if (ret != VE_EOS && ret != VE_NO_MEMORY) {
                         postMessage(VE_NOTIFY_EVENT_ERROR, ret, 0, 0, nullptr);
                     }
                 }
@@ -343,18 +349,20 @@ namespace VE {
         return dst;
     }
 
-    void VEVideoDecoder::postDecode() {
+    void VEVideoDecoder::postDecode(int64_t delayUs) {
         auto decodeMsg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
         decodeMsg->setInt32("epoch", mEpoch);
-        decodeMsg->post();
+        decodeMsg->post(delayUs);
     }
 
     VEResult VEVideoDecoder::onDecode() {
         ALOGV("VEVideoDecoder::onDecode enter");
 
         if (mFrameQueue && mFrameQueue->getRemainingSize() <= 0) {
+            // 下游帧队列满：park(与音频对齐用 VE_NO_MEMORY)，
+            // 由消费端 readFrame 腾出空位后复活
             ALOGI("VEVideoDecoder::onDecode frame queue is full");
-            return VE_NOT_ENOUGH_DATA;
+            return VE_NO_MEMORY;
         }
 
         VEResult ret = VE_OK;
@@ -414,11 +422,11 @@ namespace VE {
         std::shared_ptr<VEPacket> packet;
         ret = mDemux->read(false, packet);
         if (ret == VE_NOT_ENOUGH_DATA) {
-            ALOGI("VEVideoDecoder::onDecode not enough data from demux");
-            if (mDemux) {
-                auto decodeMsg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
-                mDemux->needMorePacket(decodeMsg, 2);
-            }
+            // 上游饥饿：10ms 后轮询重试(NuPlayer DecoderBase 的做法)。
+            // 重试消息带当前 epoch，flush/seek 后自动作废；这是纯数据面
+            // 事件，不触碰命令态。
+            ALOGV("VEVideoDecoder::onDecode starving, retry in 10ms");
+            postDecode(kStarveRetryUs);
             return VE_NOT_ENOUGH_DATA;
         }
         if (!packet) {

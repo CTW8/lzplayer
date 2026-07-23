@@ -43,8 +43,6 @@ namespace VE {
         VEResult pause();
 
     public:
-        void needMorePacket(std::shared_ptr<AMessage> msg, int type) override;
-
         VEResult read(bool isAudio, std::shared_ptr<VEPacket> &packet) override;
 
         std::shared_ptr<VEMediaInfo> getFileInfo() override;
@@ -66,9 +64,11 @@ namespace VE {
 
         VEResult onSeek(double posMs);
 
-        VEResult onNeedMorePacket(const std::shared_ptr<AMessage> &msg);
-
         void putPacket(std::shared_ptr<VEPacket> packet, bool isAudio);
+
+        /// 拉取触发补货：任一队列低于半满且没有在途的续读消息时，
+        /// 向自己的 looper 投递 kWhatContinueRead。由消费者线程调用。
+        void scheduleContinueReadIfNeeded();
 
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
         VEResult postMessage(int32_t event,int32_t arg1,int32_t arg2,int64_t arg3,void*params);
@@ -99,12 +99,10 @@ namespace VE {
         /// 连续读到坏包的计数，读成功即清零；仅 looper 线程访问
         int mReadErrorCount = 0;
 
-        bool mNeedAudioMore = false;
-        bool mNeedVideoMore = false;
-
-        // 下列成员只在 demux 自己的 looper 线程上访问，无需加锁
-        std::shared_ptr<AMessage> mAudioNotify = nullptr;
-        std::shared_ptr<AMessage> mVideoNotify = nullptr;
+        /// 在途续读消息去重(消费者线程与 looper 线程都会碰)
+        std::atomic<bool> mContinuePending{false};
+        /// 终态：release 之后拒绝一切数据面活动，防止超时强推后被复活
+        std::atomic<bool> mReleased{false};
 
         // 音视频共用的时间零点偏移(微秒)，保证两条流落在同一时间轴上
         int64_t mStartTimeOffset = 0;
@@ -129,7 +127,7 @@ namespace VE {
             kWhatFlush = 'flus',
             kWhatRead = 'read',
             kWhatRelease = 'rele',
-            kWhatNeedMore = 'need',
+            kWhatContinueRead = 'cont',
         };
     };
 }

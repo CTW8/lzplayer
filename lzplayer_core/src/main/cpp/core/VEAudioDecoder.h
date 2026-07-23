@@ -67,8 +67,9 @@ namespace VE {
 
         VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
 
-        /// 投递带当前 epoch 的解码消息，flush 后旧消息会被自动丢弃
-        void postDecode();
+        /// 投递带当前 epoch 的解码消息，flush 后旧消息会被自动丢弃。
+        /// delayUs>0 用于上游饥饿时的轮询重试
+        void postDecode(int64_t delayUs = 0);
 
         void queueFrame(std::shared_ptr<VEFrame> frame);
 

@@ -18,12 +18,10 @@ namespace VE {
     public:
         virtual ~IMediaSource() = default;
 
-        /// 取一个码流包。无数据时返回 VE_NOT_ENOUGH_DATA。
+        /// 取一个码流包。无数据时返回 VE_NOT_ENOUGH_DATA，调用方按
+        /// 固定间隔轮询重试(仿 NuPlayer dequeueAccessUnit + 10ms retry)。
         /// 由解码器线程调用，实现方需自行保证线程安全。
         virtual VEResult read(bool isAudio, std::shared_ptr<VEPacket> &packet) = 0;
-
-        /// 登记一条"有数据了就投递"的唤醒消息。type: 1=音频，其它=视频。
-        virtual void needMorePacket(std::shared_ptr<AMessage> msg, int type) = 0;
 
         /// 媒体信息(时长/分辨率/采样率/编码参数等)，prepare 完成后才有效
         virtual std::shared_ptr<VEMediaInfo> getFileInfo() = 0;

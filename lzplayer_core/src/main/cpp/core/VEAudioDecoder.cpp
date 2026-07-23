@@ -3,6 +3,9 @@
 
 #define AUDIO_FRAME_QUEUE_SIZE 50
 
+/// 上游包耗尽时的轮询重试间隔(同 NuPlayer DecoderBase 的 10ms)
+#define kStarveRetryUs 10000
+
 // 输出格式不再写死：由 VEPlayer 依据源参数统一决定后传进来，
 // 保证解码器重采样的目标和渲染器配置的设备参数是同一份。
 #define AUDIO_TARGET_OUTPUT_FORMAT  ((AVSampleFormat) mOutFormat)
@@ -127,10 +130,13 @@ namespace VE {
                 VEResult ret = onDecode();
                 if (ret == VE_OK) {
                     postDecode();
+                } else if (ret == VE_NOT_ENOUGH_DATA) {
+                    // 上游饥饿是数据面状态：onDecode 已投延时重试，
+                    // 不动命令态(mIsStarted)——这就是命令/数据分离
                 } else {
                     ALOGI("VEAudioDecoder::onMessageReceived onDecode stopped, ret=%d", ret);
                     mIsStarted = false;
-                    if (ret != VE_NOT_ENOUGH_DATA && ret != VE_EOS && ret != VE_NO_MEMORY) {
+                    if (ret != VE_EOS && ret != VE_NO_MEMORY) {
                         postMessage(VE_NOTIFY_EVENT_ERROR, ret, 0, 0, nullptr);
                     }
                 }
@@ -220,10 +226,10 @@ namespace VE {
         return VE_OK;
     }
 
-    void VEAudioDecoder::postDecode() {
+    void VEAudioDecoder::postDecode(int64_t delayUs) {
         auto decodeMsg = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
         decodeMsg->setInt32("epoch", mEpoch);
-        decodeMsg->post();
+        decodeMsg->post(delayUs);
     }
 
     VEResult VEAudioDecoder::onDecode() {
@@ -365,12 +371,11 @@ namespace VE {
         std::shared_ptr<VEPacket> packet;
         ret = mDemux->read(true, packet);
         if (ret == VE_NOT_ENOUGH_DATA) {
-            ALOGV("VEAudioDecoder::onDecode not enough data");
-            // 唤醒消息必须用 kWhatStart(与视频解码器一致)：此刻上层会把
-            // mIsStarted 置 false，且 kWhatDecode 需要携带 epoch 才不会被
-            // 当作过期消息丢弃——直接投 kWhatDecode 的唤醒必然被丢，
-            // 造成音频链路永久停摆。onStart 会重新置位并按当前 epoch 续投。
-            mDemux->needMorePacket(std::make_shared<AMessage>(kWhatStart, shared_from_this()), 1);
+            // 上游饥饿：10ms 后轮询重试(NuPlayer DecoderBase 的做法)。
+            // 重试消息带当前 epoch，flush/seek 后自动作废；这是纯数据面
+            // 事件，不触碰命令态。
+            ALOGV("VEAudioDecoder::onDecode starving, retry in 10ms");
+            postDecode(kStarveRetryUs);
             return VE_NOT_ENOUGH_DATA;
         }
 
