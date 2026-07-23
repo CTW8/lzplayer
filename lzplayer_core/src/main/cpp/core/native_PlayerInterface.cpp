@@ -95,7 +95,14 @@ namespace VE {
                 env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2, NULL);
                 break;
             }
+            case VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION:
+            case VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE: {
+                env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2, NULL);
+                break;
+            }
             default:
+                // 静默丢事件会造成回调断链且极难排查，至少留下痕迹
+                ALOGW("JNIMediaPlayerListener::notify unhandled msg:0x%x", msg);
                 break;
         }
     }

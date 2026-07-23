@@ -74,9 +74,13 @@ namespace VE {
         });
 
         mPlayer->setOnEOSListener([this]() {
-            std::lock_guard<std::mutex> lk(mMutex);
+            {
+                std::lock_guard<std::mutex> lk(mMutex);
+                mIsSeeking = false;
+            }
             ALOGD("VEPlayerDriver --> VE_PLAYER_NOTIFY_EVENT_ON_EOS enter!!!");
-            mIsSeeking = false;
+            // 循环播放时收不到 COMPLETION，EOS 是上层感知"到达流尾"的唯一途径
+            notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_EOS, 0, 0, nullptr);
         });
     }
 

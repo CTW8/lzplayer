@@ -7,4 +7,6 @@ public interface IMediaPlayerListener {
     int VE_PLAYER_NOTIFY_EVENT_ON_ERROR                     = 0x104;
     int VE_PLAYER_NOTIFY_EVENT_ON_INFO                      = 0x105;
     int VE_PLAYER_NOTIFY_EVENT_ON_FIRST_FRAME               = 0x106;
+    int VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION                = 0x107;
+    int VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE                 = 0x108;
 }

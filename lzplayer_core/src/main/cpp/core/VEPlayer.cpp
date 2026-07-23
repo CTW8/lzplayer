@@ -639,6 +639,12 @@ namespace VE {
             mVideoEOS = false;
             mAudioEOS = false;
 
+            // 到达流尾时先发 EOS 通知(循环播放也会发)，
+            // 是否"播放完成"由下面的分支决定
+            if (onEosCallback) {
+                onEosCallback();
+            }
+
             if (mEnableLoop) {
                 // 循环播放：回到片头继续播，不上报播放结束。
                 // 先置为 STARTED，seek 流程会据此在结束时恢复播放。

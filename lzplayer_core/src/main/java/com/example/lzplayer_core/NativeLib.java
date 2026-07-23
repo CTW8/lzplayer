@@ -237,6 +237,14 @@ public class NativeLib {
                     mMediaPlayer.onNativeInfoCallback(msg.what, msg.arg1, msg.obj);
                     break;
                 }
+                case VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION:{
+                    mMediaPlayer.onNativeInfoCallback(VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION, msg.arg1, msg.obj);
+                    break;
+                }
+                case VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE:{
+                    mMediaPlayer.onNativeInfoCallback(VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE, msg.arg1, msg.obj);
+                    break;
+                }
                 default:
                     Log.w(TAG, "Unknown message type: " + msg.what);
                     break;
