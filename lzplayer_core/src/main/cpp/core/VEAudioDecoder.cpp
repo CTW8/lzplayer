@@ -48,7 +48,7 @@ namespace VE {
 
     VEResult VEAudioDecoder::readFrame(std::shared_ptr<VEFrame> &frame) {
         ALOGV("VEAudioDecoder::readFrame enter");
-        if (mFrameQueue->getDataSize() == 0) {
+        if (mFrameQueue == nullptr || mFrameQueue->getDataSize() == 0) {
             ALOGI("VEAudioDecoder::readFrame - Not enough data in the queue");
             return VE_NOT_ENOUGH_DATA; // 队列为空，返回错误
         }
@@ -419,10 +419,14 @@ namespace VE {
         ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         mIsStarted = false;
 
-        avcodec_flush_buffers(mAudioCtx);
-
-        mFrameQueue->clear();
-        return false;
+        // prepare 失败(codec 缺失)或 release 之后仍可能收到 stop，须判空
+        if (mAudioCtx) {
+            avcodec_flush_buffers(mAudioCtx);
+        }
+        if (mFrameQueue) {
+            mFrameQueue->clear();
+        }
+        return VE_OK;
     }
 
     void VEAudioDecoder::queueFrame(std::shared_ptr<VEFrame> frame) {

@@ -166,18 +166,21 @@ namespace VE {
 
     VEResult VEVideoDisplay::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGV("VEVideoDisplay::onPrepare enter");
-        msg->findPointer("win", (void **) &mWin);
-
-        if(mWin == nullptr){
-            ALOGE("VEVideoDisplay::onPrepare invalid surface");
-            return VE_INVALID_PARAMS;
-        }
+        // 先绑定解码器和尺寸再看 surface：以前 surface 为空直接 return，
+        // m_pVideoDec 没赋值，之后 start 就是空指针崩溃，且渲染器
+        // 永远建不起来(onSurfaceChanged 只在渲染器已存在时才处理)。
         std::shared_ptr<void> tmp = nullptr;
-
         msg->findObject("vdec", &tmp);
         m_pVideoDec = std::static_pointer_cast<IMediaDecoder>(tmp);
+        msg->findPointer("win", (void **) &mWin);
         msg->findInt32("width", &mViewWidth);
         msg->findInt32("height", &mViewHeight);
+
+        if(mWin == nullptr){
+            // surface 还没设置：渲染器延迟到 setSurface 时创建
+            ALOGW("VEVideoDisplay::onPrepare no surface yet, defer renderer init");
+            return VE_OK;
+        }
 
         VEBundle params;
         params.set("surface",mWin);
@@ -275,6 +278,11 @@ namespace VE {
             return UNKNOWN_ERROR;
         }
 
+        if (m_pVideoRender == nullptr) {
+            // surface 尚未就绪，丢掉这一帧；渲染链由 onSurfaceChanged 重新拉起
+            ALOGW("VEVideoDisplay::%s - renderer not ready, drop frame", __FUNCTION__);
+            return UNKNOWN_ERROR;
+        }
 
         mFrameWidth = frame->getFrame()->width;
         mFrameHeight = frame->getFrame()->height;
@@ -302,6 +310,10 @@ namespace VE {
         }
 
         std::shared_ptr<VEFrame> frame = nullptr;
+        if (m_pVideoDec == nullptr) {
+            ALOGE("VEVideoDisplay::%s - decoder not set", __FUNCTION__);
+            return UNKNOWN_ERROR;
+        }
         VEResult ret = m_pVideoDec->readFrame(frame);
         ALOGV("VEVideoDisplay::%s readFrame result: %d", __FUNCTION__, ret);
 
@@ -349,17 +361,32 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::onSurfaceChanged(std::shared_ptr<AMessage> msg) {
-        if(m_pVideoRender != nullptr){
-            ANativeWindow *newWin;
-            msg->findPointer("win", (void **) &newWin);
-            int newWidth, newHeight;
-            msg->findInt32("width", &newWidth);
-            msg->findInt32("height", &newHeight);
+        ANativeWindow *newWin = nullptr;
+        msg->findPointer("win", (void **) &newWin);
+        int newWidth = 0, newHeight = 0;
+        msg->findInt32("width", &newWidth);
+        msg->findInt32("height", &newHeight);
 
-            ALOGI("VEVideoDisplay::onSurfaceChanged - new surface: %p, size: %dx%d", (void*)newWin, newWidth,
-                  newHeight);
+        ALOGI("VEVideoDisplay::onSurfaceChanged - new surface: %p, size: %dx%d", (void*)newWin, newWidth,
+              newHeight);
+        mWin = newWin;
+        mViewWidth = newWidth;
+        mViewHeight = newHeight;
 
-            m_pVideoRender->changeSurface(newWin,newWidth,newHeight);
+        if (m_pVideoRender != nullptr) {
+            m_pVideoRender->changeSurface(newWin, newWidth, newHeight);
+        } else if (newWin != nullptr) {
+            // prepare 时 surface 还没就绪，渲染器延迟到此刻创建
+            VEBundle params;
+            params.set("surface", mWin);
+            params.set("width", mViewWidth);
+            params.set("height", mViewHeight);
+            m_pVideoRender = std::make_shared<VEGLESVideoRenderer>();
+            m_pVideoRender->initialize(params);
+            if (m_IsStarted) {
+                // 渲染链可能因没有渲染器早已断掉，surface 到位后重新拉起
+                postSync(0);
+            }
         }
         return 0;
     }
