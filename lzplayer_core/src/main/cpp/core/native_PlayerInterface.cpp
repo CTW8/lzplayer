@@ -150,7 +150,10 @@ namespace VE {
         VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
         CHECK_NULL();
 
-        ANativeWindow *nativeWindow = ANativeWindow_fromSurface(env, surface);
+        // surface 传 null 表示销毁(如 surfaceDestroyed)：不能对 null 调
+        // ANativeWindow_fromSurface(部分 ROM 直接崩溃)，向下传空窗口即可
+        ANativeWindow *nativeWindow =
+                (surface != nullptr) ? ANativeWindow_fromSurface(env, surface) : nullptr;
         ALOGD("nativeSetSurface called with handle: %ld, width: %d, height: %d", handle, width,
               height);
 

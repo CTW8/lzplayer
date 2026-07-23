@@ -99,6 +99,8 @@ namespace VE {
         int mFrameHeight = 0;
 
         bool m_IsStarted = false;
+        /// surface 被销毁时正在播放：新 surface 到来后自动复活渲染链
+        bool m_SurfaceLost = false;
         /// 渲染/同步消息的代次，flush/seek 时递增以作废在途消息
         int32_t m_Epoch = 0;
         /// seek 后是否需要在首帧上屏时上报 FIRST_FRAME

@@ -16,6 +16,10 @@ namespace VE {
         /// 拆解阶段的回执超时。release 是同步调用(通常来自主线程的 onDestroy)，
         /// 两个阶段各等 2s 会逼近 ANR 阈值，所以这里收紧。
         constexpr int64_t kTeardownAckTimeoutUs = 800000;
+
+        /// 拆解进行中收到 setDataSource/reset/release 时的重投间隔：
+        /// 把请求排到当前拆解完成之后，而不是并发再起一轮拆解
+        constexpr int64_t kDeferWhileReleasingUs = 20000;
     }
 
     VEPlayer::VEPlayer() {
@@ -152,9 +156,9 @@ namespace VE {
                 int32_t height = 0;
                 msg->findInt32("viewWidth", &width);
                 msg->findInt32("viewHeight", &height);
-                if (window) {
-                    onSurfaceChanged(window, width, height);
-                }
+                // window 为空是合法输入(surface 销毁)，同样要往下传，
+                // 否则渲染器会一直画向已失效的窗口
+                onSurfaceChanged(window, width, height);
                 break;
             }
             case kWhatStart: {
@@ -208,6 +212,13 @@ namespace VE {
 
     VEResult VEPlayer::onSetDataSource(std::shared_ptr<AMessage> msg) {
         ALOGV("VEPlayer::%s enter", __FUNCTION__);
+        if (mState == STATE_RELEASING) {
+            // 上一轮拆解还在握手中。此刻再起一轮拆解会丢掉它的 continuation
+            // 并对半释放的组件重发命令，正确性全押在组件幂等上。
+            // 改为把整条消息排到拆解完成之后重新处理。
+            msg->post(kDeferWhileReleasingUs);
+            return VE_OK;
+        }
         std::string path;
         if (!msg->findString("path", path) || path.empty()) {
             ALOGE("VEPlayer::%s - Invalid path", __FUNCTION__);
@@ -242,6 +253,17 @@ namespace VE {
 
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGV("VEPlayer::%s enter", __FUNCTION__);
+        if (mState == STATE_RELEASING) {
+            // 拆解期间不能对半释放的 demux 发 prepare，排到拆解完成后
+            msg->post(kDeferWhileReleasingUs);
+            return VE_OK;
+        }
+        if (mDemux == nullptr) {
+            // reset 之后没有重新 setDataSource 就 prepare
+            mState = STATE_ERROR;
+            notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "no data source!!");
+            return VE_UNKNOWN_ERROR;
+        }
         VEBundle params;
         params.set("path", mPath);
         if (mDemux->prepare(params) != VE_OK) {
@@ -250,14 +272,21 @@ namespace VE {
             return VE_UNKNOWN_ERROR;
         }
 
-        mMediaInfo = mDemux->getFileInfo();
+        {
+            // 与 getCurrentPosition/getDuration 的跨线程读互斥
+            std::lock_guard<std::mutex> lk(mMutex);
+            mMediaInfo = mDemux->getFileInfo();
+        }
         if (mMediaInfo == nullptr ||
             (mMediaInfo->audio_stream_index == -1 && mMediaInfo->video_stream_index == -1)) {
             mState = STATE_ERROR;
             notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "no playable stream found!!");
             return VE_UNKNOWN_ERROR;
         }
-        mMediaClock = std::make_shared<VEMediaClock>();
+        {
+            std::lock_guard<std::mutex> lk(mMutex);
+            mMediaClock = std::make_shared<VEMediaClock>();
+        }
         mAVSync = std::make_shared<VEAVsync>(mMediaClock);
         if (mMediaInfo->fps > 0) {
             mAVSync->setFrameRate(mMediaInfo->fps);
@@ -355,9 +384,23 @@ namespace VE {
             mStateBeforeSeek = STATE_STARTED;
             return VE_OK;
         }
+        if (mState == STATE_COMPLETED) {
+            // 播完后 start 应回片头重播(对齐 MediaPlayer 语义)。
+            // 直接 start 的话 demux/解码器都停在 EOS，会立刻再次"播完"。
+            ALOGI("VEPlayer::%s restart from head after completion", __FUNCTION__);
+            mState = STATE_STARTED;
+            startSeek(0);
+            return VE_OK;
+        }
 
         mState = STATE_STARTED;
         if (mMediaClock) {
+            if (mAudioOutput == nullptr && !mMediaClock->isAnchored()) {
+                // 纯视频文件没有音频帧驱动时钟：首次起播手动起锚。
+                // 否则时钟恒为 0，每帧按自己的绝对 pts 各自等待，
+                // 开场呈现累计数秒的慢动作
+                mMediaClock->resetTo(0.0);
+            }
             mMediaClock->resume();
         }
         forEachComponent([](const std::shared_ptr<IVEComponent> &c) { c->start(); });
@@ -485,8 +528,12 @@ namespace VE {
         mDemuxLooper.reset();
 
         mAVSync.reset();
-        mMediaClock.reset();
-        mMediaInfo.reset();
+        {
+            // 与 getCurrentPosition/getDuration 的跨线程读互斥
+            std::lock_guard<std::mutex> lk(mMutex);
+            mMediaClock.reset();
+            mMediaInfo.reset();
+        }
 
         mVideoEOS = false;
         mAudioEOS = false;
@@ -495,6 +542,11 @@ namespace VE {
 
     VEResult VEPlayer::onReset(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        if (mState == STATE_RELEASING) {
+            // 排到当前拆解完成之后再处理，避免并发两轮拆解
+            msg->post(kDeferWhileReleasingUs);
+            return VE_OK;
+        }
         // reset 后应能重新 setDataSource：必须真正拆掉这一套组件和线程，
         // 否则再次 setDataSource 会又建一套 looper，线程只增不减。
         teardownComponents([this] {
@@ -507,6 +559,12 @@ namespace VE {
 
     VEResult VEPlayer::onRelease(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
+        if (mState == STATE_RELEASING) {
+            // reset/换源触发的拆解还在进行：整条消息(连同 replyToken)排到
+            // 它完成之后。届时组件已拆净，本次 release 走空掩码快速路径回复。
+            msg->post(kDeferWhileReleasingUs);
+            return VE_OK;
+        }
 
         // release 是同步调用(Driver 析构在等)，但拆解要跨多轮消息握手，
         // 所以先扣下 replyToken，等整条链走完再回复。
@@ -537,8 +595,15 @@ namespace VE {
     }
 
     long VEPlayer::getCurrentPosition() {
-        // 直接读主时钟。可跨线程调用：VEMediaClock 内部自带锁。
-        auto clock = mMediaClock;
+        // 可跨线程调用：先在锁下取 shared_ptr 副本(与 prepare/teardown 的
+        // 赋值/reset 互斥)，之后读时钟由 VEMediaClock 自己的锁保护
+        std::shared_ptr<VEMediaClock> clock;
+        std::shared_ptr<VEMediaInfo> info;
+        {
+            std::lock_guard<std::mutex> lk(mMutex);
+            clock = mMediaClock;
+            info = mMediaInfo;
+        }
         if (clock == nullptr) {
             return 0;
         }
@@ -549,21 +614,28 @@ namespace VE {
         long positionMs = static_cast<long>(positionUs / 1000);
 
         // 时钟按实时外推，末尾可能略微超过总时长，这里夹住
-        if (mMediaInfo != nullptr && mMediaInfo->duration > 0 &&
-            positionMs > static_cast<long>(mMediaInfo->duration)) {
-            positionMs = static_cast<long>(mMediaInfo->duration);
+        if (info != nullptr && info->duration > 0 &&
+            positionMs > static_cast<long>(info->duration)) {
+            positionMs = static_cast<long>(info->duration);
         }
         return positionMs;
     }
 
     long VEPlayer::getDuration() {
         ALOGV("VEPlayer::%s enter", __FUNCTION__);
-        if (mMediaInfo == nullptr) {
+        std::shared_ptr<VEMediaInfo> info;
+        {
+            std::lock_guard<std::mutex> lk(mMutex);
+            info = mMediaInfo;
+        }
+        if (info == nullptr) {
             ALOGE("VEPlayer mMediaInfo is null!!!");
-            return VE_UNKNOWN_ERROR;
+            // 未 prepare 时长未知：返回 0 而不是 INT32_MIN，上层拿去算
+            // 进度条不至于得到荒谬值
+            return 0;
         }
         ALOGV("VEPlayer::%s exit", __FUNCTION__);
-        return mMediaInfo->duration;
+        return info->duration;
     }
 
     void VEPlayer::setVolume(int volume) {
@@ -669,6 +741,11 @@ namespace VE {
 
     VEResult VEPlayer::onSurfaceChanged(ANativeWindow *win, int viewWidth, int viewHeight) {
         ALOGV("VEPlayer::%s enter", __FUNCTION__);
+        if (mWindow != nullptr && mWindow != win) {
+            // JNI 层每次 setSurface 都 acquire 一个新引用，旧引用必须在
+            // 覆盖前释放，否则转屏/前后台一次就漏一个 window
+            ANativeWindow_release(mWindow);
+        }
         mWindow = win;
         mViewWidth = viewWidth;
         mViewHeight = viewHeight;

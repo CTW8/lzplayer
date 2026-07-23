@@ -203,6 +203,8 @@ namespace VE {
         mIsStarted = false;
         mIsEOS = false;
         mNeedMoreData = false;
+        // seek 流程会在 flush 之后重新设置；不经 seek 的 flush 必须清掉
+        mSeekTargetUs = kNoSeekTarget;
         if (mAudioCtx) {
             avcodec_flush_buffers(mAudioCtx);
         }
@@ -428,6 +430,8 @@ namespace VE {
     VEResult VEAudioDecoder::onStop() {
         ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         mIsStarted = false;
+        // 残留的精准 seek 目标会让下次重播把 0~target 的帧全部丢掉
+        mSeekTargetUs = kNoSeekTarget;
 
         // prepare 失败(codec 缺失)或 release 之后仍可能收到 stop，须判空
         if (mAudioCtx) {

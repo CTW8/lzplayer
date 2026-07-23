@@ -334,9 +334,12 @@ namespace VE {
 
         if (frame->getFrameType() == E_FRAME_TYPE_EOF) {
             ALOGD("VEVideoDisplay::onAVSync E_FRAME_TYPE_EOF");
-//            std::shared_ptr<AMessage> eosMsg = m_pNotify->dup();
-//            eosMsg->setInt32("type", kWhatEOS);
-//            eosMsg->post();
+            if (m_NotifyFirstFrame) {
+                // seek 目标在最后一帧之后：精准丢帧把可上屏的帧全丢光了，
+                // 用 EOF 顶替首帧回执，否则 seek 只能干等 2s 超时兜底
+                m_NotifyFirstFrame = false;
+                postMessage(VE_NOTIFY_EVENT_FIRST_FRAME, 0, 0, 0, nullptr);
+            }
             postMessage(VE_NOTIFY_EVENT_EOS,0,0,0, nullptr);
             return UNKNOWN_ERROR;
         }
@@ -374,7 +377,19 @@ namespace VE {
         mViewHeight = newHeight;
 
         if (m_pVideoRender != nullptr) {
+            if (newWin == nullptr) {
+                // surface 销毁：先停渲染链再让渲染器释放 EGLSurface，
+                // 否则会持续画向已失效的窗口
+                m_SurfaceLost = m_IsStarted;
+                m_IsStarted = false;
+            }
             m_pVideoRender->changeSurface(newWin, newWidth, newHeight);
+            if (newWin != nullptr && m_SurfaceLost) {
+                // 之前因 surface 丢失被迫停下，新 surface 就位后复活
+                m_SurfaceLost = false;
+                m_IsStarted = true;
+                postSync(0);
+            }
         } else if (newWin != nullptr) {
             // prepare 时 surface 还没就绪，渲染器延迟到此刻创建
             VEBundle params;

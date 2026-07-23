@@ -4,6 +4,7 @@
 #include <string>
 #include <functional>
 #include <atomic>
+#include <mutex>
 #include <android/native_window_jni.h>
 #include "IVEComponent.h"
 #include "VEDemux.h"
@@ -221,7 +222,10 @@ namespace VE {
         void seekStagePrime();
         void seekFinish();
 
-        pthread_mutex_t mMutex = PTHREAD_MUTEX_INITIALIZER;
+        /// 保护 mMediaClock/mMediaInfo：getCurrentPosition/getDuration 由
+        /// 调用方线程直接读，与播放器线程的 prepare/finishTeardown 并发，
+        /// 非原子 shared_ptr 并发读写是 UB
+        mutable std::mutex mMutex;
         std::shared_ptr<VEDemux> mDemux = nullptr;
         std::shared_ptr<ALooper> mDemuxLooper = nullptr;
         std::shared_ptr<VEAudioDecoder> mAudioDecoder = nullptr;

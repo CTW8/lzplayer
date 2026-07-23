@@ -290,6 +290,8 @@ namespace VE {
     VEResult VEVideoDecoder::onStop() {
         ALOGV("VEVideoDecoder::onStop enter");
         mIsStarted = false;
+        // 残留的精准 seek 目标会让下次重播把 0~target 的帧全部丢掉
+        mSeekTargetUs = kNoSeekTarget;
         if (mVideoCtx) {
             avcodec_flush_buffers(mVideoCtx);
         }
@@ -303,6 +305,8 @@ namespace VE {
         mIsStarted = false;
         mIsEOS = false;
         mNeedMoreData = false;
+        // seek 流程会在 flush 之后重新设置；不经 seek 的 flush 必须清掉
+        mSeekTargetUs = kNoSeekTarget;
         if (mVideoCtx) {
             avcodec_flush_buffers(mVideoCtx);
         }
