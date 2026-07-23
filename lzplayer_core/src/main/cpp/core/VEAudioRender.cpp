@@ -6,6 +6,10 @@ namespace VE {
     namespace {
         /// 静音帧也入队失败时的重试间隔
         constexpr int64_t kUnderrunRetryUs = 10000;
+        /// 设备侧输出延迟估计(SLES 拿不到精确值)。入队的帧要等设备队列
+        /// 前面的数据播完 + 器件延迟后才被听到，时钟不补偿会系统性超前，
+        /// 表现为视频恒定领先音频几十毫秒。
+        constexpr int64_t kDeviceOutputLatencyUs = 40000;
     }
 
     VEAudioRender::VEAudioRender(const std::shared_ptr<AMessage> &notify,const std::shared_ptr<VEAVsync> &avSync)
@@ -261,7 +265,12 @@ namespace VE {
                     return VE_UNKNOWN_ERROR;
                 }
                 ALOGV("VEAudioRender::%s - PTS: %lu exit", __FUNCTION__, frame->getPts());
-                m_AVSync->updateAudioPts(frame->getPts());
+                // 时钟按"正在被听到"的位置打点：入队 pts 减去设备队列里
+                // 还没播完的数据时长和器件输出延迟
+                const int64_t latencyUs =
+                        m_AudioRenderer->getQueuedDurationUs() + kDeviceOutputLatencyUs;
+                m_AVSync->updateAudioPts(
+                        static_cast<double>(frame->getPts()) - static_cast<double>(latencyUs));
             } else {
                 ALOGD("VEAudioRender frame is null");
             }

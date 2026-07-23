@@ -358,6 +358,12 @@ namespace VE {
         }
     }
 
+    int64_t VEAudioSLESRender::getQueuedDurationUs() {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        // 每个在途缓冲约 BUFFER_DURATION_MS 的数据
+        return static_cast<int64_t>(m_FrameQueue.size()) * BUFFER_DURATION_MS * 1000;
+    }
+
     SLuint32 VEAudioSLESRender::convertSampleRate(int sampleRate) {
         switch (sampleRate) {
             case 8000:   return SL_SAMPLINGRATE_8;

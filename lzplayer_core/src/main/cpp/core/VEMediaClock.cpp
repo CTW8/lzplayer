@@ -58,6 +58,11 @@ namespace VE {
         m_Paused = false;
     }
 
+    bool VEMediaClock::isAnchored() const {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        return m_BaseSystemTime != 0;
+    }
+
     void VEMediaClock::pause() {
         std::lock_guard<std::mutex> lock(m_Mutex);
         if (m_Paused) {

@@ -27,6 +27,10 @@ namespace VE {
         /// 否则视频侧会拿新的 pts 去和 seek 前的旧时钟比较。
         void resetTo(double ptsUs);
 
+        /// 时钟是否已被起锚(收到过音频 pts 或 resetTo)。
+        /// 纯视频文件没有音频驱动，首次起播需要手动 resetTo 起锚。
+        bool isAnchored() const;
+
         /// 冻结/恢复外推。暂停期间若继续外推，恢复时时钟会远超实际播放位置，
         /// 导致视频帧被判定为"晚到"而大量丢弃。
         void pause();

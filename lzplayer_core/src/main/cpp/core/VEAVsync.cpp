@@ -3,6 +3,9 @@ namespace VE {
     namespace {
         /// 视频领先/落后在该范围内视为同步，直接渲染
         constexpr double kSyncThresholdUs = 40000.0;
+        /// 落后超过该值就丢帧追赶。原来用 500ms 才丢，落后 40~500ms 区间
+        /// 既不丢帧也无追赶手段，会长期维持可感知的音画不同步
+        constexpr double kDropThresholdUs = 100000.0;
         /// 超过该范围认为时钟不可信(刚 seek 完/音频还没起来)，退化为按帧率出帧
         constexpr double kMaxDiffUs = 500000.0;
         constexpr int kDefaultFrameRate = 30;
@@ -72,6 +75,6 @@ namespace VE {
         if (!m_MediaClock) return false;
 
         double diff = m_VideoPts - m_MediaClock->getCurrentMediaTime();
-        return diff < -kMaxDiffUs;
+        return diff < -kDropThresholdUs;
     }
 }

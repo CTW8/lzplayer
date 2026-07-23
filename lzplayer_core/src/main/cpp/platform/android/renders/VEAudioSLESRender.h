@@ -21,6 +21,7 @@ namespace VE {
         VEResult stop() override;
         VEResult renderFrame(std::shared_ptr<VEFrame> frame) override;
         VEResult release() override;
+        int64_t getQueuedDurationUs() override;
 
         friend void slesBufferQueueCallback(SLAndroidSimpleBufferQueueItf bq, void *context);
 

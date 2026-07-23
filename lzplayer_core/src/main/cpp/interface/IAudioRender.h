@@ -35,6 +35,10 @@ namespace VE {
         // 渲染音频帧
         virtual VEResult renderFrame(std::shared_ptr<VEFrame> frame) = 0;
 
+        /// 已入队但还没播出去的数据时长(us)，用于音频时钟的延迟补偿。
+        /// 拿不到的实现返回 0。
+        virtual int64_t getQueuedDurationUs() { return 0; }
+
         // 释放音频渲染器资源
         virtual VEResult release() = 0;
     };
