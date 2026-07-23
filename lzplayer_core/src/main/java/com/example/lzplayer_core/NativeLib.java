@@ -30,7 +30,7 @@ public class NativeLib {
         mHandle = createNativeHandle();
     }
 
-    public int init(String path){
+    public synchronized int init(String path){
         if(mHandle != 0){
             // 重复 init 时复用已有的事件线程，避免每次都新起一个线程泄漏
             if(mEventThread == null){
@@ -43,14 +43,14 @@ public class NativeLib {
         return -1;
     }
 
-    public int setSurface(Surface surface,int width,int height){
+    public synchronized int setSurface(Surface surface,int width,int height){
         if(mHandle != 0){
             return nativeSetSurface(mHandle,surface,width,height);
         }
         return -1;
     }
 
-    public int start(){
+    public synchronized int start(){
         Log.e(TAG, "🚀🚀🚀 NativeLib.start() ENTRY - This should always appear! 🚀🚀🚀");
         Log.d(TAG, "NativeLib.start() called, mHandle: " + mHandle);
         if(mHandle != 0){
@@ -64,34 +64,34 @@ public class NativeLib {
         return -1;
     }
 
-    public int stop(){
+    public synchronized int stop(){
         if(mHandle != 0){
             return nativeStop(mHandle);
         }
         return -1;
     }
 
-    public int pause(){
+    public synchronized int pause(){
         if(mHandle != 0){
             return nativePause(mHandle);
         }
         return -1;
     }
 
-    public int seekTo(double timestampMs){
+    public synchronized int seekTo(double timestampMs){
         if(mHandle != 0){
             return nativeSeekTo(mHandle,timestampMs);
         }
         return -1;
     }
 
-    public void setLooping(boolean loop){
+    public synchronized void setLooping(boolean loop){
         if(mHandle != 0){
             setLooping(mHandle,loop);
         }
     }
 
-    public void setPlaySpeed(float speed){
+    public synchronized void setPlaySpeed(float speed){
         if(mHandle != 0){
             setPlaySpeed(mHandle,speed);
         }
@@ -115,7 +115,7 @@ public class NativeLib {
         return ret;
     }
 
-    public long getDuration(){
+    public synchronized long getDuration(){
         if(mHandle != 0){
             return nativeGetDuration(mHandle);
         }
@@ -123,21 +123,21 @@ public class NativeLib {
     }
 
     /** 当前播放位置(毫秒) */
-    public long getCurrentPosition(){
+    public synchronized long getCurrentPosition(){
         if(mHandle != 0){
             return nativeGetCurrentPosition(mHandle);
         }
         return -1;
     }
 
-    public int prepare(){
+    public synchronized int prepare(){
         if(mHandle != 0){
             return nativePrepare(mHandle);
         }
         return -1;
     }
 
-    public int resume(){
+    public synchronized int resume(){
         if(mHandle != 0){
             Log.d(TAG,"resume");
             return nativeResume(mHandle);
@@ -145,7 +145,7 @@ public class NativeLib {
         return -1;
     }
 
-    public int prepareAsync(){
+    public synchronized int prepareAsync(){
         if(mHandle != 0){
             return nativePrepareAsync(mHandle);
         }
