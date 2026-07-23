@@ -6,7 +6,6 @@
 #include "VEMediaDef.h"
 #include "VEPacket.h"
 #include "VEFrame.h"
-#include "VEFrameQueue.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "VEDemux.h"

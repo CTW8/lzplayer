@@ -2,8 +2,7 @@
 #define __VE_AUDIO_RENDER__
 
 #include "IAudioRender.h"
-#include "IMediaDecoder.h"
-#include "VEAudioDecoder.h"
+#include "IFrameSink.h"
 #include "VEAudioOutputConfig.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
@@ -14,14 +13,18 @@
 #include <atomic>
 #include <condition_variable>
 namespace VE {
-class VEAudioRender : public AHandler{
+class VEAudioRender : public AHandler, public IFrameSink{
     public:
         VEAudioRender(const std::shared_ptr<AMessage> &notify,const std::shared_ptr<VEAVsync> &avSync);
 
         ~VEAudioRender() override;
 
-        VEResult prepare(const std::shared_ptr<IMediaDecoder> &decoder,
-                         const VEAudioOutputConfig &config);
+        /// 推模型下渲染器不再持有解码器：帧由解码器 queueFrame 推进来
+        VEResult prepare(const VEAudioOutputConfig &config);
+
+        /// IFrameSink：解码器线程调用，转投自己的 looper(盖当前队列代次)
+        void queueFrame(const std::shared_ptr<VEFrame> &frame,
+                        const std::shared_ptr<AMessage> &consumedReply) override;
 
         // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口
         VEResult start();
@@ -55,17 +58,15 @@ private:
 
     private:
         std::shared_ptr<IAudioRender> m_AudioRenderer; // 音频渲染器接口
-        /// 只依赖解码器接口，不绑定具体实现
-        std::shared_ptr<IMediaDecoder> m_AudioDecoder;
-        std::deque<std::shared_ptr<VEFrame>> m_FrameQueue; // PCM帧队列
-        std::mutex m_Mutex;
-        std::condition_variable m_Cond;
+        /// 本地帧队列(帧 + 它的消费回执)。只在本 looper 上访问，无需加锁。
+        /// 队列空 ⟺ 喂帧链停摆，帧到达即重新拉起(SLES 回调只负责继续消费)。
+        std::deque<std::pair<std::shared_ptr<VEFrame>,
+                             std::shared_ptr<AMessage>>> mFrames;
+        /// 队列代次：解码器线程投递时盖章(atomic 读)，flush/seek/stop 递增
+        std::atomic<int32_t> mQueueGen{0};
         std::shared_ptr<AMessage> m_Notify = nullptr;
 
         std::shared_ptr<VEAVsync> m_AVSync = nullptr;
-        uint8_t * mSliceBuffer = nullptr;
-        /// 因设备队列满被打回的帧，延时重试时优先消费；stop/flush/seek 时丢弃
-        std::shared_ptr<VEFrame> m_PendingFrame = nullptr;
 
         bool m_IsStarted = false;
         /// 渲染消息代次；由 SLES 回调线程读取，故用原子量
@@ -83,6 +84,7 @@ private:
             kWhatRender = 'rend',
             kWhatFlush = 'flus',
             kWhatRelease = 'rele',
+            kWhatQueueFrame = 'qfrm',
         };
     };
 }

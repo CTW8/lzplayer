@@ -6,11 +6,10 @@
 #include "VEMediaDef.h"
 #include "VEPacket.h"
 #include "VEFrame.h"
-#include "VEFrameQueue.h"
 #include "VEDemux.h"
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
-#include "IMediaDecoder.h"
+#include "IFrameSink.h"
 #include "VEAudioOutputConfig.h"
 
 extern "C" {
@@ -22,14 +21,17 @@ extern "C" {
     #include "libavutil/opt.h"
 }
 namespace VE {
-    class VEAudioDecoder : public AHandler, public IMediaDecoder{
+    class VEAudioDecoder : public AHandler{
     public:
         VEAudioDecoder(std::shared_ptr<AMessage> &notify);
 
         ~VEAudioDecoder() override;
 
-        /// outConfig 由播放器统一决定，解码器按它重采样
-        VEResult prepare(std::shared_ptr<IMediaSource> source, const VEAudioOutputConfig &outConfig);
+        /// outConfig 由播放器统一决定，解码器按它重采样；
+        /// sink: 解出的帧推给谁(音频渲染)，推模型 + 消费回执 credit
+        VEResult prepare(std::shared_ptr<IMediaSource> source,
+                         const VEAudioOutputConfig &outConfig,
+                         std::shared_ptr<IFrameSink> sink);
 
         // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口
         VEResult start();
@@ -43,10 +45,6 @@ namespace VE {
         VEResult release();
 
         VEResult seekTo(double timestamp);
-
-        void needMoreFrame(std::shared_ptr<AMessage> msg) override;
-
-        VEResult readFrame(std::shared_ptr<VEFrame> &frame) override;
 
     private:
         VEResult onPrepare(std::shared_ptr<AMessage> msg);
@@ -65,12 +63,11 @@ namespace VE {
 
         VEResult onSeek(double timestampMs);
 
-        VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
-
         /// 投递带当前 epoch 的解码消息，flush 后旧消息会被自动丢弃。
         /// delayUs>0 用于上游饥饿时的轮询重试
         void postDecode(int64_t delayUs = 0);
 
+        /// 推一帧给 sink：附带回执消息(带当前 epoch)，在途帧计数 +1
         void queueFrame(std::shared_ptr<VEFrame> frame);
 
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
@@ -85,7 +82,7 @@ namespace VE {
             kWhatFlush = 'flus',
             kWhatDecode = 'deco',
             kWhatUninit = 'unin',
-            kWhatNeedMore = 'need'
+            kWhatFrameConsumed = 'fcon'
         };
 
     private:
@@ -94,20 +91,20 @@ namespace VE {
 
         AVCodecContext *mAudioCtx = nullptr;
         VEMediaInfo *mMediaInfo = nullptr;
-        std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
         std::shared_ptr<IMediaSource> mDemux = nullptr;
+        /// 帧的去向；credit 流控由 mInFlightFrames 表达
+        std::shared_ptr<IFrameSink> mSink = nullptr;
+        /// 已推给 sink 但还没收到消费回执的帧数(仅解码 looper 访问)
+        int mInFlightFrames = 0;
 
         std::shared_ptr<AMessage> mNotifyEvent = nullptr;
 
         bool mIsStarted = false;
-        bool mNeedMoreData = false;
 
         /// 解码消息的代次，flush/seek 时递增以作废在途的解码消息
         int32_t mEpoch = 0;
         /// 精准 seek 目标(微秒)，其之前解出的帧全部丢弃
         int64_t mSeekTargetUs = kNoSeekTarget;
-
-        std::shared_ptr<AMessage> mNotifyMore = nullptr;
         bool mIsEOS = false;
         SwrContext *mSwrCtx = nullptr;
 

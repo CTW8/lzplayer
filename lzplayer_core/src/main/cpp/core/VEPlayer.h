@@ -13,7 +13,6 @@
 #include "VEPacket.h"
 #include "VEFrame.h"
 #include "VEPacketQueue.h"
-#include "VEFrameQueue.h"
 #include "VEError.h"
 #include "jni.h"
 #include "thread/AHandler.h"

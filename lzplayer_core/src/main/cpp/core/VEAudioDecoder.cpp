@@ -30,9 +30,15 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::prepare(std::shared_ptr<IMediaSource> demux,
-                                     const VEAudioOutputConfig &outConfig) {
+                                     const VEAudioOutputConfig &outConfig,
+                                     std::shared_ptr<IFrameSink> sink) {
+        if (!demux || !sink) {
+            ALOGE("VEAudioDecoder::prepare demux/sink is null");
+            return VE_INVALID_PARAMS;
+        }
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatInit, shared_from_this());
         msg->setObject("demux", demux);
+        msg->setObject("sink", sink);
         // 随消息带过去，避免跨线程直接写解码器成员
         msg->setInt32("outSampleRate", outConfig.sampleRate);
         msg->setInt32("outChannels", outConfig.channels);
@@ -45,20 +51,6 @@ namespace VE {
         ALOGV("VEAudioDecoder::flush enter");
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatFlush, shared_from_this());
         msg->post();
-        return 0;
-    }
-
-    VEResult VEAudioDecoder::readFrame(std::shared_ptr<VEFrame> &frame) {
-        ALOGV("VEAudioDecoder::readFrame enter");
-        if (mFrameQueue == nullptr || mFrameQueue->getDataSize() == 0) {
-            ALOGI("VEAudioDecoder::readFrame - Not enough data in the queue");
-            return VE_NOT_ENOUGH_DATA; // 队列为空，返回错误
-        }
-
-        frame = mFrameQueue->get();
-        if(mIsEOS == false && mIsStarted == false && mFrameQueue->getRemainingSize() > AUDIO_FRAME_QUEUE_SIZE/2){
-            std::make_shared<AMessage>(kWhatStart, shared_from_this())->post();
-        }
         return 0;
     }
 
@@ -147,8 +139,21 @@ namespace VE {
                 postMessage(VE_NOTIFY_EVENT_RELEASE_DONE, 0, 0, 0, nullptr);
                 break;
             }
-            case kWhatNeedMore: {
-                onNeedMoreFrame(msg);
+            case kWhatFrameConsumed: {
+                // 渲染器归还 credit。epoch 校验：flush 已把在途计数清零，
+                // 旧帧的迟到回执不允许再加 credit
+                int32_t epoch = 0;
+                msg->findInt32("epoch", &epoch);
+                if (epoch != mEpoch) {
+                    break;
+                }
+                if (mInFlightFrames > 0) {
+                    --mInFlightFrames;
+                }
+                if (mIsStarted && !mIsEOS && mInFlightFrames == AUDIO_FRAME_QUEUE_SIZE - 1) {
+                    // 从满转不满：复活解码循环(credit 归还就是数据面唤醒)
+                    postDecode();
+                }
                 break;
             }
             case kWhatSeek:{
@@ -176,8 +181,14 @@ namespace VE {
         ALOGI("VEAudioDecoder::%s output config %dHz %dch fmt:%d", __FUNCTION__,
               mOutSampleRate, mOutChannels, mOutFormat);
 
-        mFrameQueue = std::make_shared<VEFrameQueue>(AUDIO_FRAME_QUEUE_SIZE);
         mDemux = std::static_pointer_cast<IMediaSource>(tmp);
+        std::shared_ptr<void> sinkTmp;
+        if (!msg->findObject("sink", &sinkTmp)) {
+            ALOGE("VEAudioDecoder::%s sink not found in message", __FUNCTION__);
+            return VE_INVALID_PARAMS;
+        }
+        mSink = std::static_pointer_cast<IFrameSink>(sinkTmp);
+        mInFlightFrames = 0;
         std::shared_ptr<VEMediaInfo> info = mDemux->getFileInfo();
         if (info == nullptr) {
             return -1;
@@ -203,18 +214,16 @@ namespace VE {
 
     VEResult VEAudioDecoder::onFlush() {
         ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
-        // 递增 epoch，使 flush 之前投递的解码消息全部失效
+        // 递增 epoch，使 flush 之前投递的解码消息与旧帧的消费回执全部失效
         ++mEpoch;
         mIsStarted = false;
         mIsEOS = false;
-        mNeedMoreData = false;
         // seek 流程会在 flush 之后重新设置；不经 seek 的 flush 必须清掉
         mSeekTargetUs = kNoSeekTarget;
+        // 渲染器同轮 seek/flush 会清自己的队列(不发回执)，credit 由本侧清算
+        mInFlightFrames = 0;
         if (mAudioCtx) {
             avcodec_flush_buffers(mAudioCtx);
-        }
-        if (mFrameQueue) {
-            mFrameQueue->clear();
         }
         return VE_OK;
     }
@@ -235,8 +244,10 @@ namespace VE {
     VEResult VEAudioDecoder::onDecode() {
         ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         VEResult ret = VE_OK;
-        if (mFrameQueue->getRemainingSize() == 0) {
-            ALOGI("VEAudioDecoder::onDecode frame queue is full, stopping decode");
+        if (mInFlightFrames >= AUDIO_FRAME_QUEUE_SIZE) {
+            // credit 用尽：park。渲染器每消费一帧就回执还 credit，
+            // kWhatFrameConsumed 处理时会复活解码循环
+            ALOGV("VEAudioDecoder::onDecode out of credit, parking");
             return VE_NO_MEMORY;
         }
 
@@ -409,12 +420,9 @@ namespace VE {
             swr_free(&mSwrCtx);
             mSwrCtx = nullptr;
         }
-        if (mFrameQueue) {
-            mFrameQueue->clear();
-            mFrameQueue.reset();
-        }
         mDemux.reset();
-        mNotifyMore.reset();
+        mSink.reset();
+        mInFlightFrames = 0;
         mMediaInfo = nullptr;
         return VE_OK;
     }
@@ -441,23 +449,22 @@ namespace VE {
         if (mAudioCtx) {
             avcodec_flush_buffers(mAudioCtx);
         }
-        if (mFrameQueue) {
-            mFrameQueue->clear();
-        }
+        // 渲染器 stop 时清掉了自己的队列(不发回执)，credit 由本侧清算
+        mInFlightFrames = 0;
         return VE_OK;
     }
 
     void VEAudioDecoder::queueFrame(std::shared_ptr<VEFrame> frame) {
         ALOGV("VEAudioDecoder::queueFrame enter");
-        if (!mFrameQueue->put(frame)) {
-            ALOGI("VEAudioDecoder::queueFrame queue is full, stopping decode");
-            mIsStarted = false;
-        } else {
-            if (mNeedMoreData && mNotifyMore) {
-                mNeedMoreData = false;
-                mNotifyMore->post();
-            }
+        if (!mSink) {
+            return;
         }
+        // 推模型：帧连同消费回执一起交给渲染器(仿 queueBuffer+notifyConsumed)。
+        // 回执带当前 epoch，flush 后迟到的回执不能再归还 credit。
+        auto reply = std::make_shared<AMessage>(kWhatFrameConsumed, shared_from_this());
+        reply->setInt32("epoch", mEpoch);
+        mSink->queueFrame(frame, reply);
+        ++mInFlightFrames;
     }
 
     VEResult VEAudioDecoder::onPause() {
@@ -470,32 +477,6 @@ namespace VE {
         return 0;
     }
 
-    void VEAudioDecoder::needMoreFrame(std::shared_ptr<AMessage> msg) {
-        ALOGV("VEAudioDecoder::needMoreFrame enter");
-        auto needMoreMsg = std::make_shared<AMessage>(kWhatNeedMore, shared_from_this());
-        needMoreMsg->setObject("notify", msg);
-        needMoreMsg->post();
-    }
-
-    VEResult VEAudioDecoder::onNeedMoreFrame(const std::shared_ptr<AMessage> &msg) {
-        ALOGV("VEAudioDecoder::onNeedMoreFrame enter");
-        std::shared_ptr<void> tmp;
-        if (!msg->findObject("notify", &tmp)) {
-            ALOGW("VEAudioDecoder::onNeedMoreFrame notify not found in message");
-            return VE_INVALID_PARAMS;
-        }
-
-        auto notifyMsg = std::static_pointer_cast<AMessage>(tmp);
-
-        mNotifyMore = notifyMsg;
-        mNeedMoreData = true;
-
-        if (!mIsStarted && !mIsEOS) {
-            mIsStarted = true;
-            postDecode();
-        }
-        return VE_OK;
-    }
 
 
     VEResult VEAudioDecoder::seekTo(double timestamp) {

@@ -310,18 +310,19 @@ namespace VE {
                   mMediaInfo->sampleRate, mMediaInfo->channels,
                   audioOut.sampleRate, audioOut.channels);
 
-            mAudioDecoder = std::make_shared<VEAudioDecoder>(mRenderNotifyMsg);
-            mAudioDecodeLooper->registerHandler(mAudioDecoder);
-            mAudioDecoder->prepare(mDemux, audioOut);
-
+            // 推模型下先建渲染端(sink)，解码器建链时把 sink 交给它
             mAudioOutputLooper = std::make_shared<ALooper>();
             mAudioOutputLooper->setName("audio_render");
             mAudioOutputLooper->start(false);
 
             mAudioOutput = std::make_shared<VEAudioRender>(mRenderNotifyMsg, mAVSync);
             mAudioOutputLooper->registerHandler(mAudioOutput);
-            mAudioOutput->prepare(std::static_pointer_cast<IMediaDecoder>(mAudioDecoder),
-                                  audioOut);
+            mAudioOutput->prepare(audioOut);
+
+            mAudioDecoder = std::make_shared<VEAudioDecoder>(mRenderNotifyMsg);
+            mAudioDecodeLooper->registerHandler(mAudioDecoder);
+            mAudioDecoder->prepare(mDemux, audioOut,
+                                   std::static_pointer_cast<IFrameSink>(mAudioOutput));
             mAudioDecState = ROLE_ACTIVE;
             mAudioRenderState = ROLE_ACTIVE;
         }
