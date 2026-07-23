@@ -87,7 +87,11 @@ namespace VE {
 
         switch (msg->what()) {
             case kWhatInit: {
-                onPrepare(msg);
+                // prepare 失败必须上报：静默吞掉的话 codec 未打开，
+                // start 后首次 receive_frame 就是持续性错误
+                if (onPrepare(msg) != VE_OK) {
+                    postMessage(VE_NOTIFY_EVENT_ERROR, VE_UNKNOWN_ERROR, 0, 0, nullptr);
+                }
                 break;
             }
             case kWhatStart: {
@@ -348,6 +352,12 @@ namespace VE {
                       frame->getFrame()->sample_rate,
                       frame->getFrame()->format);
                 return VE_OK;
+            }
+            if (ret != AVERROR(EAGAIN)) {
+                // 持续性错误(如 codec 未打开返回 EINVAL)：必须退出，
+                // 否则循环条件不变化，忙循环卡死整个解码 looper
+                ALOGE("VEAudioDecoder::onDecode receive_frame fatal: %d", ret);
+                return VE_UNKNOWN_ERROR;
             }
         } while (ret != AVERROR(EAGAIN));
 

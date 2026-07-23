@@ -96,6 +96,8 @@ namespace VE {
 
         // read() 由解码器线程调用，会读取这两个标志，故需原子访问
         std::atomic<bool> mIsStart{false};
+        /// 连续读到坏包的计数，读成功即清零；仅 looper 线程访问
+        int mReadErrorCount = 0;
 
         bool mNeedAudioMore = false;
         bool mNeedVideoMore = false;

@@ -13,6 +13,12 @@ extern "C"{
 #define AUDIO_QUEUE_SIZE    100
 #define VIDEO_QUEUE_SIZE    100
 namespace VE {
+    namespace {
+        /// av_read_frame 瞬时无数据(EAGAIN)时的重试间隔
+        constexpr int64_t kReadRetryDelayUs = 10000;
+        /// 连续坏包的容忍上限，超过按致命错误处理，避免全损文件空转
+        constexpr int kMaxConsecutiveReadErrors = 100;
+    }
     VEDemux::VEDemux(std::shared_ptr<AMessage> &notify) :mNotifyEvent(notify){
         ALOGV("VEDemux::%s enter", __FUNCTION__);
         mAudioCodecParams = nullptr;
@@ -198,11 +204,18 @@ namespace VE {
                     break;
                 }
                 ALOGD("VEDemux::%s kWhatRead run", __FUNCTION__);
-                if (onRead() == VE_OK) {
+                VEResult ret = onRead();
+                if (ret == VE_OK) {
                     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead,
                                                                                shared_from_this());
                     msg->post();
+                } else if (ret == VE_ERROR_EAGAIN) {
+                    // 瞬时错误：延时续投，保持读循环存活
+                    std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead,
+                                                                               shared_from_this());
+                    msg->post(kReadRetryDelayUs);
                 }
+                // VE_EOS/致命错误：停止续投(致命路径已复位 mIsStart 并上报)
                 break;
             }
             case kWhatNeedMore: {
@@ -341,12 +354,24 @@ namespace VE {
             mIsEOS = true;
             ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_EOS;
+        } else if (ret == AVERROR(EAGAIN)) {
+            // 瞬时无数据(部分 demuxer/IO 会出现)：延时重试，读循环不能就此死掉
+            ALOGW("VEDemux::onRead EAGAIN, retry later");
+            return VE_ERROR_EAGAIN;
+        } else if (ret == AVERROR_INVALIDDATA &&
+                   ++mReadErrorCount < kMaxConsecutiveReadErrors) {
+            // 局部损坏的包：跳过继续读，连续超限才视为致命
+            ALOGW("VEDemux::onRead skip corrupt packet (%d in a row)", mReadErrorCount);
+            return VE_OK;
         } else if (ret < 0) {
-            // 处理其他错误
-            ALOGI("VEDemux::onRead Error occurred: %s", av_err2str(ret));
-            ALOGV("VEDemux::%s exit", __FUNCTION__);
+            // 致命错误：复位读状态并上报。原实现 mIsStart 卡在 true，
+            // 所有重启入口(needMorePacket/read)都被挡住，播放无声无画卡死
+            ALOGE("VEDemux::onRead fatal error: %s", av_err2str(ret));
+            mIsStart = false;
+            postMessage(VE_NOTIFY_EVENT_ERROR, ret, 0, 0, nullptr);
             return VE_UNKNOWN_ERROR;
         }
+        mReadErrorCount = 0;
 
         const AVRational streamTimeBase =
                 mFormatContext->streams[packet->getPacket()->stream_index]->time_base;
