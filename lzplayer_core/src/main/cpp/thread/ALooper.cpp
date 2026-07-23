@@ -59,14 +59,16 @@ struct ALooper::LooperThread{
     }
 
     status_t requestExitAndWait(){
-        std::lock_guard<std::mutex> lk(mLock);
-        mExitPending = true;
+        // 不能持锁 join：threadLoop 每轮循环结束都要抢 mLock 才能走到
+        // 退出判断，持锁等它退出会互相等死。置位后放锁再 join。
+        {
+            std::lock_guard<std::mutex> lk(mLock);
+            mExitPending = true;
+        }
 
         if(mThread.joinable()){
             mThread.join();
         }
-
-        mExitPending = false;
         return 0;
     }
 
