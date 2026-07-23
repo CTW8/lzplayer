@@ -55,6 +55,12 @@ namespace VE {
         mPlayer->setOnPreparedListener([this]() {
             {
                 std::lock_guard<std::mutex> lk(mMutex);
+                // 仅在等待 prepare 时接受：超时后状态已置 ERROR，
+                // 迟到的 onPrepared 不允许把 ERROR 悄悄洗成 PREPARED
+                if (currentState != MEDIA_PLAYER_PREPARING) {
+                    ALOGW("VEPlayerDriver late onPrepared in state %d, ignored", currentState);
+                    return;
+                }
                 currentState = MEDIA_PLAYER_PREPARED;
             }
             mCond.notify_all();

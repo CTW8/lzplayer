@@ -233,6 +233,10 @@ namespace VE {
         /// seek 超时的中止路径
         void abortSeekOnTimeout();
 
+        /// 收敛到静止态(NuPlayer 的 error 即收敛原则)：停 tick、停时钟、
+        /// 显式 stop 所有组件、清 seek 流程状态。ERROR/超时/完成时使用。
+        void converge();
+
         // ---- 操作串行化(仿 NuPlayer mDeferredActions)：长流程不重叠 ----
 
         /// 会引发多阶段流程的操作。流程忙时入队，前一个完成后按序执行。

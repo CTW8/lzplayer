@@ -823,6 +823,14 @@ namespace VE {
 
             mState = STATE_COMPLETED;
             stopProgressTick();
+            // 完成后的轻量收敛：暂停组件与时钟。音频渲染器在 EOS 帧处
+            // 已自停设备，这里是统一兜底，保证 COMPLETED 是真正的静止态
+            if (mMediaClock)   mMediaClock->pause();
+            if (mVideoRender)  mVideoRender->pause();
+            if (mAudioOutput)  mAudioOutput->pause();
+            if (mVideoDecoder) mVideoDecoder->pause();
+            if (mAudioDecoder) mAudioDecoder->pause();
+            if (mDemux)        mDemux->pause();
             // 收尾补一次满进度，避免进度条停在最后一次 tick 的位置
             if (mMediaInfo != nullptr && mMediaInfo->duration > 0) {
                 notifyProgress(static_cast<int64_t>(mMediaInfo->duration) * 1000);
@@ -888,8 +896,20 @@ namespace VE {
             case VE_NOTIFY_EVENT_ERROR: {
                 int32_t code = 0;
                 msg->findInt32("arg1", &code);
+                if (mState == STATE_RELEASING) {
+                    // 拆解本身就是最彻底的收敛；此刻改状态会击穿
+                    // "RELEASING 期间 defer"的防线，只记日志
+                    ALOGW("VEPlayer component error %d during teardown, ignored", code);
+                    break;
+                }
+                // 错误即收敛：不能让数据面自治的组件继续各跑各的
+                // (如视频解码器挂了音频还在响)，也不能留下既停不下来
+                // 又救不回来的半死状态
+                converge();
                 mState = STATE_ERROR;
                 notifyError(code, "component reported error");
+                dropQueuedSeeks();
+                processPendingActions();   // 排队的 reset/release 是 ERROR 态的唯一出路
                 break;
             }
             case VE_NOTIFY_EVENT_FIRST_FRAME: {
@@ -1053,19 +1073,29 @@ namespace VE {
     }
 
     void VEPlayer::abortSeekOnTimeout() {
+        converge();
+        dropQueuedSeeks();
+        mState = STATE_ERROR;
+        notifyError(VE_TIMED_OUT, "seek timed out, component not responding");
+        // 排队的 reset/release 仍要执行(ERROR 态下它们是唯一出路)
+        processPendingActions();
+    }
+
+    void VEPlayer::converge() {
         ++mFlowSeq;
         mSeekStage = SEEK_STAGE_NONE;
         mAbortSeek = false;
-        dropQueuedSeeks();
         setAllRoles(ROLE_ACTIVE);
         stopProgressTick();
         if (mMediaClock) {
             mMediaClock->pause();
         }
-        mState = STATE_ERROR;
-        notifyError(VE_TIMED_OUT, "seek timed out, component not responding");
-        // 排队的 reset/release 仍要执行(ERROR 态下它们是唯一出路)
-        processPendingActions();
+        // fire-and-forget 停掉数据面(组件回的 STOP_DONE 会被角色守卫丢弃)
+        if (mVideoRender)  mVideoRender->stop();
+        if (mAudioOutput)  mAudioOutput->stop();
+        if (mVideoDecoder) mVideoDecoder->stop();
+        if (mAudioDecoder) mAudioDecoder->stop();
+        if (mDemux)        mDemux->stop();
     }
 
     // ---------------------------------------------------------------------
