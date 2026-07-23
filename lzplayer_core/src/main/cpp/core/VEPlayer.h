@@ -5,6 +5,7 @@
 #include <functional>
 #include <atomic>
 #include <mutex>
+#include <deque>
 #include <android/native_window_jni.h>
 #include "VEDemux.h"
 #include "VEAudioDecoder.h"
@@ -233,6 +234,42 @@ namespace VE {
         /// seek 超时的中止路径
         void abortSeekOnTimeout();
 
+        // ---- 操作串行化(仿 NuPlayer mDeferredActions)：长流程不重叠 ----
+
+        /// 会引发多阶段流程的操作。流程忙时入队，前一个完成后按序执行。
+        struct PendingAction {
+            enum Type {
+                ACTION_SEEK,
+                ACTION_SET_DATA_SOURCE,
+                ACTION_PREPARE,
+                ACTION_RESET,
+                ACTION_RELEASE
+            } type = ACTION_SEEK;
+            double seekMs = 0;                     ///< ACTION_SEEK
+            std::string path;                      ///< ACTION_SET_DATA_SOURCE
+            std::shared_ptr<AReplyToken> reply;    ///< ACTION_RELEASE
+            bool wantsReply = false;               ///< ACTION_RELEASE
+        };
+
+        /// 是否有长流程在途(seek/teardown；prepare 在步骤8改造后也计入)
+        bool isFlowBusy() const;
+
+        /// 弹出并执行排队的操作，直到队空或某个操作开启了新流程
+        void processPendingActions();
+
+        /// 丢弃队列中所有 SEEK(reset/release/stop 使其失去意义)
+        void dropQueuedSeeks();
+
+        /// RESET/RELEASE 请求中止当前 seek：当前阶段回执到齐后走这里
+        void abortSeekForAction();
+
+        /// prepare 的实际执行体(排队解耦后从 onPrepare 拆出)
+        VEResult doPrepare();
+
+        /// reset/release 的实际执行体
+        void executeReset();
+        void executeRelease(const std::shared_ptr<AReplyToken> &reply, bool wantsReply);
+
         // ---- 进度上报：按固定间隔读时钟，而不是每渲染一帧发一条消息 ----
         void startProgressTick();
         void stopProgressTick();
@@ -305,8 +342,11 @@ namespace VE {
         SeekStage mSeekStage = SEEK_STAGE_NONE;
         double mSeekTargetMs = 0;
         PlayerState mStateBeforeSeek = STATE_IDLE;
-        bool mHasPendingSeek = false;
-        double mPendingSeekMs = 0;
+
+        // 操作串行化
+        std::deque<PendingAction> mPendingActions;
+        /// RESET/RELEASE 入队时置位：当前 seek 阶段结束即中止，不进下一阶段
+        bool mAbortSeek = false;
 
         ANativeWindow *mWindow = nullptr;
         int mViewWidth = 0;

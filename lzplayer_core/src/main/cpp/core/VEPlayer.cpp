@@ -17,9 +17,6 @@ namespace VE {
         /// 两个阶段各等 2s 会逼近 ANR 阈值，所以这里收紧。
         constexpr int64_t kTeardownAckTimeoutUs = 800000;
 
-        /// 拆解进行中收到 setDataSource/reset/release 时的重投间隔：
-        /// 把请求排到当前拆解完成之后，而不是并发再起一轮拆解
-        constexpr int64_t kDeferWhileReleasingUs = 20000;
     }
 
     VEPlayer::VEPlayer() {
@@ -212,24 +209,25 @@ namespace VE {
 
     VEResult VEPlayer::onSetDataSource(std::shared_ptr<AMessage> msg) {
         ALOGV("VEPlayer::%s enter", __FUNCTION__);
-        if (mState == STATE_RELEASING) {
-            // 上一轮拆解还在握手中。此刻再起一轮拆解会丢掉它的 continuation
-            // 并对半释放的组件重发命令，正确性全押在组件幂等上。
-            // 改为把整条消息排到拆解完成之后重新处理。
-            msg->post(kDeferWhileReleasingUs);
-            return VE_OK;
-        }
         std::string path;
         if (!msg->findString("path", path) || path.empty()) {
             ALOGE("VEPlayer::%s - Invalid path", __FUNCTION__);
             return VE_UNKNOWN_ERROR; // Define this error code
         }
-        // 允许不经 reset 直接换片源：先拆掉上一套组件(异步握手)，
-        // 拆干净了再建新链路，否则会再建一套 looper 导致线程只增不减
-        if (mDemux != nullptr) {
-            ALOGI("VEPlayer::%s tear down previous pipeline first", __FUNCTION__);
-            teardownComponents([this, path] { setupDataSource(path); });
+        if (isFlowBusy()) {
+            // 典型时序：reset 的拆解还在握手中就来了 setDataSource。
+            // 入队排到拆解完成之后执行，不并发两轮流程。
+            PendingAction action;
+            action.type = PendingAction::ACTION_SET_DATA_SOURCE;
+            action.path = path;
+            mPendingActions.push_back(action);
             return VE_OK;
+        }
+        if (mDemux != nullptr) {
+            // 对齐 AOSP MediaPlayer 语义：换片源必须先 reset。
+            // 原来的"拆旧建新"隐式换源路径删除(Driver 侧本来就挡死)。
+            ALOGE("VEPlayer::%s must reset before setting a new source", __FUNCTION__);
+            return VE_INVALID_OPERATION;
         }
 
         return setupDataSource(path);
@@ -257,11 +255,17 @@ namespace VE {
 
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGV("VEPlayer::%s enter", __FUNCTION__);
-        if (mState == STATE_RELEASING) {
-            // 拆解期间不能对半释放的 demux 发 prepare，排到拆解完成后
-            msg->post(kDeferWhileReleasingUs);
+        if (isFlowBusy()) {
+            // 拆解期间不能对半释放的 demux 发 prepare，排队执行
+            PendingAction action;
+            action.type = PendingAction::ACTION_PREPARE;
+            mPendingActions.push_back(action);
             return VE_OK;
         }
+        return doPrepare();
+    }
+
+    VEResult VEPlayer::doPrepare() {
         if (mDemux == nullptr) {
             // reset 之后没有重新 setDataSource 就 prepare
             mState = STATE_ERROR;
@@ -399,7 +403,8 @@ namespace VE {
             return VE_INVALID_OPERATION;
         }
         mSeekStage = SEEK_STAGE_NONE;
-        mHasPendingSeek = false;
+        mAbortSeek = false;
+        dropQueuedSeeks();          // stop 后排队的 seek 已无意义
         ++mFlowSeq;                 // 作废在途的 seek 阶段超时
         setAllRoles(ROLE_ACTIVE);   // seek 中途被 stop：角色收拢回稳态
         mState = STATE_PREPARED;
@@ -412,6 +417,8 @@ namespace VE {
         if (mVideoDecoder) mVideoDecoder->stop();
         if (mAudioDecoder) mAudioDecoder->stop();
         if (mDemux)        mDemux->stop();
+        // stop 可能中断了在途 seek，排队的 reset/release 需要在这里接力
+        processPendingActions();
         ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
@@ -451,13 +458,70 @@ namespace VE {
         return VE_OK;
     }
 
+    // ---------------------------------------------------------------------
+    // 操作串行化：长流程(seek/reset/release/prepare)不重叠
+    // ---------------------------------------------------------------------
+
+    bool VEPlayer::isFlowBusy() const {
+        return mSeekStage != SEEK_STAGE_NONE || mState == STATE_RELEASING;
+    }
+
+    void VEPlayer::processPendingActions() {
+        while (!mPendingActions.empty() && !isFlowBusy()) {
+            PendingAction action = mPendingActions.front();
+            mPendingActions.pop_front();
+            switch (action.type) {
+                case PendingAction::ACTION_SEEK:
+                    startSeek(action.seekMs);
+                    break;
+                case PendingAction::ACTION_SET_DATA_SOURCE:
+                    if (mDemux != nullptr) {
+                        ALOGE("VEPlayer::processPendingActions must reset before new source");
+                    } else {
+                        setupDataSource(action.path);
+                    }
+                    break;
+                case PendingAction::ACTION_PREPARE:
+                    doPrepare();
+                    break;
+                case PendingAction::ACTION_RESET:
+                    executeReset();
+                    break;
+                case PendingAction::ACTION_RELEASE:
+                    executeRelease(action.reply, action.wantsReply);
+                    break;
+            }
+        }
+    }
+
+    void VEPlayer::dropQueuedSeeks() {
+        for (auto it = mPendingActions.begin(); it != mPendingActions.end();) {
+            if (it->type == PendingAction::ACTION_SEEK) {
+                it = mPendingActions.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    void VEPlayer::abortSeekForAction() {
+        // reset/release 在排队等待：本轮 seek 到此为止，不再进入下一阶段。
+        // 播放状态不必恢复——紧接着的 reset/release 会拆掉整条管线。
+        ALOGI("VEPlayer::%s seek aborted for pending reset/release", __FUNCTION__);
+        ++mFlowSeq;
+        mSeekStage = SEEK_STAGE_NONE;
+        setAllRoles(ROLE_ACTIVE);
+        mAbortSeek = false;
+        processPendingActions();
+    }
+
     void VEPlayer::teardownComponents(std::function<void()> onDone) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
 
         // 中断正在进行的流程，避免拆解过程中还有回调想往下推进
         stopProgressTick();
         mSeekStage = SEEK_STAGE_NONE;
-        mHasPendingSeek = false;
+        mAbortSeek = false;
         mState = STATE_RELEASING;
         mTeardownDone = std::move(onDone);
         ++mFlowSeq;
@@ -552,36 +616,56 @@ namespace VE {
 
     VEResult VEPlayer::onReset(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        if (mState == STATE_RELEASING) {
-            // 排到当前拆解完成之后再处理，避免并发两轮拆解
-            msg->post(kDeferWhileReleasingUs);
+        if (isFlowBusy()) {
+            // 排到当前流程完成后执行；若在途的是 seek，请求其尽快中止
+            mAbortSeek = (mSeekStage != SEEK_STAGE_NONE);
+            dropQueuedSeeks();
+            PendingAction action;
+            action.type = PendingAction::ACTION_RESET;
+            mPendingActions.push_back(action);
             return VE_OK;
         }
+        executeReset();
+        return VE_OK;
+    }
+
+    void VEPlayer::executeReset() {
         // reset 后应能重新 setDataSource：必须真正拆掉这一套组件和线程，
         // 否则再次 setDataSource 会又建一套 looper，线程只增不减。
         teardownComponents([this] {
             mPath.clear();
             mState = STATE_IDLE;
             ALOGI("VEPlayer::onReset done");
+            processPendingActions();
         });
-        return VE_OK;
     }
 
     VEResult VEPlayer::onRelease(std::shared_ptr<AMessage> msg) {
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
-        if (mState == STATE_RELEASING) {
-            // reset/换源触发的拆解还在进行：整条消息(连同 replyToken)排到
-            // 它完成之后。届时组件已拆净，本次 release 走空掩码快速路径回复。
-            msg->post(kDeferWhileReleasingUs);
-            return VE_OK;
-        }
-
         // release 是同步调用(Driver 析构在等)，但拆解要跨多轮消息握手，
-        // 所以先扣下 replyToken，等整条链走完再回复。
+        // 所以先扣下 replyToken；无论直接执行还是排队，最终都必须回复。
         std::shared_ptr<AReplyToken> replyID;
         bool wantsReply = msg->senderAwaitsResponse(replyID);
 
-        teardownComponents([this, replyID, wantsReply] {
+        if (isFlowBusy()) {
+            // 排到当前流程完成后执行；在途的 seek 请求尽快中止，
+            // 保证 onDestroy 的同步 release 不被慢 seek 拖满整个阶段链
+            mAbortSeek = (mSeekStage != SEEK_STAGE_NONE);
+            dropQueuedSeeks();
+            PendingAction action;
+            action.type = PendingAction::ACTION_RELEASE;
+            action.reply = replyID;
+            action.wantsReply = wantsReply;
+            mPendingActions.push_back(action);
+            return VE_OK;
+        }
+
+        executeRelease(replyID, wantsReply);
+        return VE_OK;
+    }
+
+    void VEPlayer::executeRelease(const std::shared_ptr<AReplyToken> &reply, bool wantsReply) {
+        teardownComponents([this, reply, wantsReply] {
             if (mWindow) {
                 ANativeWindow_release(mWindow);
                 mWindow = nullptr;
@@ -592,10 +676,10 @@ namespace VE {
             if (wantsReply) {
                 std::shared_ptr<AMessage> response = std::make_shared<AMessage>();
                 response->setInt32("ret", VE_OK);
-                response->postReply(replyID);
+                response->postReply(reply);
             }
+            processPendingActions();
         });
-        return VE_OK;
     }
 
     void VEPlayer::setLooping(bool enable) {
@@ -814,7 +898,11 @@ namespace VE {
                 notifyProgress(pts);
                 if (mSeekStage == SEEK_STAGE_PRIMING &&
                     type == EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER) {
-                    seekFinish();
+                    if (mAbortSeek) {
+                        abortSeekForAction();
+                    } else {
+                        seekFinish();
+                    }
                 } else {
                     ALOGD("VEPlayer::%s first frame outside priming, ignore", __FUNCTION__);
                 }
@@ -825,7 +913,11 @@ namespace VE {
                 if (mSeekStage == SEEK_STAGE_PAUSING &&
                     acceptAck(type, ROLE_PAUSING, ROLE_PAUSED) &&
                     rolesAllIn(ROLE_PAUSED)) {
-                    seekStageSeek();
+                    if (mAbortSeek) {
+                        abortSeekForAction();
+                    } else {
+                        seekStageSeek();
+                    }
                 }
                 break;
             }
@@ -833,7 +925,11 @@ namespace VE {
                 if (mSeekStage == SEEK_STAGE_SEEKING &&
                     acceptAck(type, ROLE_SEEKING, ROLE_SEEK_DONE) &&
                     rolesAllIn(ROLE_SEEK_DONE)) {
-                    seekStagePrime();
+                    if (mAbortSeek) {
+                        abortSeekForAction();
+                    } else {
+                        seekStagePrime();
+                    }
                 }
                 break;
             }
@@ -958,7 +1054,8 @@ namespace VE {
     void VEPlayer::abortSeekOnTimeout() {
         ++mFlowSeq;
         mSeekStage = SEEK_STAGE_NONE;
-        mHasPendingSeek = false;
+        mAbortSeek = false;
+        dropQueuedSeeks();
         setAllRoles(ROLE_ACTIVE);
         stopProgressTick();
         if (mMediaClock) {
@@ -966,6 +1063,8 @@ namespace VE {
         }
         mState = STATE_ERROR;
         notifyError(VE_TIMED_OUT, "seek timed out, component not responding");
+        // 排队的 reset/release 仍要执行(ERROR 态下它们是唯一出路)
+        processPendingActions();
     }
 
     // ---------------------------------------------------------------------
@@ -1010,11 +1109,19 @@ namespace VE {
             return;
         }
 
-        if (mSeekStage != SEEK_STAGE_NONE) {
-            // 正在 seek：只保留最后一次请求，完成后补做(拖动进度条的关键)
-            ALOGI("VEPlayer::startSeek coalesce pending seek to %f", timestampMs);
-            mHasPendingSeek = true;
-            mPendingSeekMs = timestampMs;
+        if (isFlowBusy()) {
+            // 流程在途：入队并与队尾 SEEK 合并——只保留最后一次请求，
+            // 完成后补做(拖动进度条的关键)
+            ALOGI("VEPlayer::startSeek queue pending seek to %f", timestampMs);
+            if (!mPendingActions.empty() &&
+                mPendingActions.back().type == PendingAction::ACTION_SEEK) {
+                mPendingActions.back().seekMs = timestampMs;
+            } else {
+                PendingAction action;
+                action.type = PendingAction::ACTION_SEEK;
+                action.seekMs = timestampMs;
+                mPendingActions.push_back(action);
+            }
             return;
         }
 
@@ -1139,10 +1246,8 @@ namespace VE {
             onSeekComplateCallback();
         }
 
-        if (mHasPendingSeek) {
-            // seek 期间被合并掉的请求，现在补做
-            mHasPendingSeek = false;
-            startSeek(mPendingSeekMs);
-        }
+        mAbortSeek = false;
+        // 排队等待的操作(合并后的 seek/reset/release)现在补做
+        processPendingActions();
     }
 }
