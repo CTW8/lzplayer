@@ -10,7 +10,7 @@
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "VEDemux.h"
-#include "IMediaDecoder.h"
+#include "IFrameSink.h"
 
 extern "C" {
 #include "libavformat/avformat.h"
@@ -22,12 +22,15 @@ extern "C" {
 
 namespace VE {
     class VEVideoDecoder
-            : public AHandler, public IMediaDecoder{
+            : public AHandler{
     public:
         VEVideoDecoder(std::shared_ptr<AMessage> &nofity);
         ~VEVideoDecoder() override;
 
-        VEResult prepare(std::shared_ptr<IMediaSource> source);
+        /// sink: 解出的帧推给谁(视频显示)。推模型 + 消费回执 credit，
+        /// 取代原来的 readFrame 拉链路。
+        VEResult prepare(std::shared_ptr<IMediaSource> source,
+                         std::shared_ptr<IFrameSink> sink);
 
         // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口
         VEResult start();
@@ -39,10 +42,6 @@ namespace VE {
         VEResult flush();
 
         VEResult seekTo(double timestampMs);
-
-        VEResult readFrame(std::shared_ptr<VEFrame> &frame) override;
-
-        void needMoreFrame(std::shared_ptr<AMessage> msg) override;
 
         VEResult release();
 
@@ -65,8 +64,6 @@ namespace VE {
 
         VEResult onRelease();
 
-        VEResult onNeedMoreFrame(const std::shared_ptr<AMessage> &msg);
-
         VEResult onSeek(double timestampMs);
 
         /// 把渲染器不支持的像素格式转成 YUV420P
@@ -77,7 +74,7 @@ namespace VE {
         /// 投递带当前 epoch 的解码消息，flush 后旧消息会被自动丢弃
         void postDecode(int64_t delayUs = 0);
 
-        // 帧入队列
+        /// 推一帧给 sink：附带回执消息(带当前 epoch)，在途帧计数 +1
         void queueFrame(std::shared_ptr<VEFrame> frame);
 
         enum {
@@ -89,7 +86,7 @@ namespace VE {
             kWhatSeek  = 'seek',
             kWhatDecode = 'deco',
             kWhatUninit = 'unin',
-            kWhatNeedMore = 'need'
+            kWhatFrameConsumed = 'fcon'
         };
 
     private:
@@ -100,22 +97,22 @@ namespace VE {
         /// 仅在解码输出不是 YUV420P 时才会创建
         SwsContext *mSwsCtx = nullptr;
         std::shared_ptr<VEMediaInfo> mMediaInfo = nullptr;
-        std::shared_ptr<VEFrameQueue> mFrameQueue = nullptr;
         /// 只依赖数据源接口：本地 demux 与后续的网络源可以互换
         std::shared_ptr<IMediaSource> mDemux = nullptr;
+        /// 帧的去向；credit 流控由 mInFlightFrames 表达
+        std::shared_ptr<IFrameSink> mSink = nullptr;
+        /// 已推给 sink 但还没收到消费回执的帧数(仅解码 looper 访问)
+        int mInFlightFrames = 0;
         bool mIsEOS = false;
 
         std::shared_ptr<AMessage> mNofityEvent = nullptr;
 
         bool mIsStarted = false;
-        bool mNeedMoreData = false;
 
         /// 解码消息的代次，flush/seek 时递增以作废在途的解码消息
         int32_t mEpoch = 0;
         /// 精准 seek 目标(微秒)，其之前解出的帧全部丢弃
         int64_t mSeekTargetUs = kNoSeekTarget;
-
-        std::shared_ptr<AMessage> mNotifyMore = nullptr;
     };
 }
 #endif // __VE_VIDEO_DECODER__

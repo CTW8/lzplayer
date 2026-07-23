@@ -17,17 +17,26 @@ namespace VE {
 
     }
 
-    VEResult VEVideoDisplay::prepare(const std::shared_ptr<IMediaDecoder> &decoder,
-                                     ANativeWindow *win, int width, int height, int fps) {
+    VEResult VEVideoDisplay::prepare(ANativeWindow *win, int width, int height, int fps) {
         ALOGV("VEVideoDisplay::%s enter",__FUNCTION__ );
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
         msg->setPointer("win", win);
         msg->setInt32("width", width);
         msg->setInt32("height", height);
         msg->setInt32("fps", fps);
-        msg->setObject("vdec", decoder);
         msg->post();
         return 0;
+    }
+
+    void VEVideoDisplay::queueFrame(const std::shared_ptr<VEFrame> &frame,
+                                    const std::shared_ptr<AMessage> &consumedReply) {
+        // 解码器线程调用：转投自己的 looper。队列代次在此刻盖章，
+        // flush/seek 之后在途的旧帧会在接收侧被丢弃。
+        auto msg = std::make_shared<AMessage>(kWhatQueueFrame, shared_from_this());
+        msg->setObject("frame", frame);
+        msg->setObject("reply", consumedReply);
+        msg->setInt32("queueGen", mQueueGen.load());
+        msg->post();
     }
 
     VEResult VEVideoDisplay::start() {
@@ -142,6 +151,28 @@ namespace VE {
                 onAVSync(msg);
                 break;
             }
+            case kWhatQueueFrame:{
+                int32_t gen = 0;
+                msg->findInt32("queueGen", &gen);
+                if (gen != mQueueGen.load()) {
+                    // flush/seek 之前在途的旧帧：丢弃。不回执——
+                    // 解码器 flush 时已把 credit 清算归零
+                    ALOGI("VEVideoDisplay stale queued frame gen=%d cur=%d",
+                          gen, mQueueGen.load());
+                    break;
+                }
+                std::shared_ptr<void> f, r;
+                msg->findObject("frame", &f);
+                msg->findObject("reply", &r);
+                mFrames.emplace_back(std::static_pointer_cast<VEFrame>(f),
+                                     std::static_pointer_cast<AMessage>(r));
+                if (m_IsStarted && mFrames.size() == 1) {
+                    // 队列从空转非空：链条此前已停摆，帧到达即重新拉起。
+                    // 链条活着时队列必然非空，不会重复踢
+                    postSync(0);
+                }
+                break;
+            }
             case kWhatSpeedRate:{
 
                 break;
@@ -166,12 +197,6 @@ namespace VE {
 
     VEResult VEVideoDisplay::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGV("VEVideoDisplay::onPrepare enter");
-        // 先绑定解码器和尺寸再看 surface：以前 surface 为空直接 return，
-        // m_pVideoDec 没赋值，之后 start 就是空指针崩溃，且渲染器
-        // 永远建不起来(onSurfaceChanged 只在渲染器已存在时才处理)。
-        std::shared_ptr<void> tmp = nullptr;
-        msg->findObject("vdec", &tmp);
-        m_pVideoDec = std::static_pointer_cast<IMediaDecoder>(tmp);
         msg->findPointer("win", (void **) &mWin);
         msg->findInt32("width", &mViewWidth);
         msg->findInt32("height", &mViewHeight);
@@ -203,6 +228,8 @@ namespace VE {
 
     VEResult VEVideoDisplay::onStop(std::shared_ptr<AMessage> msg) {
         m_IsStarted = false;
+        ++mQueueGen;
+        mFrames.clear();
         return 0;
     }
 
@@ -210,6 +237,10 @@ namespace VE {
         ALOGV("VEVideoDisplay::onSeekTo enter timestampMs:%f", timestampMs);
         // 作废在途的渲染/同步消息，避免 seek 后把旧帧画上去
         ++m_Epoch;
+        // 队列代次递增 + 清本地队列：在途的旧帧到达时被丢弃。
+        // 不为被清帧发回执——解码器同轮 flush 会把 credit 清算归零
+        ++mQueueGen;
+        mFrames.clear();
         m_IsStarted = false;
         // 标记：seek 后渲染出的第一帧要上报，作为 seek 真正完成的依据
         m_NotifyFirstFrame = true;
@@ -219,6 +250,8 @@ namespace VE {
     VEResult VEVideoDisplay::onFlush(std::shared_ptr<AMessage> msg) {
         ALOGV("VEVideoDisplay::onFlush enter");
         ++m_Epoch;
+        ++mQueueGen;
+        mFrames.clear();
         m_IsStarted = false;
         return VE_OK;
     }
@@ -254,7 +287,8 @@ namespace VE {
             m_pVideoRender->uninitialize();
             m_pVideoRender.reset();
         }
-        m_pVideoDec.reset();
+        ++mQueueGen;
+        mFrames.clear();
         mWin = nullptr;
         return VE_OK;
     }
@@ -266,29 +300,30 @@ namespace VE {
             return UNKNOWN_ERROR;
         }
 
-        std::shared_ptr<VEFrame> frame = nullptr;
-        std::shared_ptr<void> tmp;
-
-        msg->findObject("render", &tmp);
-
-        frame = std::static_pointer_cast<VEFrame>(tmp);
+        if (mFrames.empty()) {
+            ALOGW("VEVideoDisplay::%s - queue drained before render", __FUNCTION__);
+            return UNKNOWN_ERROR;
+        }
+        std::shared_ptr<VEFrame> frame = mFrames.front().first;
 
         if (frame == nullptr || frame->getFrame() == nullptr) {
             ALOGE("VEVideoDisplay::%s - frame or frame data is null", __FUNCTION__);
+            consumeFront();
             return UNKNOWN_ERROR;
         }
 
         if (m_pVideoRender == nullptr) {
-            // surface 尚未就绪，丢掉这一帧；渲染链由 onSurfaceChanged 重新拉起
+            // surface 尚未就绪，丢掉这一帧(回执照发)；渲染链由 onSurfaceChanged 重新拉起
             ALOGW("VEVideoDisplay::%s - renderer not ready, drop frame", __FUNCTION__);
+            consumeFront();
             return UNKNOWN_ERROR;
         }
 
         mFrameWidth = frame->getFrame()->width;
         mFrameHeight = frame->getFrame()->height;
 
-
         m_pVideoRender->renderFrame(frame);
+        consumeFront();
 
         if (m_NotifyFirstFrame) {
             // seek 后的首帧已经上屏，此时才算 seek 真正完成
@@ -309,26 +344,14 @@ namespace VE {
             return UNKNOWN_ERROR;
         }
 
-        std::shared_ptr<VEFrame> frame = nullptr;
-        if (m_pVideoDec == nullptr) {
-            ALOGE("VEVideoDisplay::%s - decoder not set", __FUNCTION__);
-            return UNKNOWN_ERROR;
-        }
-        VEResult ret = m_pVideoDec->readFrame(frame);
-        ALOGV("VEVideoDisplay::%s readFrame result: %d", __FUNCTION__, ret);
-
-        if (ret == VE_NOT_ENOUGH_DATA) {
-            ALOGV("VEVideoDisplay::%s needMoreFrame!!!", __FUNCTION__);
-            auto wakeMsg = std::make_shared<AMessage>(kWhatSync, shared_from_this());
-            wakeMsg->setInt32("epoch", m_Epoch);
-            m_pVideoDec->needMoreFrame(wakeMsg);
+        if (mFrames.empty()) {
+            // 队列空 ⟺ 渲染链停摆。不需要任何唤醒登记：
+            // 下一帧到达(onQueueFrame)会重新拉起链条
+            ALOGV("VEVideoDisplay::%s queue empty, parking", __FUNCTION__);
             return VE_NOT_ENOUGH_DATA;
         }
 
-        if (frame == nullptr) {
-            ALOGE("VEVideoDisplay::%s onRender read frame is null!!!", __FUNCTION__);
-            return UNKNOWN_ERROR;
-        }
+        const std::shared_ptr<VEFrame> &frame = mFrames.front().first;
         ALOGV("VEVideoDisplay::onAVSync frame type: %d, pts: %" PRId64, frame->getFrameType(),
               frame->getPts());
 
@@ -341,26 +364,39 @@ namespace VE {
                 postMessage(VE_NOTIFY_EVENT_FIRST_FRAME, 0, 0, 0, nullptr);
             }
             postMessage(VE_NOTIFY_EVENT_EOS,0,0,0, nullptr);
+            consumeFront();   // EOF 哨兵也要回执还 credit
             return UNKNOWN_ERROR;
         }
 
         m_pAvSync->updateVideoPts(frame->getPts());
 
         if (m_pAvSync->shouldDropFrame()) {
-            // 已经严重落后：直接丢弃，不投递渲染消息也不等待，立即取下一帧追赶
+            // 已经严重落后：丢弃(照样回执还 credit)，立即取下一帧追赶
             ALOGI("VEVideoDisplay::%s Dropping frame pts=%" PRId64, __FUNCTION__, frame->getPts());
+            consumeFront();
             postSync(0);
             return VE_OK;
         }
 
         int64_t waitTime = m_pAvSync->getWaitTime(); // 获取等待时间
         ALOGD("VEVideoDisplay::%s waitTime:%" PRId64, __FUNCTION__, waitTime);
+        // 渲染消息不携带帧：到点后渲染当前队首(队列只在本 looper 上变化)
         std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender,
                                                                          shared_from_this());
-        renderMsg->setObject("render", frame);
         renderMsg->setInt32("epoch", m_Epoch);
         renderMsg->post(waitTime);
         return VE_OK;
+    }
+
+    void VEVideoDisplay::consumeFront() {
+        if (mFrames.empty()) {
+            return;
+        }
+        // 无论渲染还是丢弃，帧被消费就要把回执投回解码器归还 credit
+        if (mFrames.front().second) {
+            mFrames.front().second->post();
+        }
+        mFrames.pop_front();
     }
 
     VEResult VEVideoDisplay::onSurfaceChanged(std::shared_ptr<AMessage> msg) {

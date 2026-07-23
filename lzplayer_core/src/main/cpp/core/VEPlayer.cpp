@@ -327,22 +327,22 @@ namespace VE {
         }
 
         if(mMediaInfo->video_stream_index != -1) {
+            // 推模型下先建显示端(sink)，解码器建链时把 sink 交给它
+            mVideoRenderLooper = std::make_shared<ALooper>();
+            mVideoRenderLooper->setName("video_render");
+            mVideoRenderLooper->start(false);
+            mVideoRender = std::make_shared<VEVideoDisplay>(mRenderNotifyMsg, mAVSync);
+            mVideoRenderLooper->registerHandler(mVideoRender);
+            mVideoRender->prepare(mWindow, mViewWidth, mViewHeight, mMediaInfo->fps);
+
             mVideoDecodeLooper = std::make_shared<ALooper>();
             mVideoDecodeLooper->setName("vdec_thread");
             mVideoDecodeLooper->start(false);
 
             mVideoDecoder = std::make_shared<VEVideoDecoder>(mRenderNotifyMsg);
             mVideoDecodeLooper->registerHandler(mVideoDecoder);
-            mVideoDecoder->prepare(mDemux);
-
-            mVideoRenderLooper = std::make_shared<ALooper>();
-            mVideoRenderLooper->setName("video_render");
-            mVideoRenderLooper->start(false);
-            mVideoRender = std::make_shared<VEVideoDisplay>(mRenderNotifyMsg, mAVSync);
-            mVideoRenderLooper->registerHandler(mVideoRender);
-
-            mVideoRender->prepare(std::static_pointer_cast<IMediaDecoder>(mVideoDecoder),
-                                  mWindow, mViewWidth, mViewHeight, mMediaInfo->fps);
+            mVideoDecoder->prepare(mDemux,
+                                   std::static_pointer_cast<IFrameSink>(mVideoRender));
             mVideoDecState = ROLE_ACTIVE;
             mVideoDisplayState = ROLE_ACTIVE;
         }

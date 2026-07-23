@@ -6,22 +6,28 @@
 #define LZPLAYER_VEVIDEODISPLAY_H
 
 #include "IVideoRender.h"
-#include "IMediaDecoder.h"
+#include "IFrameSink.h"
 #include "AHandler.h"
-#include "VEVideoDecoder.h"
 #include "VEAVsync.h"
 #include <memory>
+#include <deque>
+#include <atomic>
+#include <utility>
 
 namespace VE {
 
-    class VEVideoDisplay :public AHandler{
+    class VEVideoDisplay :public AHandler, public IFrameSink{
     public:
         VEVideoDisplay(const std::shared_ptr<AMessage> &notify,
                        const std::shared_ptr<VEAVsync> &avSync);
         ~VEVideoDisplay() override;
 
-        VEResult prepare(const std::shared_ptr<IMediaDecoder> &decoder,
-                         ANativeWindow *win, int width, int height, int fps);
+        /// 推模型下显示端不再持有解码器：帧由解码器 queueFrame 推进来
+        VEResult prepare(ANativeWindow *win, int width, int height, int fps);
+
+        /// IFrameSink：解码器线程调用，转投自己的 looper(盖当前队列代次)
+        void queueFrame(const std::shared_ptr<VEFrame> &frame,
+                        const std::shared_ptr<AMessage> &consumedReply) override;
 
         // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口
         VEResult start();
@@ -61,6 +67,9 @@ namespace VE {
         /// 投递带当前代次的同步消息
         void postSync(int64_t delayUs);
 
+        /// 消费队首帧：投递它的回执(归还解码器 credit)并出队
+        void consumeFront();
+
         VEResult onFlush(std::shared_ptr<AMessage> msg);
 
         VEResult onPause(std::shared_ptr<AMessage> msg);
@@ -86,12 +95,18 @@ namespace VE {
             kWhatRelease = 'rele',
             kWhatPause = 'paus',
             kWhatFlush = 'flus',
-            kWhatSurfaceChanged = 'surf'
+            kWhatSurfaceChanged = 'surf',
+            kWhatQueueFrame = 'qfrm'
         };
 
         std::shared_ptr<IVideoRender> m_pVideoRender = nullptr;
-        /// 只依赖解码器接口：软解与后续的 MediaCodec 硬解可以互换
-        std::shared_ptr<IMediaDecoder> m_pVideoDec = nullptr;
+        /// 本地帧队列(帧 + 它的消费回执)。只在本 looper 上访问，无需加锁。
+        /// 队列空 ⟺ 渲染链停摆，帧到达即重新拉起。
+        std::deque<std::pair<std::shared_ptr<VEFrame>,
+                             std::shared_ptr<AMessage>>> mFrames;
+        /// 队列代次：解码器线程投递时盖章(atomic 读)，flush/seek/stop 递增，
+        /// 在途的旧帧到达时被丢弃
+        std::atomic<int32_t> mQueueGen{0};
         std::shared_ptr<AMessage> m_pNotify = nullptr;
         std::shared_ptr<VEAVsync> m_pAvSync = nullptr;
         int mViewWidth = 0;
