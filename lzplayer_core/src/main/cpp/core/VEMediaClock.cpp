@@ -49,13 +49,15 @@ namespace VE {
         m_Paused = false;
     }
 
-    void VEMediaClock::resetTo(double ptsUs) {
+    void VEMediaClock::resetTo(double ptsUs, bool keepPaused) {
         std::lock_guard<std::mutex> lock(m_Mutex);
 
         m_AudioTimestamp = ptsUs;
         m_AudioSystemTime = getCurrentSystemTime();
         m_BaseSystemTime = m_AudioSystemTime;
-        m_Paused = false;
+        if (!keepPaused) {
+            m_Paused = false;
+        }
     }
 
     bool VEMediaClock::isAnchored() const {

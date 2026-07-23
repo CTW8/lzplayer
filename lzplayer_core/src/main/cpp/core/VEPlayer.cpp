@@ -1239,15 +1239,19 @@ namespace VE {
         setAllRoles(ROLE_ACTIVE);
 
         if (mMediaClock) {
-            mMediaClock->resetTo(mSeekTargetMs * 1000.0);
+            // 暂停态 seek 保持时钟冻结：否则等首帧期间时钟偷跑，
+            // 最终位置=目标+首帧耗时，暂停拖动会看到画面"动一下"
+            mMediaClock->resetTo(mSeekTargetMs * 1000.0,
+                                 mStateBeforeSeek != STATE_STARTED);
         }
         if (mAVSync) {
             mAVSync->reset(mSeekTargetMs * 1000.0);
         }
 
-        if (mVideoRender) {
-            // 有视频时以首帧上屏作为 seek 完成的判据；
+        if (mVideoRender && mWindow != nullptr) {
+            // 有视频且 surface 就绪时以首帧上屏作为 seek 完成的判据；
             // 暂停态下也要出这一帧，否则 seek 后画面不会更新。
+            // 无 surface 时永远等不到首帧，直接走完成分支(E2)。
             if (mDemux)        mDemux->start();
             if (mVideoDecoder) mVideoDecoder->start();
             if (mAudioDecoder) mAudioDecoder->start();

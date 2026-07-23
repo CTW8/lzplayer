@@ -25,7 +25,9 @@ namespace VE {
 
         /// 重置并把时钟基准直接定位到指定位置(seek 后使用)，
         /// 否则视频侧会拿新的 pts 去和 seek 前的旧时钟比较。
-        void resetTo(double ptsUs);
+        /// 把时钟锚到 ptsUs。keepPaused=true 时保持当前冻结状态不解冻
+        /// (暂停态 seek 用：否则等首帧期间时钟偷跑，位置带出几十毫秒漂移)
+        void resetTo(double ptsUs, bool keepPaused = false);
 
         /// 时钟是否已被起锚(收到过音频 pts 或 resetTo)。
         /// 纯视频文件没有音频驱动，首次起播需要手动 resetTo 起锚。
