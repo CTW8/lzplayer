@@ -33,13 +33,22 @@ namespace VE {
         // 获取队列中数据的大小
         int getDataSize() const;
 
+        // 队列中所有包的字节数之和(用于内存封顶节流)
+        size_t getTotalBytes() const;
+
+        // 队列中所有包的时长之和(微秒，用于缓冲时长节流)
+        int64_t getDurationUs() const;
+
         // 清空队列
         void clear();
 
     private:
         std::queue<std::shared_ptr<VEPacket>> mPacketQueue;
         mutable std::mutex mMutex; // 可在 const 函数中锁定
-        int mMaxSize; // 队列最大大小
+        int mMaxSize; // 队列最大大小(防失控兜底，正常由 demux 字节/时长策略节流)
+        // 与 mPacketQueue 严格同步维护(全部在 mMutex 内加减)，否则计数器漂移
+        size_t mTotalBytes = 0;
+        int64_t mTotalDurationUs = 0;
     };
 }
 
