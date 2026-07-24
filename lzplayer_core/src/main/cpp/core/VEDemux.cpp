@@ -106,6 +106,10 @@ namespace VE {
 
     VEResult VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet) {
         ALOGV("VEDemux::%s enter", __FUNCTION__);
+        // 队列尚未建立(prepare 未完成)：与 scheduleContinueReadIfNeeded 一致的判空
+        if (mAudioPacketQueue == nullptr || mVideoPacketQueue == nullptr) {
+            return VE_NOT_ENOUGH_DATA;
+        }
         ALOGV("VEDemux::read audio queue size: %d, video queue size: %d",
               mAudioPacketQueue->getDataSize(), mVideoPacketQueue->getDataSize());
         if (isAudio) {
@@ -326,7 +330,9 @@ namespace VE {
             ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }
-        mDuration = mFormatContext->duration / 1000;
+        // duration 可能为 AV_NOPTS_VALUE(部分流式容器)，不能直接除以 1000
+        mDuration = (mFormatContext->duration != AV_NOPTS_VALUE)
+                    ? mFormatContext->duration / 1000 : 0;
         ///获取文件信息
         for (unsigned int i = 0; i < mFormatContext->nb_streams; i++) {
             AVStream *stream = mFormatContext->streams[i];
@@ -341,6 +347,12 @@ namespace VE {
                 mSampleFormat = mAudioCodecParams->format;
                 mSampleRate = mAudioCodecParams->sample_rate;
             } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                // 跳过 attached_pic(如 MP3 内嵌封面)：它是单帧封面而非可播放
+                // 视频流，误当视频会建整套视频链路，且 seek 后等首帧只能吃满超时
+                if (stream->disposition & AV_DISPOSITION_ATTACHED_PIC) {
+                    ALOGI("VEDemux::%s skip attached_pic stream %u", __FUNCTION__, i);
+                    continue;
+                }
                 mVideo_index = i;
                 mVideoTimeBase = stream->time_base;
                 mVStartTime = stream->start_time;
@@ -348,7 +360,9 @@ namespace VE {
                 avcodec_parameters_copy(mVideoCodecParams, stream->codecpar);
                 mWidth = mVideoCodecParams->width;
                 mHeight = mVideoCodecParams->height;
-                mFps = stream->r_frame_rate.num / stream->r_frame_rate.den;
+                // r_frame_rate.den 个别流为 0，除法前判零避免 SIGFPE
+                mFps = (stream->r_frame_rate.den != 0)
+                       ? stream->r_frame_rate.num / stream->r_frame_rate.den : 0;
             }
         }
 
