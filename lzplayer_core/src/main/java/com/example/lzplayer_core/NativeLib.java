@@ -108,6 +108,22 @@ public class NativeLib {
         return ret;
     }
 
+    // best-effort 兜底：上层漏调 release() 时，避免 native VEPlayerDriver、
+    // looper 线程、JNI GlobalRef、HandlerThread 全部泄漏。契约仍是显式
+    // release()；finalize 已过时、时机不可预测(minSdk 24 无 Cleaner 可用)，
+    // 仅作最后防线。release() 是 synchronized 且对 mHandle==0 幂等，重复无害。
+    @Override
+    protected void finalize() throws Throwable {
+        try {
+            if(mHandle != 0){
+                Log.w(TAG, "finalize() reclaiming leaked native player; call release() explicitly");
+                release();
+            }
+        } finally {
+            super.finalize();
+        }
+    }
+
     public synchronized long getDuration(){
         if(mHandle != 0){
             return nativeGetDuration(mHandle);
