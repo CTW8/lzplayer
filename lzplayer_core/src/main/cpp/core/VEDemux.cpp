@@ -10,14 +10,23 @@ extern "C"{
     #include"libavutil/dict.h"
 }
 
-#define AUDIO_QUEUE_SIZE    100
-#define VIDEO_QUEUE_SIZE    100
 namespace VE {
     namespace {
         /// av_read_frame 瞬时无数据(EAGAIN)时的重试间隔
         constexpr int64_t kReadRetryDelayUs = 10000;
         /// 连续坏包的容忍上限，超过按致命错误处理，避免全损文件空转
         constexpr int kMaxConsecutiveReadErrors = 100;
+
+        // ---- 缓冲节流(对齐 ffplay) ----
+        /// 所有队列字节总和的硬上限。这是唯一的硬停条件，防高码率 OOM。
+        constexpr size_t kMaxTotalBytes = 16 * 1024 * 1024;
+        /// 每路"缓冲够了"的目标时长
+        constexpr int64_t kBufferedDurationTargetUs = 1000000; // 1s
+        /// 每路最低包数(容器无 duration 信息时的唯一门槛)
+        constexpr int kMinPackets = 25;
+        /// 队列防失控兜底容量：真实节流在 shouldParkRead(字节/时长)，
+        /// 这里只是让 put 在极端情况下不至无限增长。远高于正常缓冲深度。
+        constexpr int kQueueBackstopPackets = 2048;
     }
     VEDemux::VEDemux(std::shared_ptr<AMessage> &notify) :mNotifyEvent(notify){
         ALOGV("VEDemux::%s enter", __FUNCTION__);
@@ -129,13 +138,39 @@ namespace VE {
         if (mReleased || mIsEOS) {
             return;
         }
-        if ((mAudioPacketQueue && mAudioPacketQueue->getDataSize() < AUDIO_QUEUE_SIZE / 2) ||
-            (mVideoPacketQueue && mVideoPacketQueue->getDataSize() < VIDEO_QUEUE_SIZE / 2)) {
+        // 只要读循环还该继续跑就唤醒它。这里是消费者线程侧的提示(多路
+        // 队列状态非原子读无妨)，demux 线程 onRead 会用同一判据权威复查。
+        if (!shouldParkRead()) {
             // exchange 去重：已有在途的续读消息就不再投
             if (!mContinuePending.exchange(true)) {
                 std::make_shared<AMessage>(kWhatContinueRead, shared_from_this())->post();
             }
         }
+    }
+
+    bool VEDemux::streamHasEnough(const std::shared_ptr<VEPacketQueue> &queue, bool exists) const {
+        if (!exists || queue == nullptr) {
+            return true;   // 不存在的流(纯音频/纯视频)视为"够了"
+        }
+        if (queue->getDataSize() < kMinPackets) {
+            return false;
+        }
+        const int64_t durUs = queue->getDurationUs();
+        // 容器没给 duration(durUs<=0)时只凭包数判断，否则要求时长达标
+        return durUs <= 0 || durUs >= kBufferedDurationTargetUs;
+    }
+
+    bool VEDemux::shouldParkRead() const {
+        // 唯一硬停：所有队列字节总和超上限(防高码率 OOM)
+        size_t totalBytes = 0;
+        if (mAudioPacketQueue) totalBytes += mAudioPacketQueue->getTotalBytes();
+        if (mVideoPacketQueue) totalBytes += mVideoPacketQueue->getTotalBytes();
+        if (totalBytes >= kMaxTotalBytes) {
+            return true;
+        }
+        // 软停：两路都缓冲够了才不用继续读。单路满不 park——那正是队头阻塞
+        return streamHasEnough(mAudioPacketQueue, mAudio_index != -1)
+            && streamHasEnough(mVideoPacketQueue, mVideo_index != -1);
     }
 
     VEResult VEDemux::release(){
@@ -333,8 +368,8 @@ namespace VE {
         }
         ALOGI("VEDemux::%s start time offset:%" PRId64, __FUNCTION__, mStartTimeOffset);
 
-        mAudioPacketQueue = std::make_shared<VEPacketQueue>(AUDIO_QUEUE_SIZE);
-        mVideoPacketQueue = std::make_shared<VEPacketQueue>(VIDEO_QUEUE_SIZE);
+        mAudioPacketQueue = std::make_shared<VEPacketQueue>(kQueueBackstopPackets);
+        mVideoPacketQueue = std::make_shared<VEPacketQueue>(kQueueBackstopPackets);
         ALOGV("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
     }
@@ -357,16 +392,11 @@ namespace VE {
             return VE_UNKNOWN_ERROR;
         }
 
-        // 队列满 → 停止续投(隐式 park)。这里不动 mIsStart：它是命令态，
+        // 缓冲够了 → 停止续投(隐式 park)。这里不动 mIsStart：它是命令态，
         // 由 start/stop 管理；读循环的恢复由消费端拉取触发(kWhatContinueRead)。
-        if (mAudioPacketQueue->getDataSize() >= AUDIO_QUEUE_SIZE) {
-            ALOGD("VEDemux::onRead Audio queue is full, parking read loop.");
-            ALOGV("VEDemux::%s exit", __FUNCTION__);
-            return VE_NO_MEMORY;
-        }
-
-        if (mVideoPacketQueue->getDataSize() >= VIDEO_QUEUE_SIZE) {
-            ALOGD("VEDemux::onRead Video queue is full, parking read loop.");
+        // 判据是"两路都够 或 总字节超限"，不按单路满停——避免一路满拖死另一路。
+        if (shouldParkRead()) {
+            ALOGD("VEDemux::onRead buffered enough, parking read loop.");
             ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_NO_MEMORY;
         }
@@ -423,6 +453,13 @@ namespace VE {
 
         int64_t pts = toMicros(packet->getPacket()->pts);
         int64_t dts = toMicros(packet->getPacket()->dts);
+
+        // 包时长(微秒)供队列缓冲时长记账用；容器未提供时存 0，
+        // 节流会退化为只按包数(见 streamHasEnough)
+        if (packet->getPacket()->duration > 0) {
+            packet->setDurationUs(av_rescale_q(packet->getPacket()->duration,
+                                               streamTimeBase, AV_TIME_BASE_Q));
+        }
 
         if (packet->getPacket()->stream_index == mAudio_index) {
             packet->setPacketType(E_PACKET_TYPE_AUDIO);

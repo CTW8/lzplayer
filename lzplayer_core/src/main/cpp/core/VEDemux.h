@@ -70,9 +70,17 @@ namespace VE {
 
         void putPacket(std::shared_ptr<VEPacket> packet, bool isAudio);
 
-        /// 拉取触发补货：任一队列低于半满且没有在途的续读消息时，
+        /// 拉取触发补货：读循环该继续跑(未达 park 条件)且无在途续读消息时，
         /// 向自己的 looper 投递 kWhatContinueRead。由消费者线程调用。
         void scheduleContinueReadIfNeeded();
+
+        /// 单路是否已缓冲够(仿 ffplay stream_has_enough_packets)：
+        /// 不存在的流视为够了；否则要求包数达标，且(无时长信息 或 时长达标)
+        bool streamHasEnough(const std::shared_ptr<VEPacketQueue> &queue, bool exists) const;
+
+        /// 读循环是否该停：唯一硬停是总字节封顶(防 OOM)，否则两路都够了才停。
+        /// 注意不按单路 packet 数硬停——那会造成一路满拖死另一路(队头阻塞)。
+        bool shouldParkRead() const;
 
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
         VEResult postMessage(int32_t event,int32_t arg1,int32_t arg2,int64_t arg3,void*params);
