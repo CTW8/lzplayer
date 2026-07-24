@@ -300,8 +300,7 @@ namespace VE {
         ALOGV("VEDemux::%s enter", __FUNCTION__);
         ///打开文件
         if (path.empty()) {
-            printf("## %s  %d open file failed!!!", __FUNCTION__, __LINE__);
-            ALOGV("VEDemux::%s exit", __FUNCTION__);
+            ALOGE("VEDemux::%s open file failed: empty path", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }
 
@@ -317,17 +316,15 @@ namespace VE {
         mFormatContext->interrupt_callback.opaque = this;
 
         if (avformat_open_input(&mFormatContext, mFilePath.c_str(), nullptr, nullptr) != 0) {
-            fprintf(stderr, "Error: Couldn't open input file.\n");
+            ALOGE("VEDemux::onPrepare couldn't open input file");
             // open 失败时 FFmpeg 已释放并置空 mFormatContext
-            ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }
 
         // 获取流信息
         if (avformat_find_stream_info(mFormatContext, nullptr) < 0) {
-            fprintf(stderr, "Error: Couldn't find stream information.\n");
+            ALOGE("VEDemux::onPrepare couldn't find stream information");
             avformat_close_input(&mFormatContext);
-            ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }
         // duration 可能为 AV_NOPTS_VALUE(部分流式容器)，不能直接除以 1000

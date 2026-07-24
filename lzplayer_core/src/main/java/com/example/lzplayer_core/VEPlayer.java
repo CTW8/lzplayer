@@ -21,16 +21,10 @@ public class VEPlayer {
     }
 
     public int start(){
-        Log.e(TAG, "🔥🔥🔥 VEPlayer.start() ENTRY - This should always appear! 🔥🔥🔥");
-        Log.d(TAG, "VEPlayer.start() called, mNativeHandle: " + mNativeHandle);
         if(mNativeHandle != null){
-            Log.e(TAG, "🔥🔥🔥 About to call mNativeHandle.start() 🔥🔥🔥");
-            int result = mNativeHandle.start();
-            Log.e(TAG, "🔥🔥🔥 mNativeHandle.start() returned: " + result + " 🔥🔥🔥");
-            Log.d(TAG, "VEPlayer.start() result: " + result);
-            return result;
+            Log.d(TAG,"start enter");
+            return mNativeHandle.start();
         }
-        Log.e(TAG, "VEPlayer.start() failed - mNativeHandle is null");
         return -1;
     }
 
