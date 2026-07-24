@@ -131,6 +131,10 @@ namespace VE {
         std::shared_ptr<VEPacketQueue> mAudioPacketQueue = nullptr;
         AVFormatContext *mFormatContext = nullptr;
 
+        /// prepare 完成后媒体信息即不变，缓存一份直接返回，
+        /// 免去每次 getFileInfo 都 new + 逐字段拷贝
+        std::shared_ptr<VEMediaInfo> mCachedFileInfo = nullptr;
+
     private:
         enum {
             kWhatPrepare = 'prep',

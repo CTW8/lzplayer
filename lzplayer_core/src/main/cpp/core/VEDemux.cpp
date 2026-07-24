@@ -193,26 +193,8 @@ namespace VE {
     }
 
     std::shared_ptr<VEMediaInfo> VEDemux::getFileInfo() {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
-        std::shared_ptr<VEMediaInfo> tmp = std::make_shared<VEMediaInfo>();
-
-        tmp->channels = mChannel;
-        tmp->duration = mDuration;
-        tmp->fps = mFps;
-        tmp->width = mWidth;
-        tmp->height = mHeight;
-        tmp->sampleRate = mSampleRate;
-        tmp->sampleFormat = mSampleFormat;
-        tmp->mAudioCodecParams = mAudioCodecParams;
-        tmp->mVideoCodecParams = mVideoCodecParams;
-        tmp->audio_stream_index = mAudio_index;
-        tmp->video_stream_index = mVideo_index;
-        tmp->mAStartTime = mAStartTime;
-        tmp->mAudioTimeBase = mAudioTimeBase;
-        tmp->mVideoTimeBase = mVideoTimeBase;
-        tmp->mVStartTime = mVStartTime;
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
-        return tmp;
+        // prepare 完成后 mCachedFileInfo 已就绪且只读，直接返回缓存
+        return mCachedFileInfo;
     }
 
     void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
@@ -381,6 +363,25 @@ namespace VE {
 
         mAudioPacketQueue = std::make_shared<VEPacketQueue>(kQueueBackstopPackets);
         mVideoPacketQueue = std::make_shared<VEPacketQueue>(kQueueBackstopPackets);
+
+        // 媒体信息此后不变，缓存一份供 getFileInfo 直接返回
+        mCachedFileInfo = std::make_shared<VEMediaInfo>();
+        mCachedFileInfo->channels = mChannel;
+        mCachedFileInfo->duration = mDuration;
+        mCachedFileInfo->fps = mFps;
+        mCachedFileInfo->width = mWidth;
+        mCachedFileInfo->height = mHeight;
+        mCachedFileInfo->sampleRate = mSampleRate;
+        mCachedFileInfo->sampleFormat = mSampleFormat;
+        mCachedFileInfo->mAudioCodecParams = mAudioCodecParams;
+        mCachedFileInfo->mVideoCodecParams = mVideoCodecParams;
+        mCachedFileInfo->audio_stream_index = mAudio_index;
+        mCachedFileInfo->video_stream_index = mVideo_index;
+        mCachedFileInfo->mAStartTime = mAStartTime;
+        mCachedFileInfo->mAudioTimeBase = mAudioTimeBase;
+        mCachedFileInfo->mVideoTimeBase = mVideoTimeBase;
+        mCachedFileInfo->mVStartTime = mVStartTime;
+
         ALOGV("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
     }
