@@ -70,11 +70,10 @@ namespace VE {
             return mFrame;
         }
 
-        VEFrame &operator=(VEFrame &frame) {
-            mFrame = frame.getFrame();
-            av_frame_ref(mFrame, frame.getFrame());
-            return *this;
-        }
+        // 独占持有裸 AVFrame*，析构 unref+free。禁止拷贝/赋值：原 operator=
+        // 会覆写指针泄漏原帧、并让两对象别名同一 AVFrame。一律经 shared_ptr 传递。
+        VEFrame(const VEFrame &) = delete;
+        VEFrame &operator=(const VEFrame &) = delete;
 
         void setPts(int64_t pts) {
             timestamp = pts;

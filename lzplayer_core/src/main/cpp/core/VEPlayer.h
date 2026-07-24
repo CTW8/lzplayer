@@ -312,8 +312,6 @@ namespace VE {
         std::shared_ptr<VEAudioRender> mAudioOutput = nullptr;
         std::shared_ptr<ALooper> mAudioOutputLooper = nullptr;
 
-        std::shared_ptr<VEPacketQueue> mAPacketQueue = nullptr;
-
         std::shared_ptr<VEMediaInfo> mMediaInfo = nullptr;
 
         std::string mPath;

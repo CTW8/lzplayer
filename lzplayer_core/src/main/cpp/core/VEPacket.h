@@ -17,20 +17,16 @@ namespace VE {
             }
         }
 
-        VEPacket(VEPacket *p) {
-            mPacket = p->getPacket();
-        }
+        // 独占持有裸 AVPacket*，析构 unref+free。禁止拷贝/赋值：浅拷贝会让
+        // 两个对象析构同一个 AVPacket 造成 double-free。一律经 shared_ptr 传递。
+        VEPacket(const VEPacket &) = delete;
+        VEPacket &operator=(const VEPacket &) = delete;
 
         ~VEPacket() {
             if (mPacket) {
                 av_packet_unref(mPacket);
                 av_packet_free(&mPacket);
             }
-        }
-
-        VEPacket &operator=(VEPacket &packet) {
-            av_packet_ref(mPacket, packet.getPacket());
-            return *this;
         }
 
         AVPacket *getPacket() {
