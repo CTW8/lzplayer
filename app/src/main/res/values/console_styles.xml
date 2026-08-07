@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      测试台主题：不用 DayNight。这是工程仪器界面，视频区永远是暗的，
+      跟随系统切成浅色反而让画面周围发白、影响对画质的判断。
+    -->
+    <style name="Theme.LZConsole" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/con_accent</item>
+        <item name="colorOnPrimary">#FF04161C</item>
+        <item name="android:windowBackground">@color/con_ground</item>
+        <item name="android:statusBarColor">@color/con_ground</item>
+        <item name="android:navigationBarColor">@color/con_panel</item>
+        <item name="colorAccent">@color/con_accent</item>
+        <item name="bottomSheetDialogTheme">@style/Theme.LZConsole.BottomSheet</item>
+    </style>
+
+    <style name="Theme.LZConsole.BottomSheet" parent="Theme.MaterialComponents.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/ConsoleBottomSheetStyle</item>
+        <item name="android:navigationBarColor">@color/con_panel</item>
+    </style>
+    <style name="ConsoleBottomSheetStyle" parent="Widget.MaterialComponents.BottomSheet.Modal">
+        <item name="android:background">@drawable/con_sheet_bg</item>
+    </style>
+
+    <!-- 所有标签与读数走等宽：数字天然对齐，播放时不会左右抖 -->
+    <style name="ConsoleButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/con_btn_bg</item>
+        <item name="android:paddingHorizontal">@dimen/con_s3</item>
+        <item name="android:paddingVertical">@dimen/con_s2</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">@dimen/con_text_micro</item>
+        <item name="android:textColor">@color/con_ink</item>
+        <item name="android:gravity">center</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <style name="ConsolePrimaryButton" parent="ConsoleButton">
+        <item name="android:background">@drawable/con_btn_primary</item>
+        <item name="android:textColor">#FF04161C</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="ConsoleQuadButton" parent="ConsoleButton">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_weight">1</item>
+    </style>
+
+    <style name="ConsoleChip">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/con_chip_bg</item>
+        <item name="android:paddingHorizontal">7dp</item>
+        <item name="android:paddingVertical">3dp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">@dimen/con_text_label</item>
+        <item name="android:textColor">#FFDDE3EB</item>
+    </style>
+
+    <style name="ConsoleRowLabel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">@dimen/con_text_label</item>
+        <item name="android:textColor">@color/con_ink_faint</item>
+        <item name="android:letterSpacing">0.1</item>
+        <item name="android:paddingBottom">@dimen/con_s1</item>
+    </style>
+
+    <style name="ConsoleReadoutSmall">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">@dimen/con_text_label</item>
+        <item name="android:textColor">@color/con_ink_dim</item>
+    </style>
+
+    <style name="ConsoleSheetTitle">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">@dimen/con_text_title</item>
+        <item name="android:textColor">@color/con_ink</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+</resources>

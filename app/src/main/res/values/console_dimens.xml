@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="con_s1">4dp</dimen>
+    <dimen name="con_s2">8dp</dimen>
+    <dimen name="con_s3">12dp</dimen>
+    <dimen name="con_s4">16dp</dimen>
+    <dimen name="con_s5">24dp</dimen>
+    <dimen name="con_radius">6dp</dimen>
+    <dimen name="con_hairline">1dp</dimen>
+
+    <!-- 字号：读数用等宽，尺寸偏小以容纳更多信息 -->
+    <dimen name="con_text_label">10sp</dimen>
+    <dimen name="con_text_micro">11sp</dimen>
+    <dimen name="con_text_body">13sp</dimen>
+    <dimen name="con_text_readout">15sp</dimen>
+    <dimen name="con_text_title">16sp</dimen>
+</resources>

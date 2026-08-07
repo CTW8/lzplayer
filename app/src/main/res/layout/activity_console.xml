@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  测试台主控台。布局顺序即操作顺序：选源 → 看画面与 HUD → 控播放 → 进面板。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/con_ground">
+
+    <com.example.lzplayer.console.SmpteBarsView
+        android:id="@+id/topBars"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"/>
+
+    <!-- 源栏：本地路径与网络 URL 用同一个输入框，直接验 scheme 工厂分派 -->
+    <LinearLayout
+        android:id="@+id/sourceBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="@dimen/con_s3">
+
+        <EditText
+            android:id="@+id/etSource"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/con_panel_bg"
+            android:paddingHorizontal="@dimen/con_s2"
+            android:paddingVertical="@dimen/con_s2"
+            android:fontFamily="monospace"
+            android:textSize="@dimen/con_text_micro"
+            android:textColor="@color/con_ink"
+            android:textColorHint="@color/con_ink_faint"
+            android:hint="文件路径或 http(s):// 地址"
+            android:singleLine="true"
+            android:imeOptions="actionGo"
+            android:inputType="textUri"
+            android:importantForAutofill="no"/>
+
+        <TextView
+            android:id="@+id/btnPickFile"
+            style="@style/ConsoleButton"
+            android:layout_marginStart="@dimen/con_s2"
+            android:text="本地"/>
+
+        <TextView
+            android:id="@+id/btnOpen"
+            style="@style/ConsolePrimaryButton"
+            android:layout_marginStart="@dimen/con_s1"
+            android:text="打开"/>
+    </LinearLayout>
+
+    <!-- 视频舞台 -->
+    <FrameLayout
+        android:id="@+id/stage"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@color/con_video_void">
+
+        <!-- 尺寸由 Activity 按视频显示宽高比算出(fit-inside)，
+             四周留黑。硬解直出 Surface 时没有缩放环节，
+             Surface 自身尺寸就决定画幅，match_parent 会把画面拉变形。 -->
+        <SurfaceView
+            android:id="@+id/surfaceView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"/>
+
+        <com.example.lzplayer.console.SubtitleOverlayView
+            android:id="@+id/subtitleView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
+
+        <!-- HUD 常驻：播放中随时能看到解码路径与状态，不必展开诊断 -->
+        <LinearLayout
+            android:id="@+id/hud"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="@dimen/con_s2">
+
+            <TextView
+                android:id="@+id/chipDecoder"
+                style="@style/ConsoleChip"
+                android:text="—"/>
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1"/>
+
+            <TextView
+                android:id="@+id/chipState"
+                style="@style/ConsoleChip"
+                android:text="IDLE"/>
+        </LinearLayout>
+
+        <!-- 缓冲遮罩：网络源卡顿时出现 -->
+        <LinearLayout
+            android:id="@+id/bufferScrim"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@color/con_scrim"
+            android:visibility="gone">
+
+            <ProgressBar
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:indeterminateTint="@color/con_accent"/>
+
+            <TextView
+                android:id="@+id/tvBuffering"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/con_s2"
+                android:fontFamily="monospace"
+                android:textSize="@dimen/con_text_micro"
+                android:textColor="@color/con_ink"
+                android:text="缓冲中"/>
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- 控制面板 -->
+    <LinearLayout
+        android:id="@+id/controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@color/con_panel"
+        android:padding="@dimen/con_s3">
+
+        <SeekBar
+            android:id="@+id/seekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="1000"
+            android:progressDrawable="@drawable/con_seekbar"
+            android:thumb="@drawable/con_seek_thumb"
+            android:splitTrack="false"
+            android:paddingHorizontal="0dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView android:id="@+id/tvPosition" style="@style/ConsoleReadoutSmall" android:text="00:00.000"/>
+            <TextView android:id="@+id/tvBuffered" style="@style/ConsoleReadoutSmall"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:gravity="center" android:text=""/>
+            <TextView android:id="@+id/tvDuration" style="@style/ConsoleReadoutSmall" android:text="00:00.000"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="@dimen/con_s3">
+
+            <TextView android:id="@+id/btnPlayPause" style="@style/ConsolePrimaryButton" android:text="播放"/>
+            <TextView android:id="@+id/btnStop" style="@style/ConsoleButton"
+                android:layout_marginStart="@dimen/con_s2" android:text="停止"/>
+            <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+            <TextView android:id="@+id/btnLoop" style="@style/ConsoleButton" android:text="循环 关"/>
+        </LinearLayout>
+
+        <TextView style="@style/ConsoleRowLabel"
+            android:layout_marginTop="@dimen/con_s3"
+            android:text="播放速率 · 音调不变"/>
+
+        <LinearLayout
+            android:id="@+id/speedRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="@dimen/con_s3">
+
+            <TextView android:id="@+id/btnTracks" style="@style/ConsoleQuadButton" android:text="轨道"/>
+            <TextView android:id="@+id/btnSubtitle" style="@style/ConsoleQuadButton"
+                android:layout_marginStart="@dimen/con_s2" android:text="字幕"/>
+            <TextView android:id="@+id/btnJump" style="@style/ConsoleQuadButton"
+                android:layout_marginStart="@dimen/con_s2" android:text="跳转"/>
+            <TextView android:id="@+id/btnDiag" style="@style/ConsoleQuadButton"
+                android:layout_marginStart="@dimen/con_s2" android:text="诊断"/>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

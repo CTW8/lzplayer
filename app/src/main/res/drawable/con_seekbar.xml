@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape><solid android:color="@color/con_line"/><corners android:radius="2dp"/></shape>
+    </item>
+    <!-- 已下载：网络源才有意义，本地播放会一直是满的 -->
+    <item android:id="@android:id/secondaryProgress">
+        <clip><shape><solid android:color="@color/con_ink_faint"/><corners android:radius="2dp"/></shape></clip>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip><shape><solid android:color="@color/con_accent"/><corners android:radius="2dp"/></shape></clip>
+    </item>
+</layer-list>

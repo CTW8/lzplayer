@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  测试台配色。取自视频测试仪器：靛蓝偏冷的近黑底，主色是去饱和的 SMPTE 青。
+  语义色与主色分家，避免"警告"和"品牌"抢同一个色相。
+-->
+<resources>
+    <color name="con_ground">#FF0E1217</color>
+    <color name="con_panel">#FF171C23</color>
+    <color name="con_panel2">#FF1E242C</color>
+    <color name="con_line">#FF272E38</color>
+    <color name="con_ink">#FFD3DAE4</color>
+    <color name="con_ink_dim">#FF8792A2</color>
+    <color name="con_ink_faint">#FF5C6675</color>
+
+    <color name="con_accent">#FF3FA9C4</color>
+    <color name="con_accent_soft">#FF1F3A44</color>
+
+    <color name="con_ok">#FF52B788</color>
+    <color name="con_warn">#FFD9A441</color>
+    <color name="con_crit">#FFE5544B</color>
+
+    <!-- 轨道条纹：沿用剪辑软件的既有约定 -->
+    <color name="con_track_video">#FF4A7FD4</color>
+    <color name="con_track_audio">#FF52B788</color>
+    <color name="con_track_subtitle">#FFD9A441</color>
+
+    <color name="con_video_void">#FF05070A</color>
+    <color name="con_scrim">#B305070A</color>
+    <color name="con_hud_bg">#C7080B0F</color>
+
+    <!-- SMPTE 彩条 -->
+    <color name="smpte_grey">#FFC0C0C0</color>
+    <color name="smpte_yellow">#FFC0C000</color>
+    <color name="smpte_cyan">#FF00C0C0</color>
+    <color name="smpte_green">#FF00C000</color>
+    <color name="smpte_magenta">#FFC000C0</color>
+    <color name="smpte_red">#FFC00000</color>
+    <color name="smpte_blue">#FF0000C0</color>
+</resources>

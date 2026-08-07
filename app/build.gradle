@@ -1,5 +1,7 @@
 plugins {
     id 'com.android.application'
+    // 测试台界面用 Kotlin 写(CLAUDE.md：新 UI 代码优先 Kotlin)
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
@@ -37,6 +39,9 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
 
     buildFeatures {
         viewBinding true
@@ -72,6 +77,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.10.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.core:core-ktx:1.9.0'
     
     // Add multidex support
     implementation 'androidx.multidex:multidex:2.0.1'
