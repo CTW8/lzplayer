@@ -75,11 +75,87 @@ public class VEPlayer {
         }
     }
 
-    public void setPlaySpeed(float speed) {
+    /**
+     * 变速播放。支持 0.5x ~ 2.0x，音调保持不变。
+     * @return 0 成功；负值失败(超出范围或播放器未就绪)
+     */
+    public int setPlaySpeed(float speed) {
         if (mNativeHandle != null) {
-            Log.d(TAG,"setPlaySpeed enter");
-            mNativeHandle.setPlaySpeed(speed);
+            Log.d(TAG,"setPlaySpeed enter speed=" + speed);
+            return mNativeHandle.setPlaySpeed(speed);
         }
+        return -1;
+    }
+
+    /**
+     * 轨道列表。需在 prepare 之后调用。
+     * @return 轨道数组；未就绪时返回空数组
+     */
+    public TrackInfo[] getTrackInfo() {
+        if (mNativeHandle == null) {
+            return new TrackInfo[0];
+        }
+        return TrackInfo.parse(mNativeHandle.getTrackInfo());
+    }
+
+    /**
+     * 切换活跃轨道。音轨切换时画面会短暂定格(不黑屏)后从当前位置续播；
+     * 字幕轨切换是即时的。视频轨切换暂不支持。
+     * @param trackIndex getTrackInfo() 返回的 index
+     */
+    public int selectTrack(int trackIndex) {
+        if (mNativeHandle != null) {
+            Log.d(TAG,"selectTrack " + trackIndex);
+            return mNativeHandle.selectTrack(trackIndex);
+        }
+        return -1;
+    }
+
+    /** 关闭指定轨道(目前只对字幕轨有意义) */
+    public int deselectTrack(int trackIndex) {
+        if (mNativeHandle != null) {
+            return mNativeHandle.deselectTrack(trackIndex);
+        }
+        return -1;
+    }
+
+    /**
+     * 加载外挂字幕文件(.srt/.ass)。加载后会作为一条新轨道出现在
+     * getTrackInfo() 里，再用 selectTrack() 选中它才开始显示。
+     */
+    public int addExternalSubtitle(String path) {
+        if (mNativeHandle != null) {
+            Log.d(TAG,"addExternalSubtitle " + path);
+            return mNativeHandle.addExternalSubtitle(path);
+        }
+        return -1;
+    }
+
+    /**
+     * 运行期统计快照。诊断面板按进度回调的节奏拉取即可，不必另开定时器。
+     * @return {@link PlayerStats}；播放器未就绪时各字段为默认值
+     */
+    public PlayerStats getStats() {
+        if (mNativeHandle == null) {
+            return PlayerStats.empty();
+        }
+        return PlayerStats.parse(mNativeHandle.getStats());
+    }
+
+    /** 强制软解。改的是下次 prepare 的策略，当前播放不受影响。 */
+    public int setForceSoftwareDecoder(boolean force) {
+        if (mNativeHandle != null) {
+            return mNativeHandle.setForceSoftwareDecoder(force);
+        }
+        return -1;
+    }
+
+    /** 强制音频走 OpenSL ES。改的是下次 prepare 的策略。 */
+    public int setForceSlesAudio(boolean force) {
+        if (mNativeHandle != null) {
+            return mNativeHandle.setForceSlesAudio(force);
+        }
+        return -1;
     }
 
     public long getDuration(){

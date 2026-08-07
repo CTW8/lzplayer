@@ -19,7 +19,9 @@ namespace VE {
         mPlayerLooper->registerHandler(mPlayer);
 
         mPlayer->setOnInfoListener([this](int code, double arg1, std::string str1, void *obj3) {
-            notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_INFO, code, arg1, obj3);
+            // code 里带的是具体的 ON_* 事件号(字幕/缓冲/切轨都走这条通道)，
+            // 字符串负载(字幕文本)经 str1 传给 Java
+            notifyListener(code, static_cast<int>(arg1), arg1, &str1);
         });
 
         mPlayer->setOnProgressListener([this](double progress) {
@@ -274,6 +276,64 @@ namespace VE {
             currentState = MEDIA_PLAYER_STATE_ERROR;
         }
         return result;
+    }
+
+    std::string VEPlayerDriver::getTrackInfo() {
+        std::lock_guard<std::mutex> lk(mMutex);
+        if (currentState == MEDIA_PLAYER_IDLE ||
+            currentState == MEDIA_PLAYER_INITIALIZED ||
+            currentState == MEDIA_PLAYER_STATE_ERROR) {
+            return "[]";   // 还没 prepare，轨道信息无从谈起
+        }
+        return mPlayer->getTrackInfoJson();
+    }
+
+    VEResult VEPlayerDriver::selectTrack(int trackIndex) {
+        std::lock_guard<std::mutex> lk(mMutex);
+        if (currentState != MEDIA_PLAYER_PREPARED && currentState != MEDIA_PLAYER_STARTED &&
+            currentState != MEDIA_PLAYER_PAUSED &&
+            currentState != MEDIA_PLAYER_PLAYBACK_COMPLETE) {
+            ALOGE("VEPlayerDriver::%s invalid state %d", __FUNCTION__, currentState);
+            return VE_INVALID_OPERATION;
+        }
+        return mPlayer->selectTrack(trackIndex);
+    }
+
+    VEResult VEPlayerDriver::deselectTrack(int trackIndex) {
+        std::lock_guard<std::mutex> lk(mMutex);
+        if (currentState != MEDIA_PLAYER_PREPARED && currentState != MEDIA_PLAYER_STARTED &&
+            currentState != MEDIA_PLAYER_PAUSED &&
+            currentState != MEDIA_PLAYER_PLAYBACK_COMPLETE) {
+            return VE_INVALID_OPERATION;
+        }
+        return mPlayer->deselectTrack(trackIndex);
+    }
+
+    VEResult VEPlayerDriver::addExternalSubtitle(const std::string &path) {
+        std::lock_guard<std::mutex> lk(mMutex);
+        if (currentState == MEDIA_PLAYER_IDLE ||
+            currentState == MEDIA_PLAYER_STATE_ERROR) {
+            return VE_INVALID_OPERATION;
+        }
+        return mPlayer->addExternalSubtitle(path);
+    }
+
+    std::string VEPlayerDriver::getStats() {
+        // 不加状态校验：诊断读数在任何状态下都应该能取到(IDLE 时也是有效信息)
+        std::lock_guard<std::mutex> lk(mMutex);
+        return mPlayer->getStatsJson();
+    }
+
+    VEResult VEPlayerDriver::setForceSoftwareDecoder(bool force) {
+        std::lock_guard<std::mutex> lk(mMutex);
+        mPlayer->setForceSoftwareDecoder(force);
+        return VE_OK;
+    }
+
+    VEResult VEPlayerDriver::setForceSlesAudio(bool force) {
+        std::lock_guard<std::mutex> lk(mMutex);
+        mPlayer->setForceSlesAudio(force);
+        return VE_OK;
     }
 
     void VEPlayerDriver::notifyListener(int msg, int ext1, double ext2, const void *obj) {

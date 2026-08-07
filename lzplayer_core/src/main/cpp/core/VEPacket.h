@@ -70,8 +70,8 @@ namespace VE {
     private:
         EPacketType ePacketType = E_PACKET_TYPE_UNKNOW;
         AVPacket *mPacket;
-        int64_t pts;
-        int64_t dts;
+        int64_t pts = 0;
+        int64_t dts = 0;
         int64_t durationUs = 0;
     };
 }

@@ -19,6 +19,10 @@ find_library(
         log-lib
         log)
 
+# 注意：libaaudio 不能直接链接。它从 API 26 才存在，而本工程 minSdk 是 24，
+# 一旦成为 DT_NEEDED 硬依赖，24/25 机型上整个 .so 都会加载失败。
+# 因此 AAudio 走运行期 dlopen + dlsym(见 VEAAudioRender)。
+
 
 #target_compile_options(lzplayer_core PRIVATE -fsanitize=address -fno-omit-frame-pointer)
 #target_link_options(lzplayer_core PRIVATE -fsanitize=address)
@@ -58,7 +62,16 @@ target_link_libraries( # Specifies the target library.
         EGL
         yuv
         sonic
+        mediandk
+        # 网络源的 HTTPS 支持：自实现 HTTP 客户端直接用 OpenSSL 做 TLS
+        ssl
+        crypto
         ${log-lib})
+
+# minSdk 是 24，但我们要用 API 26+ 的 AAudio 与 API 28+ 的部分 NDK 媒体 API。
+# 这个宏让高于 minSdk 的符号变成弱引用(而不是编译错误)，运行期判空即可决定
+# 用不用——低版本机型会自动退回 SLES / 软解。
+target_compile_definitions(lzplayer_core PRIVATE __ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__)
 
 target_compile_options(lzplayer_core PRIVATE
         # 忽略签名变化警告

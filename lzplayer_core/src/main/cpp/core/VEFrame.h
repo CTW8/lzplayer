@@ -39,7 +39,8 @@ namespace VE {
             mFrame->nb_samples = size;
             mFrame->format = format;
 
-            ALOGI("VEFrame sample_rate:%d ch_layout:%d nb_samples:%d format:%d",
+            // 热路径：每个重采样音频帧都会走到，只在 verbose 级别留痕
+            ALOGV("VEFrame sample_rate:%d ch_layout:%d nb_samples:%d format:%d",
                   mFrame->sample_rate, mFrame->ch_layout.nb_channels, mFrame->nb_samples,
                   mFrame->format);
 
@@ -59,8 +60,8 @@ namespace VE {
 
         ~VEFrame() {
             if (mFrame) {
-                ALOGI("AVFrame is release  pts:%" PRId64, mFrame->pts);
-//            backTrace();
+                // 热路径：每帧析构一次(30fps 视频 + 音频帧 ≈ 每秒上百条)
+                ALOGV("AVFrame is release  pts:%" PRId64, mFrame->pts);
                 av_frame_unref(mFrame);
                 av_frame_free(&mFrame);
             }
@@ -79,7 +80,9 @@ namespace VE {
             timestamp = pts;
         }
 
-        uint64_t getPts() {
+        // 返回 int64_t 与 timestamp/setPts 对齐：pts==AV_NOPTS_VALUE(INT64_MIN)
+        // 时不再被转成 uint64_t 极大值，避免 AVSync 误判"无时间戳"为进度跳变。
+        int64_t getPts() {
             return timestamp;
         }
 

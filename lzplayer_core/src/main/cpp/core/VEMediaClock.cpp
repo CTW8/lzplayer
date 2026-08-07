@@ -93,6 +93,11 @@ namespace VE {
         m_PlaybackSpeed = speed;
     }
 
+    double VEMediaClock::getPlaybackSpeed() const {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        return m_PlaybackSpeed;
+    }
+
     int64_t VEMediaClock::getCurrentSystemTime() const {
         auto now = steady_clock::now();
         return duration_cast<microseconds>(now.time_since_epoch()).count();

@@ -42,6 +42,9 @@ namespace VE {
         // 设置播放速度
         void setPlaybackSpeed(double speed);
 
+        /// 当前速率。AVSync 要用它把"媒体时间差"折算成"真实等待时间"。
+        double getPlaybackSpeed() const;
+
     private:
         double m_AudioTimestamp;       // 最近更新的音频时间戳
         int64_t m_BaseSystemTime;      // 系统基准时间 (单位：微秒)

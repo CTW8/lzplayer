@@ -6,12 +6,17 @@ namespace VE {
         // 通知onPlay该向opensles送数据
         VEAudioSLESRender * pThis = (VEAudioSLESRender*)context;
         if(pThis){
-            ALOGD("===>VEAudioSLESRender bufferQueueCallback notify play!!!");
+            ALOGV("===>VEAudioSLESRender bufferQueueCallback notify play!!!");
             {
                 // 队首缓冲已播完，释放对应的帧引用(静音占位为 nullptr)
                 std::lock_guard<std::mutex> lock(pThis->m_Mutex);
                 if (!pThis->m_FrameQueue.empty()) {
                     pThis->m_FrameQueue.pop_front();
+                }
+                if (!pThis->m_QueuedDurationsUs.empty()) {
+                    pThis->m_QueuedTotalUs -= pThis->m_QueuedDurationsUs.front();
+                    if (pThis->m_QueuedTotalUs < 0) pThis->m_QueuedTotalUs = 0;
+                    pThis->m_QueuedDurationsUs.pop_front();
                 }
             }
             pThis->m_AudioCallback();
@@ -166,7 +171,7 @@ namespace VE {
 
         m_IsConfigured = true;
         ALOGI("VEAudioSLESRender configured successfully");
-        return VE_UNKNOWN_ERROR;
+        return VE_OK;
     }
 
     VEResult VEAudioSLESRender::start() {
@@ -179,9 +184,10 @@ namespace VE {
 
         std::lock_guard<std::mutex> lock(m_Mutex);
 
+        // 重复 start 是幂等的，不是错误
         if (m_IsPlaying) {
             ALOGI("VEAudioSLESRender Already playing");
-            return VE_UNKNOWN_ERROR;
+            return VE_OK;
         }
 
         if (mPlayerPlay != NULL) {
@@ -229,9 +235,9 @@ namespace VE {
         if (mBufferQueue != NULL) {
             (*mBufferQueue)->Clear(mBufferQueue);
         }
-        while (!m_FrameQueue.empty()) {
-            m_FrameQueue.pop_front();
-        }
+        m_FrameQueue.clear();
+        m_QueuedDurationsUs.clear();
+        m_QueuedTotalUs = 0;
 
         if (mBufferQueue != NULL) {
             // 只预填 1 个静音缓冲：够在恢复播放时拉起回调链，同时留出
@@ -239,6 +245,8 @@ namespace VE {
             if ((*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize)
                     == SL_RESULT_SUCCESS) {
                 m_FrameQueue.push_back(nullptr);
+                m_QueuedDurationsUs.push_back(BUFFER_DURATION_MS * 1000);
+                m_QueuedTotalUs += BUFFER_DURATION_MS * 1000;
             }
         }
 
@@ -260,9 +268,9 @@ namespace VE {
         if (mBufferQueue != NULL) {
             (*mBufferQueue)->Clear(mBufferQueue);
         }
-        while (!m_FrameQueue.empty()) {
-            m_FrameQueue.pop_front();
-        }
+        m_FrameQueue.clear();
+        m_QueuedDurationsUs.clear();
+        m_QueuedTotalUs = 0;
 
         ALOGI("VEAudioSLESRender stopped successfully");
         return VE_OK;
@@ -295,6 +303,12 @@ namespace VE {
                 return VE_WOULD_BLOCK;
             }
             m_FrameQueue.push_back(frame);
+            const int64_t durUs = (m_Config.sampleRate > 0)
+                    ? static_cast<int64_t>(frame->getFrame()->nb_samples) * 1000000 /
+                      m_Config.sampleRate
+                    : 0;
+            m_QueuedDurationsUs.push_back(durUs);
+            m_QueuedTotalUs += durUs;
         } else {
             // 提供静音数据(m_TempBuffer 生命周期由本对象管理，用 nullptr 占位对齐 FIFO)
             if ((*mBufferQueue)->Enqueue(mBufferQueue, m_TempBuffer, m_BufferSize)
@@ -302,6 +316,8 @@ namespace VE {
                 return VE_WOULD_BLOCK;
             }
             m_FrameQueue.push_back(nullptr);
+            m_QueuedDurationsUs.push_back(BUFFER_DURATION_MS * 1000);
+            m_QueuedTotalUs += BUFFER_DURATION_MS * 1000;
         }
 
         return VE_OK;
@@ -326,9 +342,9 @@ namespace VE {
         // 清空帧队列
         {
             std::lock_guard<std::mutex> lock(m_Mutex);
-            while (!m_FrameQueue.empty()) {
-                m_FrameQueue.pop_front();
-            }
+            m_FrameQueue.clear();
+            m_QueuedDurationsUs.clear();
+            m_QueuedTotalUs = 0;
         }
 
         m_IsConfigured = false;
@@ -360,8 +376,8 @@ namespace VE {
 
     int64_t VEAudioSLESRender::getQueuedDurationUs() {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        // 每个在途缓冲约 BUFFER_DURATION_MS 的数据
-        return static_cast<int64_t>(m_FrameQueue.size()) * BUFFER_DURATION_MS * 1000;
+        // 按各块真实样本数累加，而不是块数 × 固定时长
+        return m_QueuedTotalUs;
     }
 
     SLuint32 VEAudioSLESRender::convertSampleRate(int sampleRate) {

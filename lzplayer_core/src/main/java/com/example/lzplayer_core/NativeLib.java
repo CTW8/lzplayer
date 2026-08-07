@@ -84,10 +84,63 @@ public class NativeLib {
         }
     }
 
-    public synchronized void setPlaySpeed(float speed){
+    /** 运行期统计快照 JSON */
+    public synchronized String getStats(){
         if(mHandle != 0){
-            setPlaySpeed(mHandle,speed);
+            return nativeGetStats(mHandle);
         }
+        return "{}";
+    }
+
+    public synchronized int setForceSoftwareDecoder(boolean force){
+        if(mHandle != 0){
+            return nativeSetForceSoftwareDecoder(mHandle,force);
+        }
+        return -1;
+    }
+
+    public synchronized int setForceSlesAudio(boolean force){
+        if(mHandle != 0){
+            return nativeSetForceSlesAudio(mHandle,force);
+        }
+        return -1;
+    }
+
+    /** 轨道列表 JSON；未 prepare 时返回 "[]" */
+    public synchronized String getTrackInfo(){
+        if(mHandle != 0){
+            return nativeGetTrackInfo(mHandle);
+        }
+        return "[]";
+    }
+
+    public synchronized int selectTrack(int trackIndex){
+        if(mHandle != 0){
+            return nativeSelectTrack(mHandle,trackIndex);
+        }
+        return -1;
+    }
+
+    public synchronized int deselectTrack(int trackIndex){
+        if(mHandle != 0){
+            return nativeDeselectTrack(mHandle,trackIndex);
+        }
+        return -1;
+    }
+
+    public synchronized int addExternalSubtitle(String path){
+        if(mHandle != 0){
+            return nativeAddExternalSubtitle(mHandle,path);
+        }
+        return -1;
+    }
+
+    /** 变速播放，0.5x~2.0x，音调不变。返回 0 成功，负值失败 */
+    public synchronized int setPlaySpeed(float speed){
+        if(mHandle != 0){
+            return setPlaySpeed(mHandle,speed);
+        }
+        return -1;
     }
 
     public synchronized int release(){
@@ -254,6 +307,16 @@ public class NativeLib {
                     mMediaPlayer.onNativeInfoCallback(VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE, msg.arg1, msg.obj);
                     break;
                 }
+                // 多轨/字幕/网络缓冲：全部经既有 info 通道上抛，不另起链路
+                case VE_PLAYER_NOTIFY_EVENT_ON_TRACK_CHANGED:
+                case VE_PLAYER_NOTIFY_EVENT_ON_SUBTITLE:
+                case VE_PLAYER_NOTIFY_EVENT_ON_SUBTITLE_CLEAR:
+                case VE_PLAYER_NOTIFY_EVENT_ON_BUFFERING_START:
+                case VE_PLAYER_NOTIFY_EVENT_ON_BUFFERING_UPDATE:
+                case VE_PLAYER_NOTIFY_EVENT_ON_BUFFERING_END:{
+                    mMediaPlayer.onNativeInfoCallback(msg.what, msg.arg1, msg.obj);
+                    break;
+                }
                 default:
                     Log.w(TAG, "Unknown message type: " + msg.what);
                     break;
@@ -264,6 +327,13 @@ public class NativeLib {
     private static native long createNativeHandle();
     private native int nativeInit(Object mediaplayerThis,long handle,String path);
     private native int nativeSetSurface(long handle,Surface surface,int width,int height);
+    private native String nativeGetStats(long handle);
+    private native int nativeSetForceSoftwareDecoder(long handle,boolean force);
+    private native int nativeSetForceSlesAudio(long handle,boolean force);
+    private native String nativeGetTrackInfo(long handle);
+    private native int nativeSelectTrack(long handle,int trackIndex);
+    private native int nativeDeselectTrack(long handle,int trackIndex);
+    private native int nativeAddExternalSubtitle(long handle,String path);
     private native long nativeGetDuration(long handle);
     private native long nativeGetCurrentPosition(long handle);
     private native int nativePrepare(long handle);

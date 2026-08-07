@@ -31,6 +31,20 @@ namespace VE {
     jint nativeSetLooping(JNIEnv *env, jobject obj, jlong handle, jboolean loop);
     jint nativeSetPlaySpeed(JNIEnv *env, jobject obj, jlong handle, jfloat speed);
 
+    jstring nativeGetTrackInfo(JNIEnv *env, jobject obj, jlong handle);
+
+    jint nativeSelectTrack(JNIEnv *env, jobject obj, jlong handle, jint trackIndex);
+
+    jint nativeDeselectTrack(JNIEnv *env, jobject obj, jlong handle, jint trackIndex);
+
+    jint nativeAddExternalSubtitle(JNIEnv *env, jobject obj, jlong handle, jstring path);
+
+    jstring nativeGetStats(JNIEnv *env, jobject obj, jlong handle);
+
+    jint nativeSetForceSoftwareDecoder(JNIEnv *env, jobject obj, jlong handle, jboolean force);
+
+    jint nativeSetForceSlesAudio(JNIEnv *env, jobject obj, jlong handle, jboolean force);
+
 #ifdef __cplusplus
     }
 #endif

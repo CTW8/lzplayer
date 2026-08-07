@@ -44,6 +44,10 @@ namespace VE {
         void calculateTransformMatrix(int frameWidth, int frameHeight, glm::mat4& transformMatrix);
         void drawFrame();
 
+        /// 按帧的 color_range/colorspace 选 YUV→RGB 系数与量程偏移，
+        /// 结果写进 uColorMat/uColorOffset。同参数重复调用会跳过。
+        void updateColorConversion(const std::shared_ptr<VEFrame> &frame);
+
         // EGL上下文相关
         EGLDisplay eglDisplay;
         EGLSurface eglSurface;
@@ -64,6 +68,8 @@ namespace VE {
         GLint yTextureLoc;
         GLint uTextureLoc;
         GLint vTextureLoc;
+        GLint colorMatLoc;
+        GLint colorOffsetLoc;
 
         // 视图参数
         ANativeWindow *mWin;
@@ -71,12 +77,22 @@ namespace VE {
         int mViewHeight;
         int mFrameWidth;
         int mFrameHeight;
+        /// 容器标注的旋转角(0/90/180/270)：竖拍视频必须靠它摆正，
+        /// 否则画面横躺。同时影响 fit-inside 的宽高比计算。
+        int mRotationDegrees = 0;
+
+        /// 上一次生效的色彩参数，用于跳过重复的 uniform 设置
+        int mLastColorRange = -1;
+        int mLastColorSpace = -1;
+        /// 纹理存储是否已按当前尺寸分配(glTexStorage2D 只做一次)
+        bool mTexStorageReady = false;
+        int mTexAllocWidth = 0;
+        int mTexAllocHeight = 0;
 
         // 初始化状态
         bool mEGLInitialized;
         bool mGLESInitialized;
 
-        FILE *fp= nullptr;
         // Shader源码
         static const char *VERTEX_SHADER_SOURCE;
         static const char *FRAGMENT_SHADER_SOURCE;

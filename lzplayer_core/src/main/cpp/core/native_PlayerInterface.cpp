@@ -63,7 +63,9 @@ namespace VE {
                 env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2, NULL);
                 break;
             }
+            case VE_PLAYER_NOTIFY_EVENT_ON_SUBTITLE:
             case VE_PLAYER_NOTIFY_EVENT_ON_ERROR: {
+                // 这两类事件带字符串负载(字幕文本 / 错误描述)
 
                 if (obj != nullptr) {
                     const std::string &objString = *reinterpret_cast<const std::string *>(obj);
@@ -95,6 +97,11 @@ namespace VE {
                 env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2, NULL);
                 break;
             }
+            case VE_PLAYER_NOTIFY_EVENT_ON_TRACK_CHANGED:
+            case VE_PLAYER_NOTIFY_EVENT_ON_SUBTITLE_CLEAR:
+            case VE_PLAYER_NOTIFY_EVENT_ON_BUFFERING_START:
+            case VE_PLAYER_NOTIFY_EVENT_ON_BUFFERING_UPDATE:
+            case VE_PLAYER_NOTIFY_EVENT_ON_BUFFERING_END:
             case VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION:
             case VE_PLAYER_NOTIFY_EVENT_ON_SEEK_DONE: {
                 env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2, NULL);
@@ -250,6 +257,58 @@ namespace VE {
         VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
         CHECK_NULL();
         return vePlayer->setLooping(loop);
+    }
+
+    jstring nativeGetTrackInfo(JNIEnv *env, jobject obj, jlong handle) {
+        VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
+        if (vePlayer == nullptr) {
+            return env->NewStringUTF("[]");
+        }
+        const std::string json = vePlayer->getTrackInfo();
+        return env->NewStringUTF(json.c_str());
+    }
+
+    jint nativeSelectTrack(JNIEnv *env, jobject obj, jlong handle, jint trackIndex) {
+        ALOGD("nativeSelectTrack called with track: %d", trackIndex);
+        VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
+        CHECK_NULL();
+        return vePlayer->selectTrack(trackIndex);
+    }
+
+    jint nativeDeselectTrack(JNIEnv *env, jobject obj, jlong handle, jint trackIndex) {
+        ALOGD("nativeDeselectTrack called with track: %d", trackIndex);
+        VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
+        CHECK_NULL();
+        return vePlayer->deselectTrack(trackIndex);
+    }
+
+    jint nativeAddExternalSubtitle(JNIEnv *env, jobject obj, jlong handle, jstring path) {
+        VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
+        CHECK_NULL();
+        ScopedUtfChars filePath(env, path);
+        ALOGD("nativeAddExternalSubtitle: %s", filePath.c_str());
+        return vePlayer->addExternalSubtitle(filePath.c_str());
+    }
+
+    jstring nativeGetStats(JNIEnv *env, jobject obj, jlong handle) {
+        VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
+        if (vePlayer == nullptr) {
+            return env->NewStringUTF("{}");
+        }
+        const std::string json = vePlayer->getStats();
+        return env->NewStringUTF(json.c_str());
+    }
+
+    jint nativeSetForceSoftwareDecoder(JNIEnv *env, jobject obj, jlong handle, jboolean force) {
+        VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
+        CHECK_NULL();
+        return vePlayer->setForceSoftwareDecoder(force == JNI_TRUE);
+    }
+
+    jint nativeSetForceSlesAudio(JNIEnv *env, jobject obj, jlong handle, jboolean force) {
+        VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
+        CHECK_NULL();
+        return vePlayer->setForceSlesAudio(force == JNI_TRUE);
     }
 
     jint nativeSetPlaySpeed(JNIEnv *env, jobject obj, jlong handle, jfloat speed) {

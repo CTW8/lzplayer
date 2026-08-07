@@ -35,6 +35,10 @@ namespace VE {
         // 判断是否需要丢帧
         bool shouldDropFrame() const;
 
+        /// 最近一次判定时的"视频 pts − 主时钟"(微秒)。正=视频领先。
+        /// 诊断面板用它显示音视频偏移。
+        int64_t getLastDiffUs() const;
+
     private:
         int64_t frameIntervalUs() const;
 

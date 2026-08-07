@@ -15,6 +15,9 @@ void main() {
 }
 )";
 
+    // YUV→RGB 的系数与量程偏移由 CPU 侧按帧的 color_range/colorspace 算好传进来：
+    // limited range(视频常态)必须先减 16/255 再按 255/219 展开，否则黑位停在 6% 灰、
+    // 整体对比度偏低；HD 内容还要用 BT.709 而非 BT.601 的系数。
     const char *VEGLESVideoRenderer::FRAGMENT_SHADER_SOURCE = R"(
 #version 300 es
 precision mediump float;
@@ -22,15 +25,14 @@ in vec2 vTexCoord;
 uniform sampler2D yTexture;
 uniform sampler2D uTexture;
 uniform sampler2D vTexture;
+uniform mat3 uColorMat;
+uniform vec3 uColorOffset;
 out vec4 fragColor;
 void main() {
-    float y = texture(yTexture, vTexCoord).r;
-    float u = texture(uTexture, vTexCoord).r - 0.5;
-    float v = texture(vTexture, vTexCoord).r - 0.5;
-    float r = y + 1.402 * v;
-    float g = y - 0.344 * u - 0.714 * v;
-    float b = y + 1.772 * u;
-    fragColor = vec4(r, g, b, 1.0);
+    vec3 yuv = vec3(texture(yTexture, vTexCoord).r,
+                    texture(uTexture, vTexCoord).r,
+                    texture(vTexture, vTexCoord).r) - uColorOffset;
+    fragColor = vec4(clamp(uColorMat * yuv, 0.0, 1.0), 1.0);
 }
 )";
 
@@ -64,10 +66,6 @@ void main() {
     VEGLESVideoRenderer::~VEGLESVideoRenderer() {
         ALOGD("VEGLESVideoRenderer destructed");
         uninitialize();
-        if(fp){
-            fflush(fp);
-            fclose(fp);
-        }
     }
 
     int VEGLESVideoRenderer::initialize(VEBundle params) {
@@ -77,6 +75,7 @@ void main() {
         mWin = params.get<ANativeWindow *>("surface");
         mViewWidth = params.get<int>("width");
         mViewHeight = params.get<int>("height");
+        mRotationDegrees = params.get<int>("rotation");
 
         if (mWin == nullptr) {
             ALOGE("VEGLESVideoRenderer::initialize - Invalid surface");
@@ -126,6 +125,13 @@ void main() {
         mViewWidth = viewWidth;
         mViewHeight = viewHeight;
 
+        if (win == nullptr) {
+            // surface 已销毁：解绑并释放到此为止。继续去 eglCreateWindowSurface(nullptr)
+            // 必然拿到 EGL_BAD_NATIVE_WINDOW，只是徒增一条错误日志。
+            ALOGI("VEGLESVideoRenderer::changeSurface - surface detached");
+            return VE_OK;
+        }
+
         // 创建新的EGL Surface
         if (createEGLSurface(win) != 0) {
             ALOGE("VEGLESVideoRenderer::changeSurface - Failed to create new EGL surface");
@@ -148,7 +154,7 @@ void main() {
     }
 
     VEResult VEGLESVideoRenderer::renderFrame(const std::shared_ptr<VEFrame> &frame) {
-        ALOGI("VEGLESVideoRenderer::renderFrame");
+        ALOGV("VEGLESVideoRenderer::renderFrame");
 
         if (!mEGLInitialized || !mGLESInitialized) {
             ALOGE("VEGLESVideoRenderer::renderFrame - Renderer not properly initialized");
@@ -190,6 +196,9 @@ void main() {
         glUniform1i(uTextureLoc, 1);
         glUniform1i(vTextureLoc, 2);
 
+        // YUV→RGB 的系数与量程按帧参数下发(变化时才真正写 uniform)
+        updateColorConversion(frame);
+
         // 设置顶点属性
         setupVertexAttributes(frame);
 
@@ -222,7 +231,7 @@ void main() {
 //            fwrite(frame->getFrame()->data[2], frame->getFrame()->linesize[2]*frame->getFrame()->height,1,fp);
 //        }
 
-        ALOGI("VEGLESVideoRenderer::renderFrame - Frame rendered successfully, pts: %" PRId64, frame->getPts());
+        ALOGV("VEGLESVideoRenderer::renderFrame - Frame rendered successfully, pts: %" PRId64, frame->getPts());
         return VE_OK;
     }
 
@@ -377,12 +386,18 @@ void main() {
         yTextureLoc = glGetUniformLocation(mProgram, "yTexture");
         uTextureLoc = glGetUniformLocation(mProgram, "uTexture");
         vTextureLoc = glGetUniformLocation(mProgram, "vTexture");
+        colorMatLoc = glGetUniformLocation(mProgram, "uColorMat");
+        colorOffsetLoc = glGetUniformLocation(mProgram, "uColorOffset");
 
         if (positionLoc < 0 || texCoordLoc < 0 || transformLoc < 0 ||
-            yTextureLoc < 0 || uTextureLoc < 0 || vTextureLoc < 0) {
+            yTextureLoc < 0 || uTextureLoc < 0 || vTextureLoc < 0 ||
+            colorMatLoc < 0 || colorOffsetLoc < 0) {
             ALOGE("VEGLESVideoRenderer::initializeGLES - Failed to get shader locations");
             return -1;
         }
+        // 强制首帧下发一次色彩参数
+        mLastColorRange = -1;
+        mLastColorSpace = -1;
 
         // 创建纹理
         if (!createTextures()) {
@@ -503,6 +518,10 @@ void main() {
             glDeleteTextures(3, mTextures);
             memset(mTextures, 0, sizeof(mTextures));
         }
+        // 存储随纹理对象一起没了，下次上传要重新 glTexStorage2D
+        mTexStorageReady = false;
+        mTexAllocWidth = 0;
+        mTexAllocHeight = 0;
     }
 
     // ========== 渲染相关私有方法 ==========
@@ -515,6 +534,29 @@ void main() {
         const int chromaWidth = mFrameWidth / 2;
         const int chromaHeight = mFrameHeight / 2;
 
+        // 纹理存储只在首帧(或分辨率变化)时分配一次，之后每帧只用
+        // glTexSubImage2D 覆盖像素——glTexImage2D 每帧都会重新走一遍
+        // 存储分配路径，是驱动侧的无谓开销。
+        if (!mTexStorageReady || mTexAllocWidth != mFrameWidth ||
+            mTexAllocHeight != mFrameHeight) {
+            const int dims[3][2] = {{mFrameWidth, mFrameHeight},
+                                    {chromaWidth, chromaHeight},
+                                    {chromaWidth, chromaHeight}};
+            // 尺寸变了必须重建纹理对象：glTexStorage2D 分配的是不可变存储
+            if (mTexStorageReady) {
+                destroyTextures();
+                createTextures();
+            }
+            for (int i = 0; i < 3; ++i) {
+                glActiveTexture(GL_TEXTURE0 + i);
+                glBindTexture(GL_TEXTURE_2D, mTextures[i]);
+                glTexStorage2D(GL_TEXTURE_2D, 1, GL_R8, dims[i][0], dims[i][1]);
+            }
+            mTexStorageReady = true;
+            mTexAllocWidth = mFrameWidth;
+            mTexAllocHeight = mFrameHeight;
+        }
+
         // 解码器输出的每行末尾通常带对齐填充(linesize > width)。用
         // GL_UNPACK_ROW_LENGTH 告诉 GL 真实行距, 就能直接上传解码器的原始缓冲,
         // 不必先在 CPU 上逐平面拷贝成紧排布(那是每帧一次全画面 memcpy)。
@@ -526,8 +568,8 @@ void main() {
             glActiveTexture(unit);
             glBindTexture(GL_TEXTURE_2D, texture);
             glPixelStorei(GL_UNPACK_ROW_LENGTH, linesize);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, width, height,
-                         0, GL_LUMINANCE, GL_UNSIGNED_BYTE, data);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
+                            GL_RED, GL_UNSIGNED_BYTE, data);
         };
 
         uploadPlane(GL_TEXTURE0, mTextures[0], av->data[0], av->linesize[0],
@@ -546,6 +588,61 @@ void main() {
         }
     }
 
+    void VEGLESVideoRenderer::updateColorConversion(const std::shared_ptr<VEFrame> &frame) {
+        AVFrame *av = frame->getFrame();
+
+        // YUVJ* 是 full range 的历史表达；否则以 color_range 为准，
+        // 未标注时按视频常态假定 limited range
+        const bool fullRange =
+                av->color_range == AVCOL_RANGE_JPEG ||
+                av->format == AV_PIX_FMT_YUVJ420P;
+
+        // 未标注 colorspace 时按分辨率推断：HD 及以上用 BT.709，否则 BT.601
+        int space = av->colorspace;
+        if (space == AVCOL_SPC_UNSPECIFIED) {
+            space = (av->height >= 720) ? AVCOL_SPC_BT709 : AVCOL_SPC_SMPTE170M;
+        }
+        const bool bt709 = (space == AVCOL_SPC_BT709);
+
+        const int rangeKey = fullRange ? 1 : 0;
+        if (mLastColorRange == rangeKey && mLastColorSpace == space) {
+            return;   // 参数没变，省掉每帧两次 uniform 下发
+        }
+        mLastColorRange = rangeKey;
+        mLastColorSpace = space;
+
+        // yScale: limited range 的 Y 落在 [16,235]，要展开回 [0,1]
+        const float yScale = fullRange ? 1.0f : (255.0f / 219.0f);
+        // 色度系数：limited range 的 UV 落在 [16,240]
+        const float cScale = fullRange ? 1.0f : (255.0f / 224.0f);
+        // Kr/Kb 决定 YUV→RGB 的三个系数
+        const float kr = bt709 ? 0.2126f : 0.299f;
+        const float kb = bt709 ? 0.0722f : 0.114f;
+        const float kg = 1.0f - kr - kb;
+
+        const float vToR = cScale * 2.0f * (1.0f - kr);
+        const float uToB = cScale * 2.0f * (1.0f - kb);
+        const float vToG = -cScale * 2.0f * (1.0f - kr) * kr / kg;
+        const float uToG = -cScale * 2.0f * (1.0f - kb) * kb / kg;
+
+        // GLSL mat3 按列优先：col0 乘 Y，col1 乘 U，col2 乘 V
+        const GLfloat mat[9] = {
+                yScale, yScale, yScale,   // col0: Y → R,G,B
+                0.0f,   uToG,   uToB,     // col1: U → R,G,B
+                vToR,   vToG,   0.0f,     // col2: V → R,G,B
+        };
+        const GLfloat offset[3] = {
+                fullRange ? 0.0f : (16.0f / 255.0f),
+                128.0f / 255.0f,
+                128.0f / 255.0f,
+        };
+
+        glUniformMatrix3fv(colorMatLoc, 1, GL_FALSE, mat);
+        glUniform3fv(colorOffsetLoc, 1, offset);
+        ALOGI("VEGLESVideoRenderer color conversion: %s range, %s",
+              fullRange ? "full" : "limited", bt709 ? "BT.709" : "BT.601");
+    }
+
     void VEGLESVideoRenderer::setupVertexAttributes(const std::shared_ptr<VEFrame> &frame) {
         // 计算变换矩阵
         glm::mat4 transformMatrix;
@@ -556,8 +653,12 @@ void main() {
         // 否则横屏视频在竖屏上会放大裁掉大半画面
         float scaleX = 1.0f, scaleY = 1.0f;
         if (mViewWidth > 0 && mViewHeight > 0 && mFrameWidth > 0 && mFrameHeight > 0) {
+            // 旋转 90/270 后画幅的长短边互换，宽高比要按旋转后的算
+            const bool swapped = (mRotationDegrees == 90 || mRotationDegrees == 270);
+            const int dispW = swapped ? mFrameHeight : mFrameWidth;
+            const int dispH = swapped ? mFrameWidth : mFrameHeight;
             float screenAspectRatio = (float) mViewWidth / mViewHeight;
-            float imageAspectRatio = (float) mFrameWidth / mFrameHeight;
+            float imageAspectRatio = (float) dispW / dispH;
             if (imageAspectRatio > screenAspectRatio) {
                 // 画面比屏幕宽：横向占满，纵向留黑边
                 scaleX = 1.0f;
@@ -569,14 +670,29 @@ void main() {
             }
         }
 
+        // 旋转靠重排纹理坐标实现。四个顶点按 TRIANGLE_STRIP 的顺序是
+        // 左上/右上/左下/右下(已计入 Y 翻转)，只要把它们各自采样的纹理角点
+        // 换一圈，画面就转过来了，且不受视口宽高比影响。
+        static const GLfloat kTexCoords[4][8] = {
+                /*   0° */ {0, 0,  1, 0,  0, 1,  1, 1},
+                /*  90° */ {0, 1,  0, 0,  1, 1,  1, 0},
+                /* 180° */ {1, 1,  0, 1,  1, 0,  0, 0},
+                /* 270° */ {1, 0,  1, 1,  0, 0,  0, 1},
+        };
+        int rotIndex = ((mRotationDegrees % 360) + 360) % 360 / 90;
+        if (rotIndex < 0 || rotIndex > 3) {
+            rotIndex = 0;
+        }
+        const GLfloat *tex = kTexCoords[rotIndex];
+
         // 顶点数据必须常驻成员：glVertexAttribPointer 记录的是客户端指针，
         // glDrawArrays 在本函数返回之后才执行。之前用函数级 static 数组，
         // 初始化只跑一次，换视频/转屏后画幅比例永远停在进程第一帧。
         const GLfloat vertices[] = {
-                -scaleX, -scaleY, 0.0f, 0.0f,
-                scaleX, -scaleY, 1.0f, 0.0f,
-                -scaleX, scaleY, 0.0f, 1.0f,
-                scaleX, scaleY, 1.0f, 1.0f,
+                -scaleX, -scaleY, tex[0], tex[1],
+                 scaleX, -scaleY, tex[2], tex[3],
+                -scaleX,  scaleY, tex[4], tex[5],
+                 scaleX,  scaleY, tex[6], tex[7],
         };
         memcpy(mVertices, vertices, sizeof(vertices));
 
@@ -589,10 +705,12 @@ void main() {
     }
 
     void VEGLESVideoRenderer::calculateTransformMatrix(int frameWidth, int frameHeight, glm::mat4& transformMatrix) {
-        glm::vec3 scaleVector(1.0f, -1.0f, 1.0f);
-        float angle = 0.0f;
-        glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
-        transformMatrix = glm::scale(rotationMatrix, scaleVector);
+        // 只做 Y 轴翻转：纹理坐标原点在左上，GL 裁剪空间原点在左下。
+        //
+        // 旋转**不在这里做**。裁剪空间不是等比的(视口通常不是正方形)，
+        // 在里面转 90° 会把画面按视口宽高比拉变形。旋转改由纹理坐标承担
+        // (见 setupVertexAttributes)，那是无量纲空间，转多少度都不会形变。
+        transformMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, -1.0f, 1.0f));
     }
 
     void VEGLESVideoRenderer::drawFrame() {

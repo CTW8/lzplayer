@@ -1,8 +1,13 @@
 #include "VEPlayer.h"
+#include "VEDemux.h"
+#include "VESourceRegistry.h"
+#include "decoders/VEMediaCodecVideoDecoder.h"
 #include "VEAudioRender.h"
 #include "VEVideoDisplay.h"
 
+#include <algorithm>
 #include <utility>
+#include <vector>
 namespace VE {
     namespace {
         /// 单个流程阶段等待组件回执的上限，超时后强制推进，
@@ -16,6 +21,11 @@ namespace VE {
         /// 拆解阶段的回执超时。release 是同步调用(通常来自主线程的 onDestroy)，
         /// 两个阶段各等 2s 会逼近 ANR 阈值，所以这里收紧。
         constexpr int64_t kTeardownAckTimeoutUs = 800000;
+
+        /// 变速范围。超出这个区间 sonic 的音质会明显劣化，
+        /// 且 0.5x 下输出样本翻倍、2x 下丢半，缓冲预留按此上界算。
+        constexpr float kMinPlaybackSpeed = 0.5f;
+        constexpr float kMaxPlaybackSpeed = 2.0f;
 
     }
 
@@ -135,6 +145,18 @@ namespace VE {
                 onProgressTick(msg);
                 break;
             }
+            case kWhatSetSpeed: {
+                onSetSpeed(msg);
+                break;
+            }
+            case kWhatSelectTrack: {
+                onSelectTrack(msg);
+                break;
+            }
+            case kWhatAddSubtitle: {
+                onAddSubtitle(msg);
+                break;
+            }
             case kWhatSetDataSource: {
                 ALOGI("VEPlayer::onMessageReceived - kWhatSetDataSource received");
                 onSetDataSource(msg);
@@ -223,7 +245,7 @@ namespace VE {
             mPendingActions.push_back(action);
             return VE_OK;
         }
-        if (mDemux != nullptr) {
+        if (mSource != nullptr) {
             // 对齐 AOSP MediaPlayer 语义：换片源必须先 reset。
             // 原来的"拆旧建新"隐式换源路径删除(Driver 侧本来就挡死)。
             ALOGE("VEPlayer::%s must reset before setting a new source", __FUNCTION__);
@@ -237,20 +259,39 @@ namespace VE {
         ALOGI("VEPlayer::%s path:%s", __FUNCTION__, path.c_str());
         mPath = path;
         mState = STATE_IDLE;
+        // 换片源：清掉上一轮 fallback 留下的记忆，重新给硬解一次机会
+        mDecoderPolicy.forceSoftware = mUserForceSoftware.load();
+        mVideoHardware = false;
 
         mRenderNotifyMsg = std::make_shared<AMessage>(kWhatComponentEvent, shared_from_this());
         // 管线代次盖在 notify 模板上(组件 dup 时自动携带)：
         // 上一代管线被强推拆掉后，其迟到事件无法污染新管线
         mRenderNotifyMsg->setInt32("plGen", ++mPipelineGen);
 
-        mDemuxLooper = std::make_shared<ALooper>();
-        mDemuxLooper->setName("demux_thread");
-        mDemuxLooper->start(false);
+        mSourceLooper = std::make_shared<ALooper>();
+        mSourceLooper->setName("demux_thread");
+        mSourceLooper->start(false);
 
-        mDemux = std::make_shared<VEDemux>(mRenderNotifyMsg);
-        mDemuxLooper->registerHandler(mDemux);
-        mSourceState = ROLE_ACTIVE;
+        mSource = createSource(path);
+        if (mSource == nullptr) {
+            // 不支持的 scheme：拆掉刚起的 looper，报错给上层
+            mSourceLooper->stop();
+            mSourceLooper.reset();
+            mState = STATE_ERROR;
+            notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "unsupported source scheme");
+            return VE_UNKNOWN_ERROR;
+        }
+        mSourceLooper->registerHandler(mSource);
+        setRole(ROLE_IDX_SOURCE, mSource, mSourceLooper,
+                EComponentType::E_COMPONENT_TYPE_DEMUX);
         return VE_OK;
+    }
+
+    std::shared_ptr<VESource> VEPlayer::createSource(const std::string &path) {
+        ALOGI("VEPlayer::%s path:%s", __FUNCTION__, path.c_str());
+        // 按 scheme 查注册表：file → VEDemux，http/https → 网络源，
+        // 未来任何协议只要注册一条工厂就能接进来，这里不必改动
+        return VESourceRegistry::instance().create(path, mRenderNotifyMsg);
     }
 
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
@@ -266,7 +307,7 @@ namespace VE {
     }
 
     VEResult VEPlayer::doPrepare() {
-        if (mDemux == nullptr) {
+        if (mSource == nullptr) {
             // reset 之后没有重新 setDataSource 就 prepare
             mState = STATE_ERROR;
             notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "no data source!!");
@@ -275,7 +316,7 @@ namespace VE {
         // 异步 prepare：player looper 不再被 avformat_open_input 挂住，
         // 期间到来的命令由 Flow 队列排队；PREPARE_DONE 回执驱动建链后半段
         mState = STATE_PREPARING;
-        mDemux->prepare(mPath);
+        mSource->prepareAsync(mPath);
         return VE_OK;
     }
 
@@ -283,10 +324,10 @@ namespace VE {
         {
             // 与 getCurrentPosition/getDuration 的跨线程读互斥
             std::lock_guard<std::mutex> lk(mMutex);
-            mMediaInfo = mDemux->getFileInfo();
+            mMediaInfo = mSource->getFileInfo();
         }
         if (mMediaInfo == nullptr ||
-            (mMediaInfo->audio_stream_index == -1 && mMediaInfo->video_stream_index == -1)) {
+            (!mMediaInfo->hasAudio() && !mMediaInfo->hasVideo())) {
             mState = STATE_ERROR;
             notifyError(VE_PLAYER_ERROR_OPEN_DEMUX_FAILED, "no playable stream found!!");
             return VE_UNKNOWN_ERROR;
@@ -296,20 +337,20 @@ namespace VE {
             mMediaClock = std::make_shared<VEMediaClock>();
         }
         mAVSync = std::make_shared<VEAVsync>(mMediaClock);
-        if (mMediaInfo->fps > 0) {
-            mAVSync->setFrameRate(mMediaInfo->fps);
+        if (mMediaInfo->fps() > 0) {
+            mAVSync->setFrameRate(mMediaInfo->fps());
         }
 
-        if(mMediaInfo->audio_stream_index != -1) {
+        if (mMediaInfo->hasAudio()) {
             mAudioDecodeLooper = std::make_shared<ALooper>();
             mAudioDecodeLooper->setName("adec_thread");
             mAudioDecodeLooper->start(false);
 
             // 输出参数只在这里算一次，解码器和渲染器共用，避免两处各写死一份
             const VEAudioOutputConfig audioOut =
-                    chooseAudioOutputConfig(mMediaInfo->sampleRate, mMediaInfo->channels);
+                    chooseAudioOutputConfig(mMediaInfo->sampleRate(), mMediaInfo->channels());
             ALOGI("VEPlayer::%s audio src %dHz %dch -> out %dHz %dch", __FUNCTION__,
-                  mMediaInfo->sampleRate, mMediaInfo->channels,
+                  mMediaInfo->sampleRate(), mMediaInfo->channels(),
                   audioOut.sampleRate, audioOut.channels);
 
             // 推模型下先建渲染端(sink)，解码器建链时把 sink 交给它
@@ -319,35 +360,22 @@ namespace VE {
 
             mAudioOutput = std::make_shared<VEAudioRender>(mRenderNotifyMsg, mAVSync);
             mAudioOutputLooper->registerHandler(mAudioOutput);
+            // 测试开关必须在 prepare 之前设：后端在 prepare 里就选定了
+            mAudioOutput->setForceSles(mForceSlesAudio.load());
             mAudioOutput->prepare(audioOut);
 
             mAudioDecoder = std::make_shared<VEAudioDecoder>(mRenderNotifyMsg);
             mAudioDecodeLooper->registerHandler(mAudioDecoder);
-            mAudioDecoder->prepare(mDemux, audioOut,
+            mAudioDecoder->prepare(mSource, audioOut,
                                    std::static_pointer_cast<IFrameSink>(mAudioOutput));
-            mAudioDecState = ROLE_ACTIVE;
-            mAudioRenderState = ROLE_ACTIVE;
+            setRole(ROLE_IDX_AUDIO_DECODER, mAudioDecoder, mAudioDecodeLooper,
+                    EComponentType::E_COMPONENT_TYPE_AUDIO_DECODER);
+            setRole(ROLE_IDX_AUDIO_RENDER, mAudioOutput, mAudioOutputLooper,
+                    EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER);
         }
 
-        if(mMediaInfo->video_stream_index != -1) {
-            // 推模型下先建显示端(sink)，解码器建链时把 sink 交给它
-            mVideoRenderLooper = std::make_shared<ALooper>();
-            mVideoRenderLooper->setName("video_render");
-            mVideoRenderLooper->start(false);
-            mVideoRender = std::make_shared<VEVideoDisplay>(mRenderNotifyMsg, mAVSync);
-            mVideoRenderLooper->registerHandler(mVideoRender);
-            mVideoRender->prepare(mWindow, mViewWidth, mViewHeight, mMediaInfo->fps);
-
-            mVideoDecodeLooper = std::make_shared<ALooper>();
-            mVideoDecodeLooper->setName("vdec_thread");
-            mVideoDecodeLooper->start(false);
-
-            mVideoDecoder = std::make_shared<VEVideoDecoder>(mRenderNotifyMsg);
-            mVideoDecodeLooper->registerHandler(mVideoDecoder);
-            mVideoDecoder->prepare(mDemux,
-                                   std::static_pointer_cast<IFrameSink>(mVideoRender));
-            mVideoDecState = ROLE_ACTIVE;
-            mVideoDisplayState = ROLE_ACTIVE;
+        if (mMediaInfo->hasVideo()) {
+            setupVideoChain();
         }
 
         mState = STATE_PREPARED;
@@ -356,6 +384,550 @@ namespace VE {
         }
         ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return 0;
+    }
+
+    VEResult VEPlayer::setupVideoChain() {
+        const VETrackInfo *track = mMediaInfo->videoTrack();
+        if (track == nullptr) {
+            return VE_INVALID_OPERATION;
+        }
+        // 用户显式要求的强制软解优先于一切；运行期 fallback 也会置这个位，
+        // 两者取或——一旦回退过就不再自动试硬解，避免来回抖
+        if (mUserForceSoftware.load()) {
+            mDecoderPolicy.forceSoftware = true;
+        }
+
+        mVideoDecodeLooper = std::make_shared<ALooper>();
+        mVideoDecodeLooper->setName("vdec_thread");
+        mVideoDecodeLooper->start(false);
+
+        mVideoDecoder = VEVideoDecoderFactory::create(
+                *track, mWindow, mDecoderPolicy, mRenderNotifyMsg, mAVSync,
+                &mVideoHardware);
+        mVideoDecodeLooper->registerHandler(
+                std::dynamic_pointer_cast<AHandler>(mVideoDecoder));
+
+        if (mVideoHardware) {
+            // 硬解直出 Surface：解码 + 同步 + 上屏都在这一个组件里，
+            // 因此它同时占据解码与显示两个角色槽位，各回一份回执。
+            // VEPlayer 的分阶段握手因此完全不必区分软硬解。
+            VEBundle params;
+            params.set("surface", mWindow);
+            mVideoDecoder->prepare(mSource, nullptr, params);
+            setRole(ROLE_IDX_VIDEO_DECODER, mVideoDecoder, mVideoDecodeLooper,
+                    EComponentType::E_COMPONENT_TYPE_VIDEO_DECODER);
+            setRole(ROLE_IDX_VIDEO_DISPLAY, mVideoDecoder, mVideoDecodeLooper,
+                    EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER);
+            return VE_OK;
+        }
+
+        // 软解：显示端是独立组件，推模型下先建 sink 再把它交给解码器
+        mVideoRenderLooper = std::make_shared<ALooper>();
+        mVideoRenderLooper->setName("video_render");
+        mVideoRenderLooper->start(false);
+        mVideoRender = std::make_shared<VEVideoDisplay>(mRenderNotifyMsg, mAVSync);
+        mVideoRenderLooper->registerHandler(mVideoRender);
+        mVideoRender->prepare(mWindow, mViewWidth, mViewHeight, mMediaInfo->fps(),
+                              mMediaInfo->rotationDegrees());
+
+        mVideoDecoder->prepare(mSource,
+                               std::static_pointer_cast<IFrameSink>(mVideoRender),
+                               VEBundle());
+        setRole(ROLE_IDX_VIDEO_DECODER, mVideoDecoder, mVideoDecodeLooper,
+                EComponentType::E_COMPONENT_TYPE_VIDEO_DECODER);
+        setRole(ROLE_IDX_VIDEO_DISPLAY, mVideoRender, mVideoRenderLooper,
+                EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER);
+        return VE_OK;
+    }
+
+    void VEPlayer::rebuildVideoAsSoftware() {
+        ALOGW("VEPlayer::%s hardware decoder failed, rebuilding with software",
+              __FUNCTION__);
+        const double resumeMs = mMediaClock
+                ? mMediaClock->getCurrentMediaTime() / 1000.0 : 0.0;
+        const bool wasPlaying = (mState == STATE_STARTED);
+
+        // 拆掉视频两个角色(硬解时是同一个组件占两格)
+        auto comp = mRoles[ROLE_IDX_VIDEO_DECODER].comp;
+        auto looper = mRoles[ROLE_IDX_VIDEO_DECODER].looper;
+        if (comp) {
+            comp->stop();
+            comp->release();
+        }
+        if (looper) {
+            auto handler = std::dynamic_pointer_cast<AHandler>(comp);
+            if (handler) looper->unregisterHandler(handler->id());
+            looper->stop();
+        }
+        auto displayLooper = mRoles[ROLE_IDX_VIDEO_DISPLAY].looper;
+        if (displayLooper && displayLooper != looper) {
+            auto handler = std::dynamic_pointer_cast<AHandler>(
+                    mRoles[ROLE_IDX_VIDEO_DISPLAY].comp);
+            if (handler) displayLooper->unregisterHandler(handler->id());
+            displayLooper->stop();
+        }
+        setRole(ROLE_IDX_VIDEO_DECODER, nullptr, nullptr,
+                EComponentType::E_COMPONENT_TYPE_UNKNOW);
+        setRole(ROLE_IDX_VIDEO_DISPLAY, nullptr, nullptr,
+                EComponentType::E_COMPONENT_TYPE_UNKNOW);
+        mVideoDecoder.reset();
+        mVideoRender.reset();
+        mVideoDecodeLooper.reset();
+        mVideoRenderLooper.reset();
+
+        // 换代次：旧硬解组件的迟到事件不能污染新链路
+        mRenderNotifyMsg->setInt32("plGen", ++mPipelineGen);
+
+        mDecoderPolicy.forceSoftware = true;
+        mVideoHardware = false;
+        if (setupVideoChain() != VE_OK) {
+            mState = STATE_ERROR;
+            notifyError(VE_UNKNOWN_ERROR, "video chain rebuild failed");
+            return;
+        }
+        // 通知上层已降级(信息类，不是错误)。走 ON_INFO 通道、把降级原因放 arg1：
+        // VE_INFO_DECODER_FALLBACK 本身不是 Java 侧认识的事件号，
+        // 直接拿它当事件号发会在 JNI 分发处被当成未知消息丢掉。
+        notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_INFO, VE_INFO_DECODER_FALLBACK,
+                   "decoder fallback to software", nullptr);
+
+        // 回到中断前的位置续播
+        mState = wasPlaying ? STATE_STARTED : STATE_PAUSED;
+        startSeek(resumeMs);
+    }
+
+    // ---------------------------------------------------------------------
+    // 多轨与字幕
+    // ---------------------------------------------------------------------
+
+    std::string VEPlayer::getTrackInfoJson() {
+        std::shared_ptr<VEMediaInfo> info;
+        {
+            std::lock_guard<std::mutex> lk(mMutex);
+            info = mMediaInfo;
+        }
+        std::string json = "[";
+        if (info) {
+            bool first = true;
+            for (const auto &t : info->tracks) {
+                if (!first) json += ",";
+                first = false;
+                const char *typeStr = (t.type == ETrackType::AUDIO) ? "audio"
+                                    : (t.type == ETrackType::VIDEO) ? "video" : "subtitle";
+                const bool active =
+                        (t.type == ETrackType::AUDIO && info->activeAudio >= 0 &&
+                         info->tracks[info->activeAudio].index == t.index) ||
+                        (t.type == ETrackType::VIDEO && info->activeVideo >= 0 &&
+                         info->tracks[info->activeVideo].index == t.index) ||
+                        (t.type == ETrackType::SUBTITLE && info->activeSubtitle >= 0 &&
+                         info->tracks[info->activeSubtitle].index == t.index);
+                const AVCodec *codec = avcodec_find_decoder(t.codecId);
+                json += "{\"index\":" + std::to_string(t.index) +
+                        ",\"type\":\"" + typeStr + "\"" +
+                        ",\"lang\":\"" + t.lang + "\"" +
+                        ",\"title\":\"" + t.title + "\"" +
+                        ",\"codec\":" + std::to_string(static_cast<int>(t.codecId)) +
+                        ",\"codecName\":\"" + std::string(codec && codec->name ? codec->name : "-") + "\"" +
+                        ",\"sampleRate\":" + std::to_string(t.sampleRate) +
+                        ",\"channels\":" + std::to_string(t.channels) +
+                        ",\"width\":" + std::to_string(t.width) +
+                        ",\"height\":" + std::to_string(t.height) +
+                        ",\"rotation\":" + std::to_string(t.rotationDegrees) +
+                        ",\"active\":" + (active ? "true" : "false") + "}";
+            }
+        }
+        json += "]";
+        return json;
+    }
+
+    VEResult VEPlayer::selectTrack(int trackIndex) {
+        auto msg = std::make_shared<AMessage>(kWhatSelectTrack, shared_from_this());
+        msg->setInt32("trackIndex", trackIndex);
+        msg->setInt32("deselect", 0);
+        msg->post();
+        return VE_OK;
+    }
+
+    VEResult VEPlayer::deselectTrack(int trackIndex) {
+        auto msg = std::make_shared<AMessage>(kWhatSelectTrack, shared_from_this());
+        msg->setInt32("trackIndex", trackIndex);
+        msg->setInt32("deselect", 1);
+        msg->post();
+        return VE_OK;
+    }
+
+    VEResult VEPlayer::addExternalSubtitle(const std::string &path) {
+        auto msg = std::make_shared<AMessage>(kWhatAddSubtitle, shared_from_this());
+        msg->setString("path", path);
+        msg->post();
+        return VE_OK;
+    }
+
+    VEResult VEPlayer::onSelectTrack(const std::shared_ptr<AMessage> &msg) {
+        int32_t trackIndex = -1;
+        int32_t deselect = 0;
+        msg->findInt32("trackIndex", &trackIndex);
+        msg->findInt32("deselect", &deselect);
+
+        if (isFlowBusy()) {
+            // 切轨是长流程，与 seek/reset 串行化(覆盖"切轨中 seek"
+            // 与"seek 中切轨"两种并发)
+            PendingAction action;
+            action.type = PendingAction::ACTION_SELECT_TRACK;
+            action.trackIndex = trackIndex;
+            action.deselect = (deselect != 0);
+            mPendingActions.push_back(action);
+            return VE_OK;
+        }
+        return doSelectTrack(trackIndex, deselect != 0);
+    }
+
+    VEResult VEPlayer::doSelectTrack(int trackIndex, bool deselect) {
+        if (mMediaInfo == nullptr || mSource == nullptr) {
+            return VE_INVALID_OPERATION;
+        }
+
+        // 外挂字幕虚拟轨：不经 demux，直接把内存 cue 交给字幕组件
+        auto ext = mExternalCues.find(trackIndex);
+        if (!deselect && ext != mExternalCues.end()) {
+            if (setupSubtitleChain() != VE_OK) {
+                return VE_UNKNOWN_ERROR;
+            }
+            mSubtitle->setExternalCues(ext->second);
+            mSubtitle->setSpeed(mPlaybackSpeed);
+            if (mState == STATE_STARTED) {
+                mSubtitle->start();
+            }
+            notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_TRACK_CHANGED, trackIndex,
+                       "external subtitle selected", nullptr);
+            return VE_OK;
+        }
+
+        const int slot = mMediaInfo->slotOfTrackIndex(trackIndex);
+        if (slot < 0) {
+            ALOGE("VEPlayer::%s unknown track %d", __FUNCTION__, trackIndex);
+            return VE_PLAYER_ERROR_UNSUPPORTED_TRACK;
+        }
+        const ETrackType type = mMediaInfo->tracks[slot].type;
+
+        if (deselect) {
+            if (type != ETrackType::SUBTITLE) {
+                // 关掉音/视频轨没有合理语义(会直接静音/黑屏)
+                return VE_PLAYER_ERROR_UNSUPPORTED_TRACK;
+            }
+            mSource->selectTrack(-1);
+            if (mSubtitle) {
+                mSubtitle->stop();
+            }
+            mMediaInfo->activeSubtitle = -1;
+            notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_TRACK_CHANGED, -1,
+                       "subtitle deselected", nullptr);
+            return VE_OK;
+        }
+
+        switch (type) {
+            case ETrackType::SUBTITLE: {
+                // 轻量路径：换流 + 清 cue，不必重建解码器也不必全链 seek
+                if (setupSubtitleChain() != VE_OK) {
+                    return VE_UNKNOWN_ERROR;
+                }
+                mSource->selectTrack(trackIndex);
+                mMediaInfo->activeSubtitle = slot;
+                mSubtitle->flush();
+                mSubtitle->setSpeed(mPlaybackSpeed);
+                if (mState == STATE_STARTED) {
+                    mSubtitle->start();
+                }
+                notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_TRACK_CHANGED, trackIndex,
+                           "subtitle track changed", nullptr);
+                return VE_OK;
+            }
+            case ETrackType::AUDIO:
+                return switchAudioTrack(trackIndex);
+            case ETrackType::VIDEO:
+                // 视频轨切换牵动整条渲染链与硬解绑定，本期不支持
+                ALOGE("VEPlayer::%s video track switch not supported", __FUNCTION__);
+                return VE_PLAYER_ERROR_UNSUPPORTED_TRACK;
+        }
+        return VE_OK;
+    }
+
+    VEResult VEPlayer::switchAudioTrack(int trackIndex) {
+        const int slot = mMediaInfo->slotOfTrackIndex(trackIndex);
+        const VETrackInfo &newTrack = mMediaInfo->tracks[slot];
+        const VETrackInfo *oldTrack = mMediaInfo->audioTrack();
+        if (oldTrack && oldTrack->index == trackIndex) {
+            return VE_OK;   // 已经是它了
+        }
+
+        const double resumeMs = mMediaClock ? mMediaClock->getCurrentMediaTime() / 1000.0 : 0.0;
+        const bool sameFormat =
+                oldTrack != nullptr &&
+                oldTrack->codecId == newTrack.codecId &&
+                oldTrack->sampleRate == newTrack.sampleRate &&
+                oldTrack->channels == newTrack.channels;
+
+        ALOGI("VEPlayer::%s -> track %d (%s), resume at %.0f ms", __FUNCTION__,
+              trackIndex, sameFormat ? "same format" : "rebuild", resumeMs);
+
+        // demux 换流：读位置还停在原处，靠随后的全链 seek 拉回播放位置。
+        // 单 AVFormatContext 下这一步无法只影响音频——所以视频链也要
+        // 跟着重解当前 GOP，表现为画面短暂定格(不清屏，因此不黑屏)。
+        mSource->selectTrack(trackIndex);
+        mMediaInfo->activeAudio = slot;
+
+        if (!sameFormat && mAudioDecoder && mAudioOutput) {
+            // 参数变了：解码器与设备都要按新轨重建
+            const VEAudioOutputConfig audioOut =
+                    chooseAudioOutputConfig(newTrack.sampleRate, newTrack.channels);
+            mAudioDecoder->stop();
+            mAudioDecoder->release();
+            mAudioOutput->stop();
+            mAudioOutput->release();
+
+            if (mAudioDecodeLooper) {
+                mAudioDecodeLooper->unregisterHandler(mAudioDecoder->id());
+                mAudioDecodeLooper->stop();
+            }
+            if (mAudioOutputLooper) {
+                mAudioOutputLooper->unregisterHandler(mAudioOutput->id());
+                mAudioOutputLooper->stop();
+            }
+
+            mAudioOutputLooper = std::make_shared<ALooper>();
+            mAudioOutputLooper->setName("audio_render");
+            mAudioOutputLooper->start(false);
+            mAudioOutput = std::make_shared<VEAudioRender>(mRenderNotifyMsg, mAVSync);
+            mAudioOutputLooper->registerHandler(mAudioOutput);
+            mAudioOutput->prepare(audioOut);
+            if (mPlaybackSpeed != 1.0f) {
+                mAudioOutput->setSpeed(mPlaybackSpeed, resumeMs * 1000.0);
+            }
+
+            mAudioDecodeLooper = std::make_shared<ALooper>();
+            mAudioDecodeLooper->setName("adec_thread");
+            mAudioDecodeLooper->start(false);
+            mAudioDecoder = std::make_shared<VEAudioDecoder>(mRenderNotifyMsg);
+            mAudioDecodeLooper->registerHandler(
+                    std::dynamic_pointer_cast<AHandler>(mAudioDecoder));
+            mAudioDecoder->prepare(mSource, audioOut,
+                                   std::static_pointer_cast<IFrameSink>(mAudioOutput));
+
+            setRole(ROLE_IDX_AUDIO_DECODER, mAudioDecoder, mAudioDecodeLooper,
+                    EComponentType::E_COMPONENT_TYPE_AUDIO_DECODER);
+            setRole(ROLE_IDX_AUDIO_RENDER, mAudioOutput, mAudioOutputLooper,
+                    EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER);
+        }
+
+        // 全链精准 seek 回当前位置：新轨从这里开始出声，视频重解当前 GOP
+        startSeek(resumeMs);
+        notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_TRACK_CHANGED, trackIndex,
+                   "audio track changed", nullptr);
+        return VE_OK;
+    }
+
+    VEResult VEPlayer::setupSubtitleChain() {
+        if (mSubtitle != nullptr) {
+            return VE_OK;
+        }
+        mSubtitleLooper = std::make_shared<ALooper>();
+        mSubtitleLooper->setName("subtitle_thread");
+        mSubtitleLooper->start(false);
+        mSubtitle = std::make_shared<VESubtitleTrack>(mRenderNotifyMsg, mMediaClock);
+        mSubtitleLooper->registerHandler(mSubtitle);
+        // 注册进 Role 表：从此它像其它组件一样参与 seek/teardown 握手
+        setRole(ROLE_IDX_SUBTITLE, mSubtitle, mSubtitleLooper,
+                EComponentType::E_COMPONENT_TYPE_SUBTITLE);
+        return VE_OK;
+    }
+
+    VEResult VEPlayer::onAddSubtitle(const std::shared_ptr<AMessage> &msg) {
+        std::string path;
+        if (!msg->findString("path", path) || path.empty()) {
+            return VE_INVALID_PARAMS;
+        }
+        // 外挂字幕文件很小(MB 级)，一次性读完解成 cue 列表，
+        // 之后完全脱离 demux —— 时间轴直接对主时钟
+        AVFormatContext *ctx = nullptr;
+        if (avformat_open_input(&ctx, path.c_str(), nullptr, nullptr) != 0) {
+            ALOGE("VEPlayer::%s open subtitle file failed: %s", __FUNCTION__, path.c_str());
+            return VE_UNKNOWN_ERROR;
+        }
+        if (avformat_find_stream_info(ctx, nullptr) < 0) {
+            avformat_close_input(&ctx);
+            return VE_UNKNOWN_ERROR;
+        }
+        int streamIndex = -1;
+        for (unsigned i = 0; i < ctx->nb_streams; ++i) {
+            if (ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE) {
+                streamIndex = static_cast<int>(i);
+                break;
+            }
+        }
+        if (streamIndex < 0) {
+            avformat_close_input(&ctx);
+            return VE_INVALID_PARAMS;
+        }
+
+        AVStream *stream = ctx->streams[streamIndex];
+        const AVCodec *codec = avcodec_find_decoder(stream->codecpar->codec_id);
+        AVCodecContext *dec = codec ? avcodec_alloc_context3(codec) : nullptr;
+        if (dec == nullptr ||
+            avcodec_parameters_to_context(dec, stream->codecpar) < 0 ||
+            avcodec_open2(dec, codec, nullptr) != 0) {
+            if (dec) avcodec_free_context(&dec);
+            avformat_close_input(&ctx);
+            return VE_UNKNOWN_ERROR;
+        }
+
+        std::vector<VESubtitleTrack::Cue> cues;
+        AVPacket *pkt = av_packet_alloc();
+        while (pkt && av_read_frame(ctx, pkt) >= 0) {
+            if (pkt->stream_index == streamIndex) {
+                AVSubtitle sub;
+                memset(&sub, 0, sizeof(sub));
+                int got = 0;
+                if (avcodec_decode_subtitle2(dec, &sub, &got, pkt) >= 0 && got) {
+                    const int64_t basePts = (pkt->pts != AV_NOPTS_VALUE)
+                            ? av_rescale_q(pkt->pts, stream->time_base, AV_TIME_BASE_Q) : 0;
+                    int64_t startUs = basePts + sub.start_display_time * 1000;
+                    int64_t endUs = basePts + sub.end_display_time * 1000;
+                    if (endUs <= startUs) {
+                        endUs = startUs + (pkt->duration > 0
+                                ? av_rescale_q(pkt->duration, stream->time_base, AV_TIME_BASE_Q)
+                                : 3000000);
+                    }
+                    for (unsigned i = 0; i < sub.num_rects; ++i) {
+                        const AVSubtitleRect *r = sub.rects[i];
+                        if (r == nullptr) continue;
+                        std::string text;
+                        if (r->type == SUBTITLE_ASS && r->ass) {
+                            text = VESubtitleTrack::stripAss(r->ass);
+                        } else if (r->type == SUBTITLE_TEXT && r->text) {
+                            text = r->text;
+                        }
+                        if (!text.empty()) {
+                            cues.push_back({startUs, endUs, text});
+                        }
+                    }
+                    avsubtitle_free(&sub);
+                }
+            }
+            av_packet_unref(pkt);
+        }
+        if (pkt) av_packet_free(&pkt);
+        avcodec_free_context(&dec);
+        avformat_close_input(&ctx);
+
+        if (cues.empty()) {
+            ALOGW("VEPlayer::%s no cues parsed from %s", __FUNCTION__, path.c_str());
+            return VE_UNKNOWN_ERROR;
+        }
+
+        // 登记成虚拟轨(轨道号 >= kExternalTrackIndexBase，与容器内流区分)
+        const int trackIndex = mNextExternalTrackIndex++;
+        mExternalCues[trackIndex] = std::move(cues);
+        if (mMediaInfo) {
+            VETrackInfo t;
+            t.index = trackIndex;
+            t.streamIndex = -1;
+            t.type = ETrackType::SUBTITLE;
+            t.title = path.substr(path.find_last_of('/') + 1);
+            std::lock_guard<std::mutex> lk(mMutex);
+            mMediaInfo->tracks.push_back(t);
+        }
+        ALOGI("VEPlayer::%s external subtitle loaded as track %d (%zu cues)",
+              __FUNCTION__, trackIndex, mExternalCues[trackIndex].size());
+        return VE_OK;
+    }
+
+    void VEPlayer::setForceSoftwareDecoder(bool force) {
+        mUserForceSoftware = force;
+        ALOGI("VEPlayer::%s force software decoder = %d (takes effect on next prepare)",
+              __FUNCTION__, force);
+    }
+
+    void VEPlayer::setForceSlesAudio(bool force) {
+        mForceSlesAudio = force;
+        ALOGI("VEPlayer::%s force SLES audio = %d (takes effect on next prepare)",
+              __FUNCTION__, force);
+    }
+
+    std::string VEPlayer::getStatsJson() {
+        // 可跨线程调用：先在锁下取 shared_ptr 副本，之后各对象自己保证线程安全
+        std::shared_ptr<VEMediaClock> clock;
+        std::shared_ptr<VEMediaInfo> info;
+        {
+            std::lock_guard<std::mutex> lk(mMutex);
+            clock = mMediaClock;
+            info = mMediaInfo;
+        }
+
+        const char *stateName = "IDLE";
+        switch (mState) {
+            case STATE_PREPARING: stateName = "PREPARING"; break;
+            case STATE_PREPARED:  stateName = "PREPARED";  break;
+            case STATE_STARTED:   stateName = "STARTED";   break;
+            case STATE_PAUSED:    stateName = "PAUSED";    break;
+            case STATE_SEEKING:   stateName = "SEEKING";   break;
+            case STATE_COMPLETED: stateName = "COMPLETED"; break;
+            case STATE_RELEASING: stateName = "RELEASING"; break;
+            case STATE_ERROR:     stateName = "ERROR";     break;
+            default: break;
+        }
+
+        int64_t rendered = 0, dropped = 0;
+        if (mVideoHardware) {
+            auto hw = std::dynamic_pointer_cast<VEMediaCodecVideoDecoder>(mVideoDecoder);
+            if (hw) { rendered = hw->renderedFrames(); dropped = hw->droppedFrames(); }
+        } else if (mVideoRender) {
+            rendered = mVideoRender->renderedFrames();
+            dropped = mVideoRender->droppedFrames();
+        }
+
+        int audioQueue = 0, videoQueue = 0;
+        int64_t bufferedUs = 0;
+        const char *sourceKind = "none";
+        if (mSource) {
+            auto demux = std::dynamic_pointer_cast<VEDemux>(mSource);
+            if (demux) {
+                audioQueue = demux->getQueueDepth(ETrackType::AUDIO);
+                videoQueue = demux->getQueueDepth(ETrackType::VIDEO);
+                bufferedUs = demux->getBufferedDurationUs();
+            }
+            sourceKind = (VESourceRegistry::schemeOf(mPath) == "file") ? "local" : "network";
+        }
+
+        const int64_t avOffsetUs = mAVSync ? mAVSync->getLastDiffUs() : 0;
+        const char *audioBackend = mAudioOutput ? mAudioOutput->backendName() : "none";
+        const char *videoCodecName = "-";
+        if (info) {
+            const VETrackInfo *v = info->videoTrack();
+            if (v) {
+                const AVCodec *c = avcodec_find_decoder(v->codecId);
+                if (c && c->name) videoCodecName = c->name;
+            }
+        }
+
+        char buf[768];
+        snprintf(buf, sizeof(buf),
+                 "{\"state\":\"%s\",\"decoder\":\"%s\",\"codec\":\"%s\","
+                 "\"audioBackend\":\"%s\",\"avOffsetMs\":%lld,"
+                 "\"renderedFrames\":%lld,\"droppedFrames\":%lld,"
+                 "\"audioQueue\":%d,\"videoQueue\":%d,\"bufferedMs\":%lld,"
+                 "\"source\":\"%s\",\"speed\":%.2f,\"buffering\":%s,"
+                 "\"positionMs\":%lld,\"durationMs\":%lld}",
+                 stateName,
+                 mVideoHardware ? "hardware" : (mMediaInfo && mMediaInfo->hasVideo() ? "software" : "-"),
+                 videoCodecName, audioBackend,
+                 static_cast<long long>(avOffsetUs / 1000),
+                 static_cast<long long>(rendered), static_cast<long long>(dropped),
+                 audioQueue, videoQueue,
+                 static_cast<long long>(bufferedUs / 1000),
+                 sourceKind, mPlaybackSpeed, mBuffering ? "true" : "false",
+                 static_cast<long long>(clock ? clock->getCurrentMediaTime() / 1000 : 0),
+                 static_cast<long long>(info ? info->duration : 0));
+        return std::string(buf);
     }
 
     VEResult VEPlayer::onStart(std::shared_ptr<AMessage> msg) {
@@ -389,11 +961,7 @@ namespace VE {
             }
             mMediaClock->resume();
         }
-        if (mVideoRender)  mVideoRender->start();
-        if (mAudioOutput)  mAudioOutput->start();
-        if (mVideoDecoder) mVideoDecoder->start();
-        if (mAudioDecoder) mAudioDecoder->start();
-        if (mDemux)        mDemux->start();
+        forEachRole([](Role &r) { r.comp->start(); });
         startProgressTick();
         ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
@@ -407,6 +975,7 @@ namespace VE {
         }
         mSeekStage = SEEK_STAGE_NONE;
         mAbortSeek = false;
+        mBuffering = false;
         dropQueuedSeeks();          // stop 后排队的 seek 已无意义
         ++mFlowSeq;                 // 作废在途的 seek 阶段超时
         setAllRoles(ROLE_ACTIVE);   // seek 中途被 stop：角色收拢回稳态
@@ -415,11 +984,7 @@ namespace VE {
         if (mMediaClock) {
             mMediaClock->resetClock();
         }
-        if (mVideoRender)  mVideoRender->stop();
-        if (mAudioOutput)  mAudioOutput->stop();
-        if (mVideoDecoder) mVideoDecoder->stop();
-        if (mAudioDecoder) mAudioDecoder->stop();
-        if (mDemux)        mDemux->stop();
+        forEachRole([](Role &r) { r.comp->stop(); });
         // stop 可能中断了在途 seek，排队的 reset/release 需要在这里接力
         processPendingActions();
         ALOGV("VEPlayer::%s exit", __FUNCTION__);
@@ -442,11 +1007,7 @@ namespace VE {
         if (mMediaClock) {
             mMediaClock->pause();
         }
-        if (mVideoRender)  mVideoRender->pause();
-        if (mAudioOutput)  mAudioOutput->pause();
-        if (mVideoDecoder) mVideoDecoder->pause();
-        if (mAudioDecoder) mAudioDecoder->pause();
-        if (mDemux)        mDemux->pause();
+        forEachRole([](Role &r) { r.comp->pause(); });
         ALOGV("VEPlayer::%s exit", __FUNCTION__);
         return VE_OK;
     }
@@ -479,7 +1040,7 @@ namespace VE {
                     startSeek(action.seekMs);
                     break;
                 case PendingAction::ACTION_SET_DATA_SOURCE:
-                    if (mDemux != nullptr) {
+                    if (mSource != nullptr) {
                         ALOGE("VEPlayer::processPendingActions must reset before new source");
                     } else {
                         setupDataSource(action.path);
@@ -493,6 +1054,15 @@ namespace VE {
                     break;
                 case PendingAction::ACTION_RELEASE:
                     executeRelease(action.reply, action.wantsReply);
+                    break;
+                case PendingAction::ACTION_SET_SPEED:
+                    doSetSpeed(action.speed);
+                    break;
+                case PendingAction::ACTION_REBUILD_VIDEO:
+                    rebuildVideoAsSoftware();
+                    break;
+                case PendingAction::ACTION_SELECT_TRACK:
+                    doSelectTrack(action.trackIndex, action.deselect);
                     break;
             }
         }
@@ -526,6 +1096,7 @@ namespace VE {
         stopProgressTick();
         mSeekStage = SEEK_STAGE_NONE;
         mAbortSeek = false;
+        mBuffering = false;
         mState = STATE_RELEASING;
         mTeardownDone = std::move(onDone);
         ++mFlowSeq;
@@ -539,11 +1110,7 @@ namespace VE {
         // ① 停数据流：demux 停止读取，解码器/渲染器停止消费。
         //    每个存在的角色都要回 STOP_DONE 才能确认没有组件还在动数据。
         ALOGI("VEPlayer::teardown stage 1/2 - stopping data flow");
-        if (mVideoRender)  { mVideoRender->stop();  mVideoDisplayState = ROLE_STOPPING; }
-        if (mAudioOutput)  { mAudioOutput->stop();  mAudioRenderState  = ROLE_STOPPING; }
-        if (mVideoDecoder) { mVideoDecoder->stop(); mVideoDecState     = ROLE_STOPPING; }
-        if (mAudioDecoder) { mAudioDecoder->stop(); mAudioDecState     = ROLE_STOPPING; }
-        if (mDemux)        { mDemux->stop();        mSourceState       = ROLE_STOPPING; }
+        forEachRole([](Role &r) { r.comp->stop(); r.state = ROLE_STOPPING; });
         postFlowTimeout(kTeardownAckTimeoutUs);
     }
 
@@ -552,11 +1119,7 @@ namespace VE {
         //    所以只能投递消息过去，等 RELEASE_DONE 回执确认做完。
         ALOGI("VEPlayer::teardown stage 2/2 - releasing component resources");
         ++mFlowSeq;
-        if (mVideoRender)  { mVideoRender->release();  mVideoDisplayState = ROLE_RELEASING; }
-        if (mAudioOutput)  { mAudioOutput->release();  mAudioRenderState  = ROLE_RELEASING; }
-        if (mVideoDecoder) { mVideoDecoder->release(); mVideoDecState     = ROLE_RELEASING; }
-        if (mAudioDecoder) { mAudioDecoder->release(); mAudioDecState     = ROLE_RELEASING; }
-        if (mDemux)        { mDemux->release();        mSourceState       = ROLE_RELEASING; }
+        forEachRole([](Role &r) { r.comp->release(); r.state = ROLE_RELEASING; });
         postFlowTimeout(kTeardownAckTimeoutUs);
     }
 
@@ -576,33 +1139,44 @@ namespace VE {
 
         // 停止并 join 组件线程。资源已在上一步释放完，
         // 队列里即便还有残留消息也只是过期的解码/渲染消息，丢掉无妨。
-        const std::shared_ptr<ALooper> loopers[] = {
-                mVideoRenderLooper, mAudioOutputLooper,
-                mVideoDecodeLooper, mAudioDecodeLooper, mDemuxLooper
-        };
-        const std::shared_ptr<AHandler> handlers[] = {
-                mVideoRender, mAudioOutput, mVideoDecoder, mAudioDecoder, mDemux
-        };
-        for (size_t i = 0; i < sizeof(loopers) / sizeof(loopers[0]); ++i) {
-            if (loopers[i] && handlers[i]) {
-                loopers[i]->unregisterHandler(handlers[i]->id());
+        // 同一个组件可能占多个角色位(硬解解码器)，looper 去重后再停。
+        std::vector<std::shared_ptr<ALooper>> stopped;
+        for (auto &role : mRoles) {
+            if (!role.looper) {
+                continue;
             }
-            if (loopers[i]) {
-                loopers[i]->stop();
+            if (std::find(stopped.begin(), stopped.end(), role.looper) != stopped.end()) {
+                continue;
             }
+            stopped.push_back(role.looper);
+            auto handler = std::dynamic_pointer_cast<AHandler>(role.comp);
+            if (handler) {
+                role.looper->unregisterHandler(handler->id());
+            }
+            role.looper->stop();
+        }
+        for (auto &role : mRoles) {
+            role.comp.reset();
+            role.looper.reset();
+            role.state = ROLE_NONE;
+            role.componentType = EComponentType::E_COMPONENT_TYPE_UNKNOW;
         }
 
         mVideoRender.reset();
         mAudioOutput.reset();
         mVideoDecoder.reset();
         mAudioDecoder.reset();
-        mDemux.reset();
+        mSubtitle.reset();
+        mSubtitleLooper.reset();
+        mExternalCues.clear();
+        mNextExternalTrackIndex = kExternalTrackIndexBase;
+        mSource.reset();
 
         mVideoRenderLooper.reset();
         mAudioOutputLooper.reset();
         mVideoDecodeLooper.reset();
         mAudioDecodeLooper.reset();
-        mDemuxLooper.reset();
+        mSourceLooper.reset();
 
         mAVSync.reset();
         {
@@ -624,8 +1198,8 @@ namespace VE {
             // 排到当前流程完成后执行；若在途的是 seek，请求其尽快中止；
             // 若在途的是 prepare，中断其阻塞 IO 让它尽快失败返回
             mAbortSeek = (mSeekStage != SEEK_STAGE_NONE);
-            if (mState == STATE_PREPARING && mDemux) {
-                mDemux->abort();
+            if (mState == STATE_PREPARING && mSource) {
+                mSource->abort();
             }
             dropQueuedSeeks();
             PendingAction action;
@@ -660,8 +1234,8 @@ namespace VE {
             // 保证 onDestroy 的同步 release 不被慢 seek 拖满整个阶段链；
             // 在途的 prepare 中断其阻塞 IO
             mAbortSeek = (mSeekStage != SEEK_STAGE_NONE);
-            if (mState == STATE_PREPARING && mDemux) {
-                mDemux->abort();
+            if (mState == STATE_PREPARING && mSource) {
+                mSource->abort();
             }
             dropQueuedSeeks();
             PendingAction action;
@@ -792,12 +1366,59 @@ namespace VE {
     }
 
     VEResult VEPlayer::setPlaySpeed(float speed) {
-        // 时钟侧支持变速，但音频还没做变速重采样(sonic 已链接未接入)。
-        // 只改时钟会让音频仍按 1x 播放而时钟按 N 倍走，反而彻底破坏同步，
-        // 因此这里明确返回不支持，避免上层以为设置成功。
-        ALOGW("VEPlayer::%s speed=%f not supported yet (audio time-stretch missing)",
-              __FUNCTION__, speed);
-        return VE_INVALID_OPERATION;
+        if (speed < kMinPlaybackSpeed || speed > kMaxPlaybackSpeed) {
+            ALOGE("VEPlayer::%s speed %.2f out of range [%.1f, %.1f]", __FUNCTION__,
+                  speed, kMinPlaybackSpeed, kMaxPlaybackSpeed);
+            return VE_INVALID_PARAMS;
+        }
+        auto msg = std::make_shared<AMessage>(kWhatSetSpeed, shared_from_this());
+        msg->setFloat("speed", speed);
+        msg->post();
+        return VE_OK;
+    }
+
+    VEResult VEPlayer::onSetSpeed(const std::shared_ptr<AMessage> &msg) {
+        float speed = 1.0f;
+        msg->findFloat("speed", &speed);
+        if (isFlowBusy()) {
+            // 流程在途：排队，与队尾同类型请求合并(连续拖动速率条时只做最后一次)
+            if (!mPendingActions.empty() &&
+                mPendingActions.back().type == PendingAction::ACTION_SET_SPEED) {
+                mPendingActions.back().speed = speed;
+            } else {
+                PendingAction action;
+                action.type = PendingAction::ACTION_SET_SPEED;
+                action.speed = speed;
+                mPendingActions.push_back(action);
+            }
+            return VE_OK;
+        }
+        return doSetSpeed(speed);
+    }
+
+    VEResult VEPlayer::doSetSpeed(float speed) {
+        if (speed == mPlaybackSpeed) {
+            return VE_OK;
+        }
+        ALOGI("VEPlayer::%s %.2f -> %.2f", __FUNCTION__, mPlaybackSpeed, speed);
+        mPlaybackSpeed = speed;
+
+        // 时钟先按旧速率结算已播时间再改速率(VEMediaClock 内部处理)，
+        // 之后视频侧自动跟随：AVSync 拿新速率折算等待时间，落后就丢帧
+        double anchorUs = 0;
+        if (mMediaClock) {
+            anchorUs = mMediaClock->getCurrentMediaTime();
+            mMediaClock->setPlaybackSpeed(speed);
+        }
+        // 音频侧要重建变速器状态并清掉设备里的旧速率 PCM
+        if (mAudioOutput) {
+            mAudioOutput->setSpeed(speed, anchorUs);
+        }
+        // 字幕定时器是按旧速率算的真实时长，也要重排
+        if (mSubtitle) {
+            mSubtitle->setSpeed(speed);
+        }
+        return VE_OK;
     }
 
     void VEPlayer::onEOS() {
@@ -836,12 +1457,8 @@ namespace VE {
             stopProgressTick();
             // 完成后的轻量收敛：暂停组件与时钟。音频渲染器在 EOS 帧处
             // 已自停设备，这里是统一兜底，保证 COMPLETED 是真正的静止态
-            if (mMediaClock)   mMediaClock->pause();
-            if (mVideoRender)  mVideoRender->pause();
-            if (mAudioOutput)  mAudioOutput->pause();
-            if (mVideoDecoder) mVideoDecoder->pause();
-            if (mAudioDecoder) mAudioDecoder->pause();
-            if (mDemux)        mDemux->pause();
+            if (mMediaClock) mMediaClock->pause();
+            forEachRole([](Role &r) { r.comp->pause(); });
             // 收尾补一次满进度，避免进度条停在最后一次 tick 的位置
             if (mMediaInfo != nullptr && mMediaInfo->duration > 0) {
                 notifyProgress(static_cast<int64_t>(mMediaInfo->duration) * 1000);
@@ -864,9 +1481,14 @@ namespace VE {
         mViewWidth = viewWidth;
         mViewHeight = viewHeight;
 
-        // 只有在mVideoRender已经初始化后才调用setSurface
+        // 软解走显示组件；硬解时 surface 绑在 codec 上，要通知解码器换绑
         if (mVideoRender != nullptr) {
             mVideoRender->setSurface(mWindow, mViewWidth, mViewHeight);
+        } else if (mVideoHardware && mVideoDecoder != nullptr) {
+            auto hw = std::dynamic_pointer_cast<VEMediaCodecVideoDecoder>(mVideoDecoder);
+            if (hw) {
+                hw->setSurface(mWindow);
+            }
         }
 
         ALOGV("VEPlayer::%s exit", __FUNCTION__);
@@ -907,6 +1529,21 @@ namespace VE {
             case VE_NOTIFY_EVENT_ERROR: {
                 int32_t code = 0;
                 msg->findInt32("arg1", &code);
+                int32_t hint = 0;
+                msg->findInt32("arg2", &hint);
+                if (hint == VE_INFO_DECODER_FALLBACK && mState != STATE_RELEASING &&
+                    !mDecoderPolicy.forceSoftware) {
+                    // 硬解故障不是播放失败：换软解重建视频链继续播。
+                    // 走 PendingAction 串行化，避免与在途的 seek/切轨打架。
+                    if (isFlowBusy()) {
+                        PendingAction action;
+                        action.type = PendingAction::ACTION_REBUILD_VIDEO;
+                        mPendingActions.push_back(action);
+                    } else {
+                        rebuildVideoAsSoftware();
+                    }
+                    break;
+                }
                 if (mState == STATE_RELEASING) {
                     // 拆解本身就是最彻底的收敛；此刻改状态会击穿
                     // "RELEASING 期间 defer"的防线，只记日志
@@ -921,6 +1558,67 @@ namespace VE {
                 notifyError(code, "component reported error");
                 dropQueuedSeeks();
                 processPendingActions();   // 排队的 reset/release 是 ERROR 态的唯一出路
+                break;
+            }
+            case VE_NOTIFY_EVENT_SUBTITLE: {
+                std::string text;
+                msg->findString("text", text);
+                notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_SUBTITLE, 0, text, nullptr);
+                break;
+            }
+            case VE_NOTIFY_EVENT_SUBTITLE_CLEAR: {
+                notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_SUBTITLE_CLEAR, 0, "", nullptr);
+                break;
+            }
+            case VE_NOTIFY_EVENT_SELECT_TRACK_DONE: {
+                // demux 侧换流完成；播放器的后续动作(重建/seek)已经在
+                // doSelectTrack 里同步发起，这里只记日志
+                int32_t ret = 0;
+                msg->findInt32("arg1", &ret);
+                ALOGI("VEPlayer::%s source select track done, ret=%d", __FUNCTION__, ret);
+                break;
+            }
+            case VE_NOTIFY_EVENT_BUFFERING_START: {
+                int32_t percent = 0;
+                msg->findInt32("arg1", &percent);
+                notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_BUFFERING_START, percent,
+                           "buffering start", nullptr);
+                // 只在正常播放时才真的停数据面：seek/teardown 在途时
+                // 它们自己会重建数据流，这里插手只会打架
+                if (mState == STATE_STARTED && !isFlowBusy() && !mBuffering) {
+                    mBuffering = true;
+                    ALOGI("VEPlayer::%s buffering, pausing data flow", __FUNCTION__);
+                    stopProgressTick();
+                    if (mMediaClock) mMediaClock->pause();
+                    // 不动 mState、不动 seek 流程状态：这是内部暂停，
+                    // 对外仍然是 STARTED
+                    forEachRole([](Role &r) { r.comp->pause(); });
+                }
+                break;
+            }
+            case VE_NOTIFY_EVENT_BUFFERING_UPDATE: {
+                int32_t percent = 0;
+                msg->findInt32("arg1", &percent);
+                notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_BUFFERING_UPDATE, percent,
+                           "buffering update", nullptr);
+                break;
+            }
+            case VE_NOTIFY_EVENT_BUFFERING_END: {
+                int32_t percent = 0;
+                msg->findInt32("arg1", &percent);
+                notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_BUFFERING_END, percent,
+                           "buffering end", nullptr);
+                if (mBuffering) {
+                    mBuffering = false;
+                    // 缓冲期间用户可能按了暂停：那时 mState 已变，
+                    // 不能擅自恢复播放
+                    if (mState == STATE_STARTED && !isFlowBusy()) {
+                        ALOGI("VEPlayer::%s buffering done, resuming", __FUNCTION__);
+                        forEachRole([](Role &r) { r.comp->start(); });
+                        if (mMediaClock) mMediaClock->resume();
+                        startProgressTick();
+                    }
+                }
                 break;
             }
             case VE_NOTIFY_EVENT_PREPARE_DONE: {
@@ -1014,15 +1712,31 @@ namespace VE {
     // 角色状态机
     // ---------------------------------------------------------------------
 
-    VEPlayer::RoleState *VEPlayer::roleStateFor(int32_t type) {
-        switch (type) {
-            case EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER:  return &mVideoDisplayState;
-            case EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER:  return &mAudioRenderState;
-            case EComponentType::E_COMPONENT_TYPE_VIDEO_DECODER: return &mVideoDecState;
-            case EComponentType::E_COMPONENT_TYPE_AUDIO_DECODER: return &mAudioDecState;
-            case EComponentType::E_COMPONENT_TYPE_DEMUX:         return &mSourceState;
-            default:                                             return nullptr;
+    void VEPlayer::setRole(RoleIndex idx, const std::shared_ptr<IVEComponent> &comp,
+                           const std::shared_ptr<ALooper> &looper, int32_t componentType) {
+        mRoles[idx].comp = comp;
+        mRoles[idx].looper = looper;
+        mRoles[idx].state = comp ? ROLE_ACTIVE : ROLE_NONE;
+        mRoles[idx].componentType = componentType;
+    }
+
+    void VEPlayer::forEachRole(const std::function<void(Role &)> &fn) {
+        for (auto &role : mRoles) {
+            if (role.comp) {
+                fn(role);
+            }
         }
+    }
+
+    VEPlayer::RoleState *VEPlayer::roleStateFor(int32_t type) {
+        // 同一个组件可能占多个槽位(硬解解码器同时是解码与显示)，
+        // 因此按 componentType 精确匹配槽位，而不是按对象
+        for (auto &role : mRoles) {
+            if (role.state != ROLE_NONE && role.componentType == type) {
+                return &role.state;
+            }
+        }
+        return nullptr;
     }
 
     bool VEPlayer::acceptAck(int32_t type, RoleState expectIng, RoleState done) {
@@ -1042,10 +1756,8 @@ namespace VE {
     }
 
     bool VEPlayer::rolesAllIn(RoleState done) const {
-        const RoleState roles[] = { mSourceState, mAudioDecState, mVideoDecState,
-                                    mAudioRenderState, mVideoDisplayState };
-        for (RoleState s : roles) {
-            if (s != ROLE_NONE && s != done) {
+        for (const auto &role : mRoles) {
+            if (role.state != ROLE_NONE && role.state != done) {
                 return false;
             }
         }
@@ -1053,17 +1765,20 @@ namespace VE {
     }
 
     void VEPlayer::setAllRoles(RoleState s) {
-        if (mSourceState != ROLE_NONE)       mSourceState = s;
-        if (mAudioDecState != ROLE_NONE)     mAudioDecState = s;
-        if (mVideoDecState != ROLE_NONE)     mVideoDecState = s;
-        if (mAudioRenderState != ROLE_NONE)  mAudioRenderState = s;
-        if (mVideoDisplayState != ROLE_NONE) mVideoDisplayState = s;
+        for (auto &role : mRoles) {
+            if (role.state != ROLE_NONE) {
+                role.state = s;
+            }
+        }
     }
 
     bool VEPlayer::anyRoleExists() const {
-        return mSourceState != ROLE_NONE || mAudioDecState != ROLE_NONE ||
-               mVideoDecState != ROLE_NONE || mAudioRenderState != ROLE_NONE ||
-               mVideoDisplayState != ROLE_NONE;
+        for (const auto &role : mRoles) {
+            if (role.state != ROLE_NONE) {
+                return true;
+            }
+        }
+        return false;
     }
 
     void VEPlayer::postFlowTimeout(int64_t delayUs) {
@@ -1083,9 +1798,14 @@ namespace VE {
             // teardown 超时：release 必须有界，强推收尾。
             // 阶段①卡住 → 跳过等待直接进入释放阶段；阶段②卡住 → 直接收尾。
             // 残余风险(旧组件迟到事件)由 pipelineGen 兜底。
-            if (rolesAllIn(ROLE_RELEASED) || mSourceState == ROLE_RELEASING ||
-                mAudioDecState == ROLE_RELEASING || mVideoDecState == ROLE_RELEASING ||
-                mAudioRenderState == ROLE_RELEASING || mVideoDisplayState == ROLE_RELEASING) {
+            bool inReleaseStage = rolesAllIn(ROLE_RELEASED);
+            for (const auto &role : mRoles) {
+                if (role.state == ROLE_RELEASING) {
+                    inReleaseStage = true;
+                    break;
+                }
+            }
+            if (inReleaseStage) {
                 ALOGW("VEPlayer::onFlowTimeout teardown release stage timed out, force finish");
                 finishTeardownAndContinue();
             } else {
@@ -1116,17 +1836,14 @@ namespace VE {
         ++mFlowSeq;
         mSeekStage = SEEK_STAGE_NONE;
         mAbortSeek = false;
+        mBuffering = false;
         setAllRoles(ROLE_ACTIVE);
         stopProgressTick();
         if (mMediaClock) {
             mMediaClock->pause();
         }
         // fire-and-forget 停掉数据面(组件回的 STOP_DONE 会被角色守卫丢弃)
-        if (mVideoRender)  mVideoRender->stop();
-        if (mAudioOutput)  mAudioOutput->stop();
-        if (mVideoDecoder) mVideoDecoder->stop();
-        if (mAudioDecoder) mAudioDecoder->stop();
-        if (mDemux)        mDemux->stop();
+        forEachRole([](Role &r) { r.comp->stop(); });
     }
 
     // ---------------------------------------------------------------------
@@ -1206,11 +1923,7 @@ namespace VE {
             mMediaClock->pause();
         }
 
-        if (mVideoRender)  { mVideoRender->pause();  mVideoDisplayState = ROLE_PAUSING; }
-        if (mAudioOutput)  { mAudioOutput->pause();  mAudioRenderState  = ROLE_PAUSING; }
-        if (mVideoDecoder) { mVideoDecoder->pause(); mVideoDecState     = ROLE_PAUSING; }
-        if (mAudioDecoder) { mAudioDecoder->pause(); mAudioDecState     = ROLE_PAUSING; }
-        if (mDemux)        { mDemux->pause();        mSourceState       = ROLE_PAUSING; }
+        forEachRole([](Role &r) { r.comp->pause(); r.state = ROLE_PAUSING; });
         postFlowTimeout(kAckTimeoutUs);
     }
 
@@ -1221,11 +1934,7 @@ namespace VE {
         ++mFlowSeq;
 
         const double target = mSeekTargetMs;
-        if (mVideoRender)  { mVideoRender->seekTo(target);  mVideoDisplayState = ROLE_SEEKING; }
-        if (mAudioOutput)  { mAudioOutput->seekTo(target);  mAudioRenderState  = ROLE_SEEKING; }
-        if (mVideoDecoder) { mVideoDecoder->seekTo(target); mVideoDecState     = ROLE_SEEKING; }
-        if (mAudioDecoder) { mAudioDecoder->seekTo(target); mAudioDecState     = ROLE_SEEKING; }
-        if (mDemux)        { mDemux->seekTo(target);        mSourceState       = ROLE_SEEKING; }
+        forEachRole([target](Role &r) { r.comp->seekTo(target); r.state = ROLE_SEEKING; });
         postFlowTimeout(kAckTimeoutUs);
     }
 
@@ -1252,7 +1961,7 @@ namespace VE {
             // 有视频且 surface 就绪时以首帧上屏作为 seek 完成的判据；
             // 暂停态下也要出这一帧，否则 seek 后画面不会更新。
             // 无 surface 时永远等不到首帧，直接走完成分支(E2)。
-            if (mDemux)        mDemux->start();
+            if (mSource)        mSource->start();
             if (mVideoDecoder) mVideoDecoder->start();
             if (mAudioDecoder) mAudioDecoder->start();
             mVideoRender->start();
@@ -1265,7 +1974,7 @@ namespace VE {
             if (mStateBeforeSeek == STATE_STARTED) {
                 if (mAudioOutput)  mAudioOutput->start();
                 if (mAudioDecoder) mAudioDecoder->start();
-                if (mDemux)        mDemux->start();
+                if (mSource)        mSource->start();
             }
             seekFinish();
         }
@@ -1279,11 +1988,7 @@ namespace VE {
 
         if (mStateBeforeSeek == STATE_STARTED) {
             mState = STATE_STARTED;
-            if (mVideoRender)  mVideoRender->start();
-            if (mAudioOutput)  mAudioOutput->start();
-            if (mVideoDecoder) mVideoDecoder->start();
-            if (mAudioDecoder) mAudioDecoder->start();
-            if (mDemux)        mDemux->start();
+            forEachRole([](Role &r) { r.comp->start(); });
             if (mMediaClock) {
                 mMediaClock->resume();
             }
@@ -1292,11 +1997,7 @@ namespace VE {
         } else {
             // 暂停态 seek：预览帧已经上屏，重新回到暂停
             mState = STATE_PAUSED;
-            if (mVideoRender)  mVideoRender->pause();
-            if (mAudioOutput)  mAudioOutput->pause();
-            if (mVideoDecoder) mVideoDecoder->pause();
-            if (mAudioDecoder) mAudioDecoder->pause();
-            if (mDemux)        mDemux->pause();
+            forEachRole([](Role &r) { r.comp->pause(); });
             if (mMediaClock) {
                 // 冻结时钟，否则暂停期间它会一直外推，恢复播放时视频会被判定为落后
                 mMediaClock->pause();

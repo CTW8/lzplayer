@@ -7,6 +7,7 @@
 
 #include "IVideoRender.h"
 #include "IFrameSink.h"
+#include "IVEComponent.h"
 #include "AHandler.h"
 #include "VEAVsync.h"
 #include <memory>
@@ -16,33 +17,39 @@
 
 namespace VE {
 
-    class VEVideoDisplay :public AHandler, public IFrameSink{
+    class VEVideoDisplay :public AHandler, public IFrameSink, public IVEComponent{
     public:
         VEVideoDisplay(const std::shared_ptr<AMessage> &notify,
                        const std::shared_ptr<VEAVsync> &avSync);
         ~VEVideoDisplay() override;
 
         /// 推模型下显示端不再持有解码器：帧由解码器 queueFrame 推进来
-        VEResult prepare(ANativeWindow *win, int width, int height, int fps);
+        /// rotationDegrees: 容器标注的画面旋转角(0/90/180/270)，竖拍视频靠它摆正
+        VEResult prepare(ANativeWindow *win, int width, int height, int fps,
+                         int rotationDegrees);
 
         /// IFrameSink：解码器线程调用，转投自己的 looper(盖当前队列代次)
         void queueFrame(const std::shared_ptr<VEFrame> &frame,
                         const std::shared_ptr<AMessage> &consumedReply) override;
 
-        // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口
-        VEResult start();
+        // IVEComponent：命令面，VEPlayer 按 Role 表统一扇出
+        VEResult start() override;
 
-        VEResult stop();
+        VEResult stop() override;
 
-        VEResult seekTo(double timestampMs);
+        VEResult seekTo(double timestampMs) override;
 
-        VEResult flush();
+        VEResult flush() override;
 
-        VEResult pause();
+        VEResult pause() override;
 
-        VEResult release();
+        VEResult release() override;
 
         VEResult setSurface(ANativeWindow *win, int width, int height);
+
+        // —— 诊断计数(原子，供其它线程读) ——
+        int64_t renderedFrames() const { return mRenderedFrames.load(); }
+        int64_t droppedFrames() const { return mDroppedFrames.load(); }
 
         enum {
             kWhatEOS = 'veos',
@@ -113,6 +120,8 @@ namespace VE {
         int mViewHeight = 0;
         int mFrameWidth = 0;
         int mFrameHeight = 0;
+        /// 容器标注的旋转角，建渲染器时传下去
+        int mRotationDegrees = 0;
 
         bool m_IsStarted = false;
         /// surface 被销毁时正在播放：新 surface 到来后自动复活渲染链
@@ -121,6 +130,9 @@ namespace VE {
         int32_t m_Epoch = 0;
         /// seek 后是否需要在首帧上屏时上报 FIRST_FRAME
         bool m_NotifyFirstFrame = false;
+        /// 诊断计数：累计上屏帧数与因落后被丢弃的帧数
+        std::atomic<int64_t> mRenderedFrames{0};
+        std::atomic<int64_t> mDroppedFrames{0};
         ANativeWindow *mWin = nullptr;
     };
 

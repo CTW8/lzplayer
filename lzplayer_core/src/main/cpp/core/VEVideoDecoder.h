@@ -10,6 +10,7 @@
 #include "thread/AMessage.h"
 #include "VEDemux.h"
 #include "IFrameSink.h"
+#include "IMediaDecoder.h"
 
 extern "C" {
 #include "libavformat/avformat.h"
@@ -21,28 +22,29 @@ extern "C" {
 
 namespace VE {
     class VEVideoDecoder
-            : public AHandler{
+            : public AHandler, public IMediaDecoder{
     public:
         VEVideoDecoder(std::shared_ptr<AMessage> &nofity);
         ~VEVideoDecoder() override;
 
-        /// sink: 解出的帧推给谁(视频显示)。推模型 + 消费回执 credit，
-        /// 取代原来的 readFrame 拉链路。
+        /// IMediaDecoder：sink 是解出的帧的去向(视频显示)，
+        /// 推模型 + 消费回执 credit。软解不使用 params。
         VEResult prepare(std::shared_ptr<IMediaSource> source,
-                         std::shared_ptr<IFrameSink> sink);
+                         std::shared_ptr<IFrameSink> sink,
+                         const VEBundle &params) override;
 
-        // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口
-        VEResult start();
+        // IVEComponent：命令面，VEPlayer 按 Role 表统一扇出
+        VEResult start() override;
 
-        VEResult pause();
+        VEResult pause() override;
 
-        VEResult stop();
+        VEResult stop() override;
 
-        VEResult flush();
+        VEResult flush() override;
 
-        VEResult seekTo(double timestampMs);
+        VEResult seekTo(double timestampMs) override;
 
-        VEResult release();
+        VEResult release() override;
 
     protected:
         void onMessageReceived(const std::shared_ptr<AMessage> &msg) override;
@@ -112,6 +114,9 @@ namespace VE {
         int32_t mEpoch = 0;
         /// 精准 seek 目标(微秒)，其之前解出的帧全部丢弃
         int64_t mSeekTargetUs = kNoSeekTarget;
+        /// 连续送入失败(坏包)计数，成功即清零；超上限才按致命错误处理。
+        /// 与 demux 的坏包容忍策略对齐，避免单个损坏包打死整个播放。
+        int mSendErrorCount = 0;
     };
 }
 #endif // __VE_VIDEO_DECODER__

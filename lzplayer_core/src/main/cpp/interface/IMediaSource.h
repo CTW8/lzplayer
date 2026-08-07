@@ -18,13 +18,25 @@ namespace VE {
     public:
         virtual ~IMediaSource() = default;
 
-        /// 取一个码流包。无数据时返回 VE_NOT_ENOUGH_DATA，调用方按
-        /// 固定间隔轮询重试(仿 NuPlayer dequeueAccessUnit + 10ms retry)。
-        /// 由解码器线程调用，实现方需自行保证线程安全。
-        virtual VEResult read(bool isAudio, std::shared_ptr<VEPacket> &packet) = 0;
+        /// 取一个指定类型轨道的码流包。无数据时返回 VE_NOT_ENOUGH_DATA，
+        /// 调用方按固定间隔轮询重试(仿 NuPlayer dequeueAccessUnit + 10ms retry)。
+        /// 由解码器/字幕组件线程调用，实现方需自行保证线程安全。
+        virtual VEResult read(ETrackType type, std::shared_ptr<VEPacket> &packet) = 0;
 
-        /// 媒体信息(时长/分辨率/采样率/编码参数等)，prepare 完成后才有效
+        /// 媒体信息(轨道列表/时长/编码参数等)，prepare 完成后才有效
         virtual std::shared_ptr<VEMediaInfo> getFileInfo() = 0;
+
+        /// read 返回 VE_NOT_ENOUGH_DATA 之后登记一次性通知：该轨道有新
+        /// 数据入队时 post 一次 notify 并清除登记。
+        ///
+        /// 取代"每 10ms 轮询一次"——轮询既有最高 10ms 的到达延迟，
+        /// 又在饥饿期间持续唤醒线程。one-shot 语义防通知风暴。
+        /// 默认实现为空(不支持通知的源，调用方会退化为轮询)。
+        virtual void requestReadNotify(ETrackType type,
+                                       const std::shared_ptr<AMessage> &notify) {
+            (void) type;
+            (void) notify;
+        }
     };
 }
 

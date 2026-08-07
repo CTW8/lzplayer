@@ -47,6 +47,23 @@ namespace VE {
 
         VEResult setSpeedRate(float speed);
 
+        /// 轨道列表(JSON)。PREPARED 之后才有内容。
+        std::string getTrackInfo();
+
+        /// 切换/关闭轨道。PREPARED/STARTED/PAUSED/COMPLETE 状态下可调。
+        VEResult selectTrack(int trackIndex);
+        VEResult deselectTrack(int trackIndex);
+
+        /// 加载外挂字幕文件
+        VEResult addExternalSubtitle(const std::string &path);
+
+        /// 运行期统计快照(JSON)，诊断面板用
+        std::string getStats();
+
+        /// 测试开关：下次 prepare 生效
+        VEResult setForceSoftwareDecoder(bool force);
+        VEResult setForceSlesAudio(bool force);
+
         VEResult setListener(std::shared_ptr<MediaPlayerListener> listener);
 
     private:

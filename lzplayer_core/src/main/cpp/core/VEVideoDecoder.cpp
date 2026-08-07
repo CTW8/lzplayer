@@ -5,8 +5,12 @@
 /// 不宜过深；够吸收渲染抖动即可。
 #define  FRAME_QUEUE_MAX_SIZE 6
 
-/// 上游包耗尽时的轮询重试间隔(同 NuPlayer DecoderBase 的 10ms)
-#define kStarveRetryUs 10000
+/// 饥饿时的兜底重试间隔。正常靠源的 one-shot 通知唤醒，
+/// 这条只防"源没发通知"的意外，取值可以放得很宽。
+#define kStarveBackstopUs 500000
+
+/// 连续坏包容忍上限，超过按致命错误处理(与 VEDemux 的同名策略一致)
+#define kMaxConsecutiveSendErrors 100
 
 namespace VE {
     namespace {
@@ -30,7 +34,9 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::prepare(std::shared_ptr<IMediaSource> demux,
-                                     std::shared_ptr<IFrameSink> sink) {
+                                     std::shared_ptr<IFrameSink> sink,
+                                     const VEBundle &params) {
+        (void) params;   // 软解不需要额外参数
         ALOGV("VEVideoDecoder::prepare enter");
         if (!demux || !sink) {
             ALOGE("VEVideoDecoder::prepare demux/sink is null");
@@ -145,10 +151,17 @@ namespace VE {
                 } else if (ret == VE_NOT_ENOUGH_DATA) {
                     // 上游饥饿是数据面状态：onDecode 已投延时重试，
                     // 不动命令态(mIsStarted)——这就是命令/数据分离
+                } else if (ret == VE_NO_MEMORY) {
+                    // credit 用尽(park)同样是纯数据面状态：渲染器消费一帧后
+                    // 回执会把 credit 还回来，kWhatFrameConsumed 那里重新拉起
+                    // 解码循环。这里**绝对不能**动 mIsStarted——它一旦为 false，
+                    // 复活条件 `mIsStarted && ...` 永远为假，整条解码链就死了，
+                    // 表现为起播一秒后声音断掉、画面冻结，而时钟还在实时外推。
                 } else {
                     ALOGI("VEVideoDecoder::onMessageReceived onDecode stopped, ret=%d", ret);
+                    // 到这里只剩 EOS 与真错误，才该收命令态
                     mIsStarted = false;
-                    if (ret != VE_EOS && ret != VE_NO_MEMORY) {
+                    if (ret != VE_EOS) {
                         postMessage(VE_NOTIFY_EVENT_ERROR, ret, 0, 0, nullptr);
                     }
                 }
@@ -213,12 +226,13 @@ namespace VE {
         mInFlightFrames = 0;
 
         mMediaInfo = mDemux->getFileInfo();
-        if (!mMediaInfo || !mMediaInfo->mVideoCodecParams) {
+        const VETrackInfo *track = mMediaInfo ? mMediaInfo->videoTrack() : nullptr;
+        if (track == nullptr || track->codecParams == nullptr) {
             ALOGE("VEVideoDecoder::onPrepare invalid media info or video codec params");
             return VE_INVALID_PARAMS;
         }
 
-        const AVCodec *video_codec = avcodec_find_decoder(mMediaInfo->mVideoCodecParams->codec_id);
+        const AVCodec *video_codec = avcodec_find_decoder(track->codecParams->codec_id);
         if (!video_codec) {
             ALOGE("VEVideoDecoder::onPrepare Could not find video codec");
             return VE_UNKNOWN_ERROR;
@@ -230,7 +244,7 @@ namespace VE {
             return VE_UNKNOWN_ERROR;
         }
 
-        if (avcodec_parameters_to_context(mVideoCtx, mMediaInfo->mVideoCodecParams) < 0) {
+        if (avcodec_parameters_to_context(mVideoCtx, track->codecParams) < 0) {
             ALOGE("VEVideoDecoder::onPrepare Could not copy codec parameters to codec context");
             avcodec_free_context(&mVideoCtx);
             mVideoCtx = nullptr;
@@ -275,6 +289,7 @@ namespace VE {
         mInFlightFrames = 0;
         if (mVideoCtx) {
             avcodec_flush_buffers(mVideoCtx);
+            mVideoCtx->skip_frame = AVDISCARD_DEFAULT;
         }
         return VE_OK;
     }
@@ -289,8 +304,11 @@ namespace VE {
         mSeekTargetUs = kNoSeekTarget;
         // 渲染器同轮 seek/flush 会清自己的队列(不发回执)，credit 由本侧清算
         mInFlightFrames = 0;
+        mSendErrorCount = 0;
         if (mVideoCtx) {
             avcodec_flush_buffers(mVideoCtx);
+            // 兜底：不经 seek 的 flush 要恢复完整解码(onSeek 随后会重设)
+            mVideoCtx->skip_frame = AVDISCARD_DEFAULT;
         }
         return VE_OK;
     }
@@ -302,6 +320,12 @@ namespace VE {
         onFlush();
         // demux 只能定位到关键帧，这里记录目标位置，解码时丢弃其之前的帧
         mSeekTargetUs = static_cast<int64_t>(timestampMs * 1000);
+        // 追赶期间跳过非参考帧：这段帧反正要丢，没必要完整解出来。
+        // 关键帧与参考帧仍然照解(后续帧依赖它们)，所以画面不会出错。
+        // 长 GOP 内容的 seek 追赶耗时会明显下降。
+        if (mVideoCtx) {
+            mVideoCtx->skip_frame = AVDISCARD_NONREF;
+        }
         return VE_OK;
     }
 
@@ -373,6 +397,8 @@ namespace VE {
                     }
                     ALOGI("VEVideoDecoder::onDecode reached seek target pts=%" PRId64, pts);
                     mSeekTargetUs = kNoSeekTarget;
+                    // 追赶结束，恢复完整解码
+                    mVideoCtx->skip_frame = AVDISCARD_DEFAULT;
                 }
 
                 AVFrame *decoded = frame->getFrame();
@@ -383,7 +409,7 @@ namespace VE {
                     frame->setFrameType(E_FRAME_TYPE_VIDEO);
                     frame->setPts(decoded->pts);
                     frame->setDts(decoded->pkt_dts);
-                    ALOGD("VEVideoDecoder::onDecode got a frame: pts=%" PRId64, decoded->pts);
+                    ALOGV("VEVideoDecoder::onDecode got a frame: pts=%" PRId64, decoded->pts);
                     queueFrame(frame);
                     return VE_OK;
                 }
@@ -405,13 +431,16 @@ namespace VE {
         } while (ret != AVERROR(EAGAIN));
 
         std::shared_ptr<VEPacket> packet;
-        ret = mDemux->read(false, packet);
+        ret = mDemux->read(ETrackType::VIDEO, packet);
         if (ret == VE_NOT_ENOUGH_DATA) {
-            // 上游饥饿：10ms 后轮询重试(NuPlayer DecoderBase 的做法)。
-            // 重试消息带当前 epoch，flush/seek 后自动作废；这是纯数据面
-            // 事件，不触碰命令态。
-            ALOGV("VEVideoDecoder::onDecode starving, retry in 10ms");
-            postDecode(kStarveRetryUs);
+            // 上游饥饿：登记一次性通知，数据入队时被唤醒(不再 10ms 轮询)。
+            // 消息带当前 epoch，flush/seek 后自动作废；这是纯数据面事件，
+            // 不触碰命令态。同时投一条兜底重试，防源实现漏发通知。
+            ALOGV("VEVideoDecoder::onDecode starving, waiting for data notify");
+            auto notify = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
+            notify->setInt32("epoch", mEpoch);
+            mDemux->requestReadNotify(ETrackType::VIDEO, notify);
+            postDecode(kStarveBackstopUs);
             return VE_NOT_ENOUGH_DATA;
         }
         if (!packet) {
@@ -423,16 +452,27 @@ namespace VE {
             ALOGI("VEVideoDecoder::onDecode got EOF packet");
             ret = avcodec_send_packet(mVideoCtx, nullptr);
         } else {
-            ALOGI("VEVideoDecoder::onDecode got normal packet, size=%d", packet->getPacket()->size);
+            ALOGV("VEVideoDecoder::onDecode got normal packet, size=%d", packet->getPacket()->size);
             ret = avcodec_send_packet(mVideoCtx, packet->getPacket());
         }
 
+        if (ret == AVERROR(EAGAIN)) {
+            // 解码器内部满了(极少见，上面已经排空过)：不算错误，下一轮继续收帧
+            return VE_OK;
+        }
+        if (ret == AVERROR_INVALIDDATA && ++mSendErrorCount < kMaxConsecutiveSendErrors) {
+            // 局部损坏的包：跳过继续解，别让单个坏包打死整个播放
+            // (demux 层同样容忍到 100 个连续坏包)
+            ALOGW("VEVideoDecoder::onDecode skip corrupt packet (%d in a row)", mSendErrorCount);
+            return VE_OK;
+        }
         if (ret < 0) {
             char errbuf[128];
             av_strerror(ret, errbuf, sizeof(errbuf));
-            ALOGE("VEVideoDecoder::onDecode Error sending packet: %s", errbuf);
-            return VE_ERROR_EAGAIN;
+            ALOGE("VEVideoDecoder::onDecode fatal error sending packet: %s", errbuf);
+            return VE_UNKNOWN_ERROR;
         }
+        mSendErrorCount = 0;
         return VE_OK;
     }
 

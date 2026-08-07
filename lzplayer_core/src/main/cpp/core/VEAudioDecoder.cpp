@@ -3,8 +3,12 @@
 
 #define AUDIO_FRAME_QUEUE_SIZE 50
 
-/// 上游包耗尽时的轮询重试间隔(同 NuPlayer DecoderBase 的 10ms)
-#define kStarveRetryUs 10000
+/// 饥饿时的兜底重试间隔。正常靠源的 one-shot 通知唤醒，
+/// 这条只防"源没发通知"的意外，取值可以放得很宽。
+#define kStarveBackstopUs 500000
+
+/// 连续坏包容忍上限，超过按致命错误处理(与 VEDemux 的同名策略一致)
+#define kMaxConsecutiveSendErrors 100
 
 // 输出格式不再写死：由 VEPlayer 依据源参数统一决定后传进来，
 // 保证解码器重采样的目标和渲染器配置的设备参数是同一份。
@@ -15,7 +19,6 @@
 namespace VE {
     VEAudioDecoder::VEAudioDecoder(std::shared_ptr<AMessage> &notify) {
         mAudioCtx = nullptr;
-        mMediaInfo = nullptr;
         mIsStarted = false;
         mSwrCtx = nullptr;
         mIsEOS = false;
@@ -32,6 +35,16 @@ namespace VE {
     VEResult VEAudioDecoder::prepare(std::shared_ptr<IMediaSource> demux,
                                      const VEAudioOutputConfig &outConfig,
                                      std::shared_ptr<IFrameSink> sink) {
+        VEBundle params;
+        params.set("outSampleRate", outConfig.sampleRate);
+        params.set("outChannels", outConfig.channels);
+        params.set("outFormat", outConfig.format);
+        return prepare(std::move(demux), std::move(sink), params);
+    }
+
+    VEResult VEAudioDecoder::prepare(std::shared_ptr<IMediaSource> demux,
+                                     std::shared_ptr<IFrameSink> sink,
+                                     const VEBundle &params) {
         if (!demux || !sink) {
             ALOGE("VEAudioDecoder::prepare demux/sink is null");
             return VE_INVALID_PARAMS;
@@ -40,11 +53,11 @@ namespace VE {
         msg->setObject("demux", demux);
         msg->setObject("sink", sink);
         // 随消息带过去，避免跨线程直接写解码器成员
-        msg->setInt32("outSampleRate", outConfig.sampleRate);
-        msg->setInt32("outChannels", outConfig.channels);
-        msg->setInt32("outFormat", outConfig.format);
+        msg->setInt32("outSampleRate", params.get<int>("outSampleRate", 44100));
+        msg->setInt32("outChannels", params.get<int>("outChannels", 2));
+        msg->setInt32("outFormat", params.get<int>("outFormat", AV_SAMPLE_FMT_S16));
         msg->post();
-        return 0;
+        return VE_OK;
     }
 
     VEResult VEAudioDecoder::flush() {
@@ -125,10 +138,17 @@ namespace VE {
                 } else if (ret == VE_NOT_ENOUGH_DATA) {
                     // 上游饥饿是数据面状态：onDecode 已投延时重试，
                     // 不动命令态(mIsStarted)——这就是命令/数据分离
+                } else if (ret == VE_NO_MEMORY) {
+                    // credit 用尽(park)同样是纯数据面状态：渲染器消费一帧后
+                    // 回执会把 credit 还回来，kWhatFrameConsumed 那里重新拉起
+                    // 解码循环。这里**绝对不能**动 mIsStarted——它一旦为 false，
+                    // 复活条件 `mIsStarted && ...` 永远为假，整条解码链就死了，
+                    // 表现为起播一秒后声音断掉、画面冻结，而时钟还在实时外推。
                 } else {
                     ALOGI("VEAudioDecoder::onMessageReceived onDecode stopped, ret=%d", ret);
+                    // 到这里只剩 EOS 与真错误，才该收命令态
                     mIsStarted = false;
-                    if (ret != VE_EOS && ret != VE_NO_MEMORY) {
+                    if (ret != VE_EOS) {
                         postMessage(VE_NOTIFY_EVENT_ERROR, ret, 0, 0, nullptr);
                     }
                 }
@@ -190,26 +210,42 @@ namespace VE {
         mSink = std::static_pointer_cast<IFrameSink>(sinkTmp);
         mInFlightFrames = 0;
         std::shared_ptr<VEMediaInfo> info = mDemux->getFileInfo();
-        if (info == nullptr) {
-            return -1;
+        const VETrackInfo *track = info ? info->audioTrack() : nullptr;
+        if (track == nullptr || track->codecParams == nullptr) {
+            ALOGE("VEAudioDecoder::%s invalid media info or audio codec params", __FUNCTION__);
+            return VE_INVALID_PARAMS;
         }
+        // 持住这份信息：codecParams 归 VEMediaInfo 所有，解码器活着它就得活着
+        mMediaInfo = info;
 
-        const AVCodec *codec = avcodec_find_decoder(info->mAudioCodecParams->codec_id);
+        const AVCodec *codec = avcodec_find_decoder(track->codecParams->codec_id);
         if (codec == nullptr) {
-            return -1;
+            ALOGE("VEAudioDecoder::%s could not find audio codec", __FUNCTION__);
+            return VE_UNKNOWN_ERROR;
         }
 
         mAudioCtx = avcodec_alloc_context3(codec);
         if (mAudioCtx == nullptr) {
-            return -1;
+            ALOGE("VEAudioDecoder::%s could not allocate audio codec context", __FUNCTION__);
+            return VE_UNKNOWN_ERROR;
         }
 
-        avcodec_parameters_to_context(mAudioCtx, info->mAudioCodecParams);
+        if (avcodec_parameters_to_context(mAudioCtx, track->codecParams) < 0) {
+            ALOGE("VEAudioDecoder::%s could not copy codec parameters", __FUNCTION__);
+            avcodec_free_context(&mAudioCtx);
+            mAudioCtx = nullptr;
+            return VE_UNKNOWN_ERROR;
+        }
 
         if (avcodec_open2(mAudioCtx, codec, nullptr) != 0) {
-            return -1;
+            ALOGE("VEAudioDecoder::%s could not open audio codec", __FUNCTION__);
+            avcodec_free_context(&mAudioCtx);
+            mAudioCtx = nullptr;
+            return VE_UNKNOWN_ERROR;
         }
-        return false;
+
+        ALOGI("VEAudioDecoder::%s success", __FUNCTION__);
+        return VE_OK;
     }
 
     VEResult VEAudioDecoder::onFlush() {
@@ -222,6 +258,7 @@ namespace VE {
         mSeekTargetUs = kNoSeekTarget;
         // 渲染器同轮 seek/flush 会清自己的队列(不发回执)，credit 由本侧清算
         mInFlightFrames = 0;
+        mSendErrorCount = 0;
         if (mAudioCtx) {
             avcodec_flush_buffers(mAudioCtx);
         }
@@ -311,55 +348,57 @@ namespace VE {
                         }
                     }
 
-                    uint8_t **out_data = NULL;
-                    swr_get_out_samples(mSwrCtx, frame->getFrame()->nb_samples);
-                    int32_t out_nb_samples = swr_get_out_samples(mSwrCtx,
-                                                                 frame->getFrame()->nb_samples);
-                    int32_t out_samples_per_channel;
-                    int32_t out_buffer_size;
-
-                    av_samples_alloc_array_and_samples(&out_data, &out_buffer_size,
-                                                       AUDIO_TARGET_OUTPUT_CHANNELS,
-                                                       out_nb_samples, AUDIO_TARGET_OUTPUT_FORMAT,
-                                                       0);
-                    memset(out_data[0], 0, out_buffer_size);
-                    out_samples_per_channel = swr_convert(mSwrCtx, out_data, out_nb_samples,
-                                                          (const uint8_t **) frame->getFrame()->data,
-                                                          frame->getFrame()->nb_samples);
-
-                    if (out_samples_per_channel < 0) {
-                        ALOGE("VEAudioDecoder swr_convert failed\n");
-                        return -1;
+                    // 直接让 swr_convert 写进目标帧的缓冲：原先先转到临时
+                    // 缓冲再 memcpy 过来，等于每帧多一次分配加一次全量拷贝
+                    const int32_t out_nb_samples =
+                            swr_get_out_samples(mSwrCtx, frame->getFrame()->nb_samples);
+                    if (out_nb_samples <= 0) {
+                        ALOGE("VEAudioDecoder swr_get_out_samples returned %d", out_nb_samples);
+                        return VE_UNKNOWN_ERROR;
                     }
+                    // 按上界分配，转换后再把 nb_samples 修正成实际值
                     std::shared_ptr<VEFrame> audioFrame = std::make_shared<VEFrame>(
                             AUDIO_TARGET_OUTPUT_SAMPLERATE, AUDIO_TARGET_OUTPUT_CHANNELS,
-                            out_samples_per_channel, (int32_t) AUDIO_TARGET_OUTPUT_FORMAT);
-                    ALOGI("VEAudioDecoder out_samples_per_channel:%d  len:%d  linesize:%d out_buffer_size:%d",
-                          out_samples_per_channel,
-                          out_samples_per_channel * AUDIO_TARGET_OUTPUT_CHANNELS *
-                          av_get_bytes_per_sample(AUDIO_TARGET_OUTPUT_FORMAT),
-                          audioFrame->getFrame()->linesize[0], out_buffer_size);
+                            out_nb_samples, (int32_t) AUDIO_TARGET_OUTPUT_FORMAT);
+                    // VEFrame 构造内 av_frame_get_buffer 失败会留下 mFrame=null 的半残对象
+                    // (构造函数只 av_frame_free 不抛出)，必须判空
+                    if (audioFrame->getFrame() == nullptr ||
+                        audioFrame->getFrame()->data[0] == nullptr) {
+                        ALOGE("VEAudioDecoder::%s resampled frame buffer alloc failed",
+                              __FUNCTION__);
+                        return VE_UNKNOWN_ERROR;
+                    }
 
-                    memcpy(audioFrame->getFrame()->data[0], out_data[0],
-                           out_samples_per_channel * AUDIO_TARGET_OUTPUT_CHANNELS *
-                           av_get_bytes_per_sample(AUDIO_TARGET_OUTPUT_FORMAT));
+                    const int32_t out_samples_per_channel = swr_convert(
+                            mSwrCtx, audioFrame->getFrame()->data, out_nb_samples,
+                            (const uint8_t **) frame->getFrame()->data,
+                            frame->getFrame()->nb_samples);
+                    if (out_samples_per_channel < 0) {
+                        ALOGE("VEAudioDecoder swr_convert failed");
+                        return VE_UNKNOWN_ERROR;
+                    }
+                    ALOGV("VEAudioDecoder out_samples_per_channel:%d (cap %d)",
+                          out_samples_per_channel, out_nb_samples);
+
                     audioFrame->getFrame()->pts = frame->getFrame()->pts;
                     audioFrame->getFrame()->pkt_dts = frame->getFrame()->pkt_dts;
                     audioFrame->getFrame()->nb_samples = out_samples_per_channel;
-                    audioFrame->getFrame()->linesize[0] =
-                            out_samples_per_channel * AUDIO_TARGET_OUTPUT_CHANNELS *
-                            av_get_bytes_per_sample(AUDIO_TARGET_OUTPUT_FORMAT);
+                    // 不改写 AVFrame->linesize[0]：SLES 读取(renderFrame)按
+                    // nb_samples*channels*bytes_per_sample 取长，不读 linesize；
+                    // 手动改成紧凑字节数会破坏"linesize 是对齐行距"不变量，
+                    // 且对播放路径无任何作用。保留 av_frame_get_buffer 给出的对齐值。
 
                     audioFrame->setPts(audioFrame->getFrame()->pts);
                     audioFrame->setDts(audioFrame->getFrame()->pkt_dts);
-                    ALOGV("@@@VEAudioDecoder Audio frame: pts:%" PRId64 ", dts:%" PRId64 ", packet pts:%" PRId64 ", packet dts:%" PRId64,
-                          audioFrame->getFrame()->pts, audioFrame->getFrame()->pkt_dts,
-                          audioFrame->getPts(), audioFrame->getDts());
-                    av_freep(&out_data[0]);
-                    av_freep(&out_data);
                     audioFrame->setFrameType(E_FRAME_TYPE_AUDIO);
                     queueFrame(audioFrame);
                 } else {
+                    // 解码输出已是目标格式，直通不重采样。pts 必须照样搬到
+                    // VEFrame 上——渲染器给主时钟打点用的是 VEFrame::getPts()，
+                    // 漏了这一步主时钟就恒被锚在 0：进度出负数、AVSync 误判
+                    // 视频领先几百毫秒、画面变慢动作。
+                    frame->setPts(frame->getFrame()->pts);
+                    frame->setDts(frame->getFrame()->pkt_dts);
                     frame->setFrameType(E_FRAME_TYPE_AUDIO);
                     queueFrame(frame);
                 }
@@ -380,13 +419,16 @@ namespace VE {
         } while (ret != AVERROR(EAGAIN));
 
         std::shared_ptr<VEPacket> packet;
-        ret = mDemux->read(true, packet);
+        ret = mDemux->read(ETrackType::AUDIO, packet);
         if (ret == VE_NOT_ENOUGH_DATA) {
-            // 上游饥饿：10ms 后轮询重试(NuPlayer DecoderBase 的做法)。
-            // 重试消息带当前 epoch，flush/seek 后自动作废；这是纯数据面
-            // 事件，不触碰命令态。
-            ALOGV("VEAudioDecoder::onDecode starving, retry in 10ms");
-            postDecode(kStarveRetryUs);
+            // 上游饥饿：登记一次性通知，数据入队时被唤醒(不再 10ms 轮询)。
+            // 消息带当前 epoch，flush/seek 后自动作废；这是纯数据面事件，
+            // 不触碰命令态。同时投一条兜底重试，防源实现漏发通知。
+            ALOGV("VEAudioDecoder::onDecode starving, waiting for data notify");
+            auto notify = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
+            notify->setInt32("epoch", mEpoch);
+            mDemux->requestReadNotify(ETrackType::AUDIO, notify);
+            postDecode(kStarveBackstopUs);
             return VE_NOT_ENOUGH_DATA;
         }
 
@@ -396,16 +438,26 @@ namespace VE {
 
         if (packet->getPacketType() == E_PACKET_TYPE_AUDIO) {
             ret = avcodec_send_packet(mAudioCtx, packet->getPacket());
-            ALOGI("VEAudioDecoder::onDecode send packet pts:%" PRId64 ", dts:%" PRId64,
+            ALOGV("VEAudioDecoder::onDecode send packet pts:%" PRId64 ", dts:%" PRId64,
                   packet->getPacket()->pts, packet->getPacket()->dts);
         } else if (packet->getPacketType() == E_PACKET_TYPE_EOF) {
             ret = avcodec_send_packet(mAudioCtx, nullptr);
         }
 
+        if (ret == AVERROR(EAGAIN)) {
+            // 解码器内部满了(极少见，上面已经排空过)：不算错误，下一轮继续收帧
+            return VE_OK;
+        }
+        if (ret == AVERROR_INVALIDDATA && ++mSendErrorCount < kMaxConsecutiveSendErrors) {
+            // 局部损坏的包：跳过继续解，别让单个坏包打死整个播放
+            ALOGW("VEAudioDecoder::onDecode skip corrupt packet (%d in a row)", mSendErrorCount);
+            return VE_OK;
+        }
         if (ret < 0) {
-            ALOGE("VEAudioDecoder Error sending packet for decoding %d", ret);
+            ALOGE("VEAudioDecoder fatal error sending packet for decoding %d", ret);
             return VE_UNKNOWN_ERROR;
         }
+        mSendErrorCount = 0;
         return VE_OK;
     }
 
@@ -423,7 +475,7 @@ namespace VE {
         mDemux.reset();
         mSink.reset();
         mInFlightFrames = 0;
-        mMediaInfo = nullptr;
+        mMediaInfo.reset();
         return VE_OK;
     }
 

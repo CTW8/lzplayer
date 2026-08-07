@@ -8,6 +8,11 @@
 #include "VEDef.h"
 
 namespace VE {
+    namespace {
+        /// mFrames 深度兜底。正常由解码器 credit(=FRAME_QUEUE_MAX_SIZE)封顶，
+        /// 这里只防异常多发回执导致的无界增长：超阈值丢最旧帧并照常回执还 credit。
+        constexpr size_t kMaxFramesBackstop = 12;
+    }
     VEVideoDisplay::VEVideoDisplay(const std::shared_ptr<AMessage> &notify,
                                    const std::shared_ptr<VEAVsync> &avSync):m_pNotify(notify),m_pAvSync(avSync) {
         ALOGI("VEVideoDisplay construct");
@@ -17,13 +22,15 @@ namespace VE {
 
     }
 
-    VEResult VEVideoDisplay::prepare(ANativeWindow *win, int width, int height, int fps) {
+    VEResult VEVideoDisplay::prepare(ANativeWindow *win, int width, int height, int fps,
+                                     int rotationDegrees) {
         ALOGV("VEVideoDisplay::%s enter",__FUNCTION__ );
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
         msg->setPointer("win", win);
         msg->setInt32("width", width);
         msg->setInt32("height", height);
         msg->setInt32("fps", fps);
+        msg->setInt32("rotation", rotationDegrees);
         msg->post();
         return 0;
     }
@@ -164,6 +171,16 @@ namespace VE {
                 std::shared_ptr<void> f, r;
                 msg->findObject("frame", &f);
                 msg->findObject("reply", &r);
+                // 深度兜底：异常多发回执下 credit 单一防线失守时，丢最旧帧
+                // 并照常回执还 credit，避免 mFrames 无界增长耗尽内存
+                if (mFrames.size() >= kMaxFramesBackstop) {
+                    ALOGW("VEVideoDisplay::onQueueFrame frames overflow %zu, drop oldest",
+                          mFrames.size());
+                    if (mFrames.front().second) {
+                        mFrames.front().second->post();
+                    }
+                    mFrames.pop_front();
+                }
                 mFrames.emplace_back(std::static_pointer_cast<VEFrame>(f),
                                      std::static_pointer_cast<AMessage>(r));
                 if (m_IsStarted && mFrames.size() == 1) {
@@ -200,6 +217,7 @@ namespace VE {
         msg->findPointer("win", (void **) &mWin);
         msg->findInt32("width", &mViewWidth);
         msg->findInt32("height", &mViewHeight);
+        msg->findInt32("rotation", &mRotationDegrees);
 
         if(mWin == nullptr){
             // surface 还没设置：渲染器延迟到 setSurface 时创建
@@ -211,6 +229,7 @@ namespace VE {
         params.set("surface",mWin);
         params.set("width",mViewWidth);
         params.set("height",mViewHeight);
+        params.set("rotation",mRotationDegrees);
         m_pVideoRender = std::make_shared<VEGLESVideoRenderer>();
         m_pVideoRender->initialize(params);
         return 0;
@@ -323,6 +342,7 @@ namespace VE {
         mFrameHeight = frame->getFrame()->height;
 
         m_pVideoRender->renderFrame(frame);
+        ++mRenderedFrames;
         consumeFront();
 
         if (m_NotifyFirstFrame) {
@@ -373,13 +393,14 @@ namespace VE {
         if (m_pAvSync->shouldDropFrame()) {
             // 已经严重落后：丢弃(照样回执还 credit)，立即取下一帧追赶
             ALOGI("VEVideoDisplay::%s Dropping frame pts=%" PRId64, __FUNCTION__, frame->getPts());
+            ++mDroppedFrames;
             consumeFront();
             postSync(0);
             return VE_OK;
         }
 
         int64_t waitTime = m_pAvSync->getWaitTime(); // 获取等待时间
-        ALOGD("VEVideoDisplay::%s waitTime:%" PRId64, __FUNCTION__, waitTime);
+        ALOGV("VEVideoDisplay::%s waitTime:%" PRId64, __FUNCTION__, waitTime);
         // 渲染消息不携带帧：到点后渲染当前队首(队列只在本 looper 上变化)
         std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender,
                                                                          shared_from_this());
@@ -432,6 +453,7 @@ namespace VE {
             params.set("surface", mWin);
             params.set("width", mViewWidth);
             params.set("height", mViewHeight);
+            params.set("rotation", mRotationDegrees);
             m_pVideoRender = std::make_shared<VEGLESVideoRenderer>();
             m_pVideoRender->initialize(params);
             if (m_IsStarted) {

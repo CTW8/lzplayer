@@ -10,6 +10,7 @@
 #include "thread/AHandler.h"
 #include "thread/AMessage.h"
 #include "IFrameSink.h"
+#include "IMediaDecoder.h"
 #include "VEAudioOutputConfig.h"
 
 extern "C" {
@@ -21,30 +22,36 @@ extern "C" {
     #include "libavutil/opt.h"
 }
 namespace VE {
-    class VEAudioDecoder : public AHandler{
+    class VEAudioDecoder : public AHandler, public IMediaDecoder{
     public:
         VEAudioDecoder(std::shared_ptr<AMessage> &notify);
 
         ~VEAudioDecoder() override;
 
-        /// outConfig 由播放器统一决定，解码器按它重采样；
-        /// sink: 解出的帧推给谁(音频渲染)，推模型 + 消费回执 credit
+        /// IMediaDecoder：params 需带 outSampleRate/outChannels/outFormat
+        /// (由播放器统一决定，解码器按它重采样，与渲染器设备参数同源)；
+        /// sink 是解出的帧的去向(音频渲染)，推模型 + 消费回执 credit
+        VEResult prepare(std::shared_ptr<IMediaSource> source,
+                         std::shared_ptr<IFrameSink> sink,
+                         const VEBundle &params) override;
+
+        /// 便捷重载：内部包装成 VEBundle 后转调上面那个
         VEResult prepare(std::shared_ptr<IMediaSource> source,
                          const VEAudioOutputConfig &outConfig,
                          std::shared_ptr<IFrameSink> sink);
 
-        // 生命周期命令由 VEPlayer 持具体类型直接调用，不再经接口
-        VEResult start();
+        // IVEComponent：命令面，VEPlayer 按 Role 表统一扇出
+        VEResult start() override;
 
-        VEResult pause();
+        VEResult pause() override;
 
-        VEResult stop();
+        VEResult stop() override;
 
-        VEResult flush();
+        VEResult flush() override;
 
-        VEResult release();
+        VEResult release() override;
 
-        VEResult seekTo(double timestamp);
+        VEResult seekTo(double timestamp) override;
 
     private:
         VEResult onPrepare(std::shared_ptr<AMessage> msg);
@@ -90,7 +97,9 @@ namespace VE {
         static const int64_t kNoSeekTarget = INT64_MIN;
 
         AVCodecContext *mAudioCtx = nullptr;
-        VEMediaInfo *mMediaInfo = nullptr;
+        /// 持有源的媒体信息：轨道的 codecParams 归它所有，
+        /// 解码器存活期间必须一并持住，避免源释放后悬垂
+        std::shared_ptr<VEMediaInfo> mMediaInfo = nullptr;
         std::shared_ptr<IMediaSource> mDemux = nullptr;
         /// 帧的去向；credit 流控由 mInFlightFrames 表达
         std::shared_ptr<IFrameSink> mSink = nullptr;
@@ -107,6 +116,10 @@ namespace VE {
         int64_t mSeekTargetUs = kNoSeekTarget;
         bool mIsEOS = false;
         SwrContext *mSwrCtx = nullptr;
+
+        /// 连续送入失败(坏包)计数，成功即清零；超上限才按致命错误处理。
+        /// 与 demux 的坏包容忍策略对齐，避免单个损坏包打死整个播放。
+        int mSendErrorCount = 0;
 
         /// 重采样目标，prepare 时由播放器下发
         int32_t mOutSampleRate = 44100;

@@ -58,15 +58,27 @@ namespace VE {
         double diff = m_VideoPts - m_MediaClock->getCurrentMediaTime();
 
         if (diff > kMaxDiffUs) {
-            // 时钟不可信，按帧率节奏出帧，避免长时间黑屏
+            // 时钟不可信，按帧率节奏出帧，避免长时间黑屏。
+            // 这是实时节奏，不受速率影响(时钟本来就不可信)
             return frameIntervalUs();
         }
         if (diff > kSyncThresholdUs) {
-            // 视频领先，等到该显示的时刻
-            return static_cast<int64_t>(diff);
+            // 视频领先，等到该显示的时刻。diff 是媒体时间差，而消息延时
+            // 等的是真实时间——时钟以 speed 倍外推，媒体差就以 speed 倍
+            // 速率收敛，因此真实等待 = 媒体差 / speed。
+            const double speed = m_MediaClock->getPlaybackSpeed();
+            return static_cast<int64_t>(diff / (speed > 0 ? speed : 1.0));
         }
         // 同步窗口内或已落后，立即渲染
         return 0;
+    }
+
+    int64_t VEAVsync::getLastDiffUs() const {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        if (!m_MediaClock) {
+            return 0;
+        }
+        return static_cast<int64_t>(m_VideoPts - m_MediaClock->getCurrentMediaTime());
     }
 
     bool VEAVsync::shouldDropFrame() const {

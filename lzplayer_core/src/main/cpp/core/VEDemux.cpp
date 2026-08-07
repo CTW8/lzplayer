@@ -8,7 +8,10 @@ extern "C"{
     #include"libavcodec/avcodec.h"
     #include"libavformat/avformat.h"
     #include"libavutil/dict.h"
+    #include"libavutil/display.h"
 }
+
+#include <cmath>
 
 namespace VE {
     namespace {
@@ -27,13 +30,12 @@ namespace VE {
         /// 队列防失控兜底容量：真实节流在 shouldParkRead(字节/时长)，
         /// 这里只是让 put 在极端情况下不至无限增长。远高于正常缓冲深度。
         constexpr int kQueueBackstopPackets = 2048;
+        /// 字幕包稀疏(一行一包)，小队列足够；不参与读循环节流判据
+        constexpr int kSubtitleQueuePackets = 256;
     }
-    VEDemux::VEDemux(std::shared_ptr<AMessage> &notify) :mNotifyEvent(notify){
+    VEDemux::VEDemux(std::shared_ptr<AMessage> &notify) : VESource(notify){
         ALOGV("VEDemux::%s enter", __FUNCTION__);
-        mAudioCodecParams = nullptr;
-        mVideoCodecParams = nullptr;
         mFormatContext = nullptr;
-        mNotifyEvent = notify;
         ALOGV("VEDemux::%s exit", __FUNCTION__);
     }
 
@@ -44,7 +46,7 @@ namespace VE {
         ALOGV("VEDemux::%s exit", __FUNCTION__);
     }
 
-    VEResult VEDemux::prepare(const std::string &path){
+    VEResult VEDemux::prepareAsync(const std::string &path){
         ALOGV("VEDemux::%s enter", __FUNCTION__);
         // 纯异步：完成后回 PREPARE_DONE 事件。原同步版会把 player looper
         // 挂在 avformat_open_input 上，坏文件/网络源可卡死整条命令通道。
@@ -104,38 +106,121 @@ namespace VE {
         return VE_OK;
     }
 
-    VEResult VEDemux::read(bool isAudio, std::shared_ptr<VEPacket> &packet) {
+    std::shared_ptr<VEPacketQueue> VEDemux::queueFor(ETrackType type) const {
+        switch (type) {
+            case ETrackType::AUDIO:    return mAudioPacketQueue;
+            case ETrackType::VIDEO:    return mVideoPacketQueue;
+            case ETrackType::SUBTITLE: return mSubtitlePacketQueue;
+        }
+        return nullptr;
+    }
+
+    VEResult VEDemux::read(ETrackType type, std::shared_ptr<VEPacket> &packet) {
         ALOGV("VEDemux::%s enter", __FUNCTION__);
         // 队列尚未建立(prepare 未完成)：与 scheduleContinueReadIfNeeded 一致的判空
-        if (mAudioPacketQueue == nullptr || mVideoPacketQueue == nullptr) {
+        std::shared_ptr<VEPacketQueue> queue = queueFor(type);
+        if (queue == nullptr) {
             return VE_NOT_ENOUGH_DATA;
         }
-        ALOGV("VEDemux::read audio queue size: %d, video queue size: %d",
-              mAudioPacketQueue->getDataSize(), mVideoPacketQueue->getDataSize());
-        if (isAudio) {
-            ALOGV("VEDemux::read mAudioPacketQueue size:%d", mAudioPacketQueue->getDataSize());
-            if (mAudioPacketQueue->getDataSize() == 0) {
-                ALOGV("VEDemux::read audio queue wait!!");
-                ALOGV("VEDemux::%s exit", __FUNCTION__);
-                return VE_NOT_ENOUGH_DATA;
-            }
-
-            packet = mAudioPacketQueue->get();
-        } else {
-            ALOGV("VEDemux::read mVideoPacketQueue size:%d", mVideoPacketQueue->getDataSize());
-            if (mVideoPacketQueue->getDataSize() == 0) {
-                ALOGV("VEDemux::read video queue wait!!");
-                ALOGV("VEDemux::%s exit", __FUNCTION__);
-                return VE_NOT_ENOUGH_DATA;
-            }
-
-            packet = mVideoPacketQueue->get();
+        if (queue->getDataSize() == 0) {
+            ALOGV("VEDemux::read queue empty, wait");
+            return VE_NOT_ENOUGH_DATA;
         }
+        packet = queue->get();
         // 拉取触发补货(仿 GenericSource::dequeueAccessUnit)：不再用 kWhatStart
         // 命令消息复活 demux——数据面事件不允许触碰命令通道
         scheduleContinueReadIfNeeded();
         ALOGV("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
+    }
+
+    int VEDemux::getQueueDepth(ETrackType type) const {
+        std::shared_ptr<VEPacketQueue> queue = queueFor(type);
+        return queue ? queue->getDataSize() : 0;
+    }
+
+    int64_t VEDemux::getBufferedDurationUs() const {
+        // 取存在的那几路里最小的：能撑多久由短板决定
+        int64_t minUs = -1;
+        if (mAudio_index != -1 && mAudioPacketQueue) {
+            minUs = mAudioPacketQueue->getDurationUs();
+        }
+        if (mVideo_index != -1 && mVideoPacketQueue) {
+            const int64_t v = mVideoPacketQueue->getDurationUs();
+            minUs = (minUs < 0) ? v : std::min(minUs, v);
+        }
+        return minUs < 0 ? 0 : minUs;
+    }
+
+    VEResult VEDemux::selectTrack(int trackIndex) {
+        auto msg = std::make_shared<AMessage>(kWhatSelectTrack, shared_from_this());
+        msg->setInt32("trackIndex", trackIndex);
+        msg->post();
+        return VE_OK;
+    }
+
+    VEResult VEDemux::onSelectTrack(int trackIndex) {
+        if (mCachedFileInfo == nullptr) {
+            return VE_INVALID_OPERATION;
+        }
+        // trackIndex < 0 表示关闭该类型链路(仅字幕有意义)
+        if (trackIndex < 0) {
+            mSubtitle_index = -1;
+            mCachedFileInfo->activeSubtitle = -1;
+            if (mSubtitlePacketQueue) mSubtitlePacketQueue->clear();
+            ALOGI("VEDemux::%s subtitle track deselected", __FUNCTION__);
+            return VE_OK;
+        }
+
+        const int slot = mCachedFileInfo->slotOfTrackIndex(trackIndex);
+        if (slot < 0) {
+            ALOGE("VEDemux::%s unknown track index %d", __FUNCTION__, trackIndex);
+            return VE_INVALID_PARAMS;
+        }
+        const VETrackInfo &track = mCachedFileInfo->tracks[slot];
+        switch (track.type) {
+            case ETrackType::AUDIO:
+                mAudio_index = track.streamIndex;
+                mCachedFileInfo->activeAudio = slot;
+                if (mAudioPacketQueue) mAudioPacketQueue->clear();
+                break;
+            case ETrackType::SUBTITLE:
+                mSubtitle_index = track.streamIndex;
+                mCachedFileInfo->activeSubtitle = slot;
+                if (mSubtitlePacketQueue) mSubtitlePacketQueue->clear();
+                break;
+            case ETrackType::VIDEO:
+                // 视频轨切换会牵动整条渲染链与硬解绑定，本期不支持
+                ALOGE("VEDemux::%s video track switch not supported", __FUNCTION__);
+                return VE_INVALID_OPERATION;
+        }
+        // 切轨后读位置仍在原处：由播放器紧接着的全链 seek 拉回当前播放位置
+        mIsEOS = false;
+        ALOGI("VEDemux::%s track %d (stream %d) selected", __FUNCTION__,
+              trackIndex, track.streamIndex);
+        return VE_OK;
+    }
+
+    void VEDemux::requestReadNotify(ETrackType type,
+                                    const std::shared_ptr<AMessage> &notify) {
+        {
+            std::lock_guard<std::mutex> lk(mNotifyMutex);
+            mReadNotify[static_cast<int>(type)] = notify;
+        }
+        // 登记之后要复查一次：登记与"数据刚好入队"之间存在竞态，
+        // 不复查的话这次通知会永远等不到(丢唤醒)
+        std::shared_ptr<VEPacketQueue> queue = queueFor(type);
+        if ((queue && queue->getDataSize() > 0) || mIsEOS) {
+            std::shared_ptr<AMessage> pending;
+            {
+                std::lock_guard<std::mutex> lk(mNotifyMutex);
+                pending = mReadNotify[static_cast<int>(type)];
+                mReadNotify[static_cast<int>(type)].reset();
+            }
+            if (pending) {
+                pending->post();
+            }
+        }
     }
 
     void VEDemux::scheduleContinueReadIfNeeded() {
@@ -161,15 +246,25 @@ namespace VE {
         }
         const int64_t durUs = queue->getDurationUs();
         // 容器没给 duration(durUs<=0)时只凭包数判断，否则要求时长达标
-        return durUs <= 0 || durUs >= kBufferedDurationTargetUs;
+        return durUs <= 0 || durUs >= bufferedDurationTargetUs();
     }
 
     bool VEDemux::shouldParkRead() const {
-        // 唯一硬停：所有队列字节总和超上限(防高码率 OOM)
+        // 硬停①：所有队列字节总和超上限(防高码率 OOM)
         size_t totalBytes = 0;
         if (mAudioPacketQueue) totalBytes += mAudioPacketQueue->getTotalBytes();
         if (mVideoPacketQueue) totalBytes += mVideoPacketQueue->getTotalBytes();
-        if (totalBytes >= kMaxTotalBytes) {
+        if (totalBytes >= maxTotalBytes()) {
+            return true;
+        }
+        // 硬停②：单路包数达队列容量兜底(kQueueBackstopPackets)。
+        // 否则单路小包(低码率音频)堆积到 2048 但总字节远未到 16MB 时，
+        // put 会满而 putPacket 静默丢包 → 下游花屏/缺音。
+        // 让 2048 成为"停读等 credit 回流"门槛，而非"丢包"门槛。
+        if (mAudioPacketQueue && mAudioPacketQueue->getDataSize() >= kQueueBackstopPackets) {
+            return true;
+        }
+        if (mVideoPacketQueue && mVideoPacketQueue->getDataSize() >= kQueueBackstopPackets) {
             return true;
         }
         // 软停：两路都缓冲够了才不用继续读。单路满不 park——那正是队头阻塞
@@ -204,7 +299,7 @@ namespace VE {
                 std::string path;
                 msg->findString("filePath", path);
                 VEResult ret = onPrepare(path);
-                postMessage(VE_NOTIFY_EVENT_PREPARE_DONE, ret, 0, 0, nullptr);
+                postNotify(VE_NOTIFY_EVENT_PREPARE_DONE, ret, 0, 0, nullptr);
                 break;
             }
             case kWhatStart: {
@@ -217,7 +312,7 @@ namespace VE {
             case kWhatStop: {
                 mIsStart = false;
                 onStop();
-                postMessage(VE_NOTIFY_EVENT_STOP_DONE, 0, 0, 0, nullptr);
+                postNotify(VE_NOTIFY_EVENT_STOP_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatPause: {
@@ -225,14 +320,14 @@ namespace VE {
                 // 排在它之前的读取消息此时都已执行完毕。
                 mIsStart = false;
                 onPause();
-                postMessage(VE_NOTIFY_EVENT_PAUSE_DONE, 0, 0, 0, nullptr);
+                postNotify(VE_NOTIFY_EVENT_PAUSE_DONE, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatSeek: {
                 double pos = 0;
                 msg->findDouble("posMs", &pos);
                 VEResult ret = onSeek(pos);
-                postMessage(VE_NOTIFY_EVENT_SEEK_DONE, ret, 0, 0, nullptr);
+                postNotify(VE_NOTIFY_EVENT_SEEK_DONE, ret, 0, 0, nullptr);
                 break;
             }
             case kWhatRead: {
@@ -240,7 +335,7 @@ namespace VE {
                     ALOGD("VEDemux::%s kWhatRead !mIsStart not run!!!", __FUNCTION__);
                     break;
                 }
-                ALOGD("VEDemux::%s kWhatRead run", __FUNCTION__);
+                ALOGV("VEDemux::%s kWhatRead run", __FUNCTION__);
                 VEResult ret = onRead();
                 if (ret == VE_OK) {
                     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead,
@@ -264,10 +359,17 @@ namespace VE {
                 }
                 break;
             }
+            case kWhatSelectTrack: {
+                int32_t trackIndex = -1;
+                msg->findInt32("trackIndex", &trackIndex);
+                VEResult ret = onSelectTrack(trackIndex);
+                postNotify(VE_NOTIFY_EVENT_SELECT_TRACK_DONE, ret, 0, 0, nullptr);
+                break;
+            }
             case kWhatRelease:{
                 onRelease();
                 // 资源已在本线程释放完毕，上层收齐回执后才会停这条 looper
-                postMessage(VE_NOTIFY_EVENT_RELEASE_DONE, 0, 0, 0, nullptr);
+                postNotify(VE_NOTIFY_EVENT_RELEASE_DONE, 0, 0, 0, nullptr);
                 break;
             }
             default:{
@@ -297,9 +399,9 @@ namespace VE {
         mFormatContext->interrupt_callback.callback = &VEDemux::interruptCallback;
         mFormatContext->interrupt_callback.opaque = this;
 
-        if (avformat_open_input(&mFormatContext, mFilePath.c_str(), nullptr, nullptr) != 0) {
-            ALOGE("VEDemux::onPrepare couldn't open input file");
-            // open 失败时 FFmpeg 已释放并置空 mFormatContext
+        // 本地走文件路径，网络源覆写此处挂自定义 AVIOContext
+        if (openInput(mFormatContext, mFilePath) != VE_OK) {
+            ALOGE("VEDemux::onPrepare couldn't open input");
             return VE_UNKNOWN_ERROR;
         }
 
@@ -312,37 +414,135 @@ namespace VE {
         // duration 可能为 AV_NOPTS_VALUE(部分流式容器)，不能直接除以 1000
         mDuration = (mFormatContext->duration != AV_NOPTS_VALUE)
                     ? mFormatContext->duration / 1000 : 0;
-        ///获取文件信息
+
+        VEResult ret = buildTrackList();
+        if (ret != VE_OK) {
+            return ret;
+        }
+
+        mAudioPacketQueue = std::make_shared<VEPacketQueue>(kQueueBackstopPackets);
+        mVideoPacketQueue = std::make_shared<VEPacketQueue>(kQueueBackstopPackets);
+        mSubtitlePacketQueue = std::make_shared<VEPacketQueue>(kSubtitleQueuePackets);
+
+        ALOGV("VEDemux::%s exit", __FUNCTION__);
+        return VE_OK;
+    }
+
+    VEResult VEDemux::openInput(AVFormatContext *ctx, const std::string &path) {
+        // avformat_open_input 会在失败时释放并置空传入的 ctx，
+        // 所以这里必须传成员的地址而不是局部副本
+        (void) ctx;
+        if (avformat_open_input(&mFormatContext, path.c_str(), nullptr, nullptr) != 0) {
+            return VE_UNKNOWN_ERROR;
+        }
+        return VE_OK;
+    }
+
+    size_t VEDemux::maxTotalBytes() const { return kMaxTotalBytes; }
+
+    int64_t VEDemux::bufferedDurationTargetUs() const { return kBufferedDurationTargetUs; }
+
+    VEResult VEDemux::buildTrackList() {
+        // 媒体信息此后只在 selectTrack 时改活跃轨，其余字段不变；
+        // codecParams 由 VEMediaInfo 深拷贝自持，源释放后解码器仍可安全使用
+        mCachedFileInfo = std::make_shared<VEMediaInfo>();
+        mCachedFileInfo->duration = mDuration;
+
+        // 默认轨用 av_find_best_stream 选(会参考 disposition/DEFAULT 与解码器可用性)，
+        // 而不是"扫到的最后一条"——多音轨文件下后者会选错
+        const int bestAudio =
+                av_find_best_stream(mFormatContext, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+        const int bestVideo =
+                av_find_best_stream(mFormatContext, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+        const int bestSubtitle =
+                av_find_best_stream(mFormatContext, AVMEDIA_TYPE_SUBTITLE, -1, -1, nullptr, 0);
+
         for (unsigned int i = 0; i < mFormatContext->nb_streams; i++) {
             AVStream *stream = mFormatContext->streams[i];
+            const AVMediaType mediaType = stream->codecpar->codec_type;
 
-            if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-                mAudio_index = i;
-                mAudioTimeBase = stream->time_base;
-                mAStartTime = stream->start_time;
-                mAudioCodecParams = avcodec_parameters_alloc();
-                avcodec_parameters_copy(mAudioCodecParams, stream->codecpar);
-                mChannel = mAudioCodecParams->ch_layout.nb_channels;
-                mSampleFormat = mAudioCodecParams->format;
-                mSampleRate = mAudioCodecParams->sample_rate;
-            } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            ETrackType type;
+            if (mediaType == AVMEDIA_TYPE_AUDIO) {
+                type = ETrackType::AUDIO;
+            } else if (mediaType == AVMEDIA_TYPE_VIDEO) {
                 // 跳过 attached_pic(如 MP3 内嵌封面)：它是单帧封面而非可播放
                 // 视频流，误当视频会建整套视频链路，且 seek 后等首帧只能吃满超时
                 if (stream->disposition & AV_DISPOSITION_ATTACHED_PIC) {
                     ALOGI("VEDemux::%s skip attached_pic stream %u", __FUNCTION__, i);
                     continue;
                 }
-                mVideo_index = i;
-                mVideoTimeBase = stream->time_base;
-                mVStartTime = stream->start_time;
-                mVideoCodecParams = avcodec_parameters_alloc();
-                avcodec_parameters_copy(mVideoCodecParams, stream->codecpar);
-                mWidth = mVideoCodecParams->width;
-                mHeight = mVideoCodecParams->height;
-                // r_frame_rate.den 个别流为 0，除法前判零避免 SIGFPE
-                mFps = (stream->r_frame_rate.den != 0)
-                       ? stream->r_frame_rate.num / stream->r_frame_rate.den : 0;
+                type = ETrackType::VIDEO;
+            } else if (mediaType == AVMEDIA_TYPE_SUBTITLE) {
+                // 位图字幕(PGS/DVB)本期不支持，不上报给上层
+                const AVCodecID sid = stream->codecpar->codec_id;
+                if (sid != AV_CODEC_ID_SUBRIP && sid != AV_CODEC_ID_TEXT &&
+                    sid != AV_CODEC_ID_ASS && sid != AV_CODEC_ID_SSA &&
+                    sid != AV_CODEC_ID_MOV_TEXT && sid != AV_CODEC_ID_WEBVTT) {
+                    ALOGI("VEDemux::%s skip non-text subtitle stream %u (codec %d)",
+                          __FUNCTION__, i, sid);
+                    continue;
+                }
+                type = ETrackType::SUBTITLE;
+            } else {
+                continue;   // 数据流/附件等
             }
+
+            VETrackInfo track;
+            track.index = static_cast<int>(mCachedFileInfo->tracks.size());
+            track.streamIndex = static_cast<int>(i);
+            track.type = type;
+            track.codecId = stream->codecpar->codec_id;
+            track.timeBase = stream->time_base;
+            track.startTime = stream->start_time;
+            track.codecParams = avcodec_parameters_alloc();
+            if (track.codecParams == nullptr) {
+                return VE_NO_MEMORY;
+            }
+            avcodec_parameters_copy(track.codecParams, stream->codecpar);
+
+            AVDictionaryEntry *e = av_dict_get(stream->metadata, "language", nullptr, 0);
+            if (e && e->value) track.lang = e->value;
+            e = av_dict_get(stream->metadata, "title", nullptr, 0);
+            if (e && e->value) track.title = e->value;
+
+            if (type == ETrackType::VIDEO) {
+                track.width = track.codecParams->width;
+                track.height = track.codecParams->height;
+                // r_frame_rate.den 个别流为 0，除法前判零避免 SIGFPE
+                track.fps = (stream->r_frame_rate.den != 0)
+                            ? stream->r_frame_rate.num / stream->r_frame_rate.den : 0;
+                // 竖拍视频靠容器的 display matrix 标注旋转，渲染器要据此摆正画面
+                const uint8_t *dm = av_stream_get_side_data(
+                        stream, AV_PKT_DATA_DISPLAYMATRIX, nullptr);
+                if (dm != nullptr) {
+                    const double theta =
+                            -av_display_rotation_get(reinterpret_cast<const int32_t *>(dm));
+                    int deg = static_cast<int>(lround(theta)) % 360;
+                    if (deg < 0) deg += 360;
+                    // 只支持 90 度的整数倍，其余按不旋转处理
+                    track.rotationDegrees = (deg % 90 == 0) ? deg : 0;
+                    ALOGI("VEDemux::%s stream %u rotation %d", __FUNCTION__, i,
+                          track.rotationDegrees);
+                }
+            } else if (type == ETrackType::AUDIO) {
+                track.sampleRate = track.codecParams->sample_rate;
+                track.channels = track.codecParams->ch_layout.nb_channels;
+                track.sampleFormat = track.codecParams->format;
+            }
+
+            const int slot = track.index;
+            if (type == ETrackType::AUDIO && static_cast<int>(i) == bestAudio) {
+                mCachedFileInfo->activeAudio = slot;
+                mAudio_index = static_cast<int>(i);
+            } else if (type == ETrackType::VIDEO && static_cast<int>(i) == bestVideo) {
+                mCachedFileInfo->activeVideo = slot;
+                mVideo_index = static_cast<int>(i);
+            } else if (type == ETrackType::SUBTITLE && static_cast<int>(i) == bestSubtitle) {
+                // 字幕默认不开：记住候选轨但不置活跃，等上层 selectTrack
+                ALOGI("VEDemux::%s default subtitle candidate: track %d", __FUNCTION__, slot);
+            }
+
+            mCachedFileInfo->tracks.push_back(track);
         }
 
         // 音视频必须使用同一个时间零点，否则 AVSync 比较的是两条不同基准的时间轴。
@@ -350,39 +550,20 @@ namespace VE {
         // 又保留了两条流之间真实存在的相对偏移。
         mStartTimeOffset = 0;
         int64_t offset = INT64_MAX;
-        if (mVideo_index != -1 && mVStartTime != AV_NOPTS_VALUE) {
-            offset = std::min(offset, av_rescale_q(mVStartTime, mVideoTimeBase, AV_TIME_BASE_Q));
+        const VETrackInfo *v = mCachedFileInfo->videoTrack();
+        const VETrackInfo *a = mCachedFileInfo->audioTrack();
+        if (v && v->startTime != AV_NOPTS_VALUE) {
+            offset = std::min(offset, av_rescale_q(v->startTime, v->timeBase, AV_TIME_BASE_Q));
         }
-        if (mAudio_index != -1 && mAStartTime != AV_NOPTS_VALUE) {
-            offset = std::min(offset, av_rescale_q(mAStartTime, mAudioTimeBase, AV_TIME_BASE_Q));
+        if (a && a->startTime != AV_NOPTS_VALUE) {
+            offset = std::min(offset, av_rescale_q(a->startTime, a->timeBase, AV_TIME_BASE_Q));
         }
         if (offset != INT64_MAX && offset > 0) {
             mStartTimeOffset = offset;
         }
-        ALOGI("VEDemux::%s start time offset:%" PRId64, __FUNCTION__, mStartTimeOffset);
-
-        mAudioPacketQueue = std::make_shared<VEPacketQueue>(kQueueBackstopPackets);
-        mVideoPacketQueue = std::make_shared<VEPacketQueue>(kQueueBackstopPackets);
-
-        // 媒体信息此后不变，缓存一份供 getFileInfo 直接返回
-        mCachedFileInfo = std::make_shared<VEMediaInfo>();
-        mCachedFileInfo->channels = mChannel;
-        mCachedFileInfo->duration = mDuration;
-        mCachedFileInfo->fps = mFps;
-        mCachedFileInfo->width = mWidth;
-        mCachedFileInfo->height = mHeight;
-        mCachedFileInfo->sampleRate = mSampleRate;
-        mCachedFileInfo->sampleFormat = mSampleFormat;
-        mCachedFileInfo->mAudioCodecParams = mAudioCodecParams;
-        mCachedFileInfo->mVideoCodecParams = mVideoCodecParams;
-        mCachedFileInfo->audio_stream_index = mAudio_index;
-        mCachedFileInfo->video_stream_index = mVideo_index;
-        mCachedFileInfo->mAStartTime = mAStartTime;
-        mCachedFileInfo->mAudioTimeBase = mAudioTimeBase;
-        mCachedFileInfo->mVideoTimeBase = mVideoTimeBase;
-        mCachedFileInfo->mVStartTime = mVStartTime;
-
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
+        ALOGI("VEDemux::%s %zu tracks, activeA=%d activeV=%d, start offset:%" PRId64,
+              __FUNCTION__, mCachedFileInfo->tracks.size(),
+              mCachedFileInfo->activeAudio, mCachedFileInfo->activeVideo, mStartTimeOffset);
         return VE_OK;
     }
 
@@ -425,11 +606,11 @@ namespace VE {
             // 已经到达文件末尾
             ALOGI("VEDemux::onRead End of Stream (EOS) reached.");
             packet->setPacketType(E_PACKET_TYPE_EOF);
-            putPacket(packet, true);
+            putPacket(packet, ETrackType::AUDIO);
 
             std::shared_ptr<VEPacket> videoPacket = std::make_shared<VEPacket>();
             videoPacket->setPacketType(E_PACKET_TYPE_EOF);
-            putPacket(videoPacket, false);
+            putPacket(videoPacket, ETrackType::VIDEO);
             mIsEOS = true;
             ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_EOS;
@@ -447,7 +628,7 @@ namespace VE {
             // 所有重启入口(needMorePacket/read)都被挡住，播放无声无画卡死
             ALOGE("VEDemux::onRead fatal error: %s", av_err2str(ret));
             mIsStart = false;
-            postMessage(VE_NOTIFY_EVENT_ERROR, ret, 0, 0, nullptr);
+            postNotify(VE_NOTIFY_EVENT_ERROR, ret, 0, 0, nullptr);
             return VE_UNKNOWN_ERROR;
         }
         mReadErrorCount = 0;
@@ -473,24 +654,33 @@ namespace VE {
                                                streamTimeBase, AV_TIME_BASE_Q));
         }
 
-        if (packet->getPacket()->stream_index == mAudio_index) {
+        const int streamIndex = packet->getPacket()->stream_index;
+        if (streamIndex == mAudio_index) {
             packet->setPacketType(E_PACKET_TYPE_AUDIO);
             packet->setPts(pts);
             packet->setDts(dts);
             packet->getPacket()->pts = pts;
             packet->getPacket()->dts = dts;
             ALOGV("VEDemux::onRead Audio packet pts:%" PRId64 " dts:%" PRId64, pts, dts);
-            putPacket(packet, true);
-        } else if (packet->getPacket()->stream_index == mVideo_index) {
+            putPacket(packet, ETrackType::AUDIO);
+        } else if (streamIndex == mVideo_index) {
             packet->setPacketType(E_PACKET_TYPE_VIDEO);
             packet->setPts(pts);
             packet->setDts(dts);
             packet->getPacket()->pts = pts;
             packet->getPacket()->dts = dts;
             ALOGV("VEDemux::onRead Video packet pts:%" PRId64 " dts:%" PRId64, pts, dts);
-            putPacket(packet, false);
+            putPacket(packet, ETrackType::VIDEO);
+        } else if (streamIndex == mSubtitle_index) {
+            packet->setPacketType(E_PACKET_TYPE_SUBTITLE);
+            packet->setPts(pts);
+            packet->setDts(dts);
+            packet->getPacket()->pts = pts;
+            packet->getPacket()->dts = dts;
+            putPacket(packet, ETrackType::SUBTITLE);
         } else {
-            ALOGD("VEDemux::onRead may be not use");
+            // 非活跃轨道的包(未选中的音轨/字幕轨等)：直接丢弃
+            ALOGV("VEDemux::onRead drop packet from inactive stream %d", streamIndex);
         }
         ALOGV("VEDemux::%s exit", __FUNCTION__);
         return 0;
@@ -529,6 +719,7 @@ namespace VE {
 
         mAudioPacketQueue->clear();
         mVideoPacketQueue->clear();
+        if (mSubtitlePacketQueue) mSubtitlePacketQueue->clear();
         // seek 后重新回到"有数据可读"状态，否则 EOS 标志会让读取循环不再启动
         mIsEOS = false;
 
@@ -537,33 +728,33 @@ namespace VE {
         return VE_OK;
     }
 
-    void VEDemux::putPacket(std::shared_ptr<VEPacket> packet, bool isAudio) {
+    void VEDemux::putPacket(std::shared_ptr<VEPacket> packet, ETrackType type) {
         ALOGV("VEDemux::%s enter", __FUNCTION__);
         // 只在 demux 自己的 looper 线程上执行，无需加锁。
         // 消费者饥饿时按 10ms 轮询重试(NuPlayer DecoderBase 的做法)，
         // 不再需要"有数据就通知"的登记机制。
-        std::shared_ptr<VEPacketQueue> &queue = isAudio ? mAudioPacketQueue : mVideoPacketQueue;
+        std::shared_ptr<VEPacketQueue> queue = queueFor(type);
+        if (queue == nullptr) {
+            return;
+        }
         if (!queue->put(packet)) {
             // onRead 入口已做满检查，单生产者下不应走到这里
-            ALOGW("VEDemux::putPacket %s queue full, packet dropped",
-                  isAudio ? "audio" : "video");
+            // (字幕队列不参与节流，满了直接丢最旧的语义由上层不敏感兜住)
+            ALOGW("VEDemux::putPacket queue full (type %d), packet dropped",
+                  static_cast<int>(type));
+        }
+        // 唤醒等这条轨道数据的消费者(one-shot：取走即清)
+        std::shared_ptr<AMessage> notify;
+        {
+            std::lock_guard<std::mutex> lk(mNotifyMutex);
+            notify.swap(mReadNotify[static_cast<int>(type)]);
+        }
+        if (notify) {
+            notify->post();
         }
         ALOGV("VEDemux::%s exit", __FUNCTION__);
     }
 
-
-    VEResult
-    VEDemux::postMessage(int32_t event, int32_t arg1, int32_t arg2, int64_t arg3, void *params) {
-        std::shared_ptr<AMessage> msg = mNotifyEvent->dup();
-        msg->setInt32("type",EComponentType::E_COMPONENT_TYPE_DEMUX);
-        msg->setInt32("event",event);
-        msg->setInt32("arg1",arg1);
-        msg->setInt32("arg2",arg2);
-        msg->setInt64("arg3",arg3);
-        msg->setPointer("params",params);
-        msg->post();
-        return VE_OK;
-    }
 
     VEResult VEDemux::onPause() {
         // 读取循环已由 mIsStart 停下，这里不需要额外动作
@@ -576,6 +767,7 @@ namespace VE {
         mIsEOS = false;
         if (mAudioPacketQueue) mAudioPacketQueue->clear();
         if (mVideoPacketQueue) mVideoPacketQueue->clear();
+        if (mSubtitlePacketQueue) mSubtitlePacketQueue->clear();
         return VE_OK;
     }
 
@@ -583,6 +775,7 @@ namespace VE {
         mIsEOS = false;
         if (mAudioPacketQueue) mAudioPacketQueue->clear();
         if (mVideoPacketQueue) mVideoPacketQueue->clear();
+        if (mSubtitlePacketQueue) mSubtitlePacketQueue->clear();
         return VE_OK;
     }
 
@@ -592,20 +785,15 @@ namespace VE {
         mReleased = true;
         if (mAudioPacketQueue) mAudioPacketQueue->clear();
         if (mVideoPacketQueue) mVideoPacketQueue->clear();
+        if (mSubtitlePacketQueue) mSubtitlePacketQueue->clear();
 
         if (mFormatContext) {
             avformat_close_input(&mFormatContext);
             mFormatContext = nullptr;
         }
 
-        if (mAudioCodecParams) {
-            avcodec_parameters_free(&mAudioCodecParams);
-            mAudioCodecParams = nullptr;
-        }
-        if (mVideoCodecParams) {
-            avcodec_parameters_free(&mVideoCodecParams);
-            mVideoCodecParams = nullptr;
-        }
+        // codec params 现在由 VEMediaInfo 深拷贝自持并在其析构时释放，
+        // 这里不能再动——解码器可能还持有那份 VEMediaInfo
         return VE_OK;
     }
 }

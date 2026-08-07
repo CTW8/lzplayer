@@ -37,6 +37,11 @@ namespace VE {
         // 在途缓冲队列：与 SLES 设备队列一一对应(FIFO)。Enqueue 不拷贝数据，
         // 帧必须持有到播放完成回调；静音缓冲以 nullptr 占位。
         std::deque<std::shared_ptr<VEFrame>> m_FrameQueue;
+        /// 与 m_FrameQueue 同步维护的每块时长(微秒)。按真实样本数算，
+        /// 不再拿"块数 × 固定 20ms"估——解码帧时长本来就不是 20ms
+        /// (AAC 一帧约 23ms)，估算会让音频时钟系统性偏移。
+        std::deque<int64_t> m_QueuedDurationsUs;
+        int64_t m_QueuedTotalUs = 0;
         std::mutex m_Mutex;
         std::condition_variable m_Cond;
 

@@ -45,6 +45,13 @@ static JNINativeMethod gVEPlayerMethods[] = {
         {"nativeRelease",      "(J)I",                                     (void *) VE::nativeRelease},
         {"setLooping",         "(JZ)I",                                    (void *) VE::nativeSetLooping},
         {"setPlaySpeed",       "(JF)I",                                    (void *) VE::nativeSetPlaySpeed},
+        {"nativeGetTrackInfo", "(J)Ljava/lang/String;",                    (void *) VE::nativeGetTrackInfo},
+        {"nativeSelectTrack",  "(JI)I",                                    (void *) VE::nativeSelectTrack},
+        {"nativeDeselectTrack","(JI)I",                                    (void *) VE::nativeDeselectTrack},
+        {"nativeAddExternalSubtitle", "(JLjava/lang/String;)I",            (void *) VE::nativeAddExternalSubtitle},
+        {"nativeGetStats",     "(J)Ljava/lang/String;",                    (void *) VE::nativeGetStats},
+        {"nativeSetForceSoftwareDecoder", "(JZ)I",                         (void *) VE::nativeSetForceSoftwareDecoder},
+        {"nativeSetForceSlesAudio", "(JZ)I",                               (void *) VE::nativeSetForceSlesAudio},
 };
 
 
