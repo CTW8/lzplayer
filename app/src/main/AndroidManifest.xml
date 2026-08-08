@@ -3,6 +3,14 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <!--
+      Android 13(API 33) 起 READ_EXTERNAL_STORAGE 对媒体文件失效，被拆成三个
+      分类型权限。少声明 READ_MEDIA_AUDIO 的后果不是"看不到音频文件"，而是
+      纯音频文件连 open 都会被拒(avformat_open_input 拿到 EACCES)，表现为
+      "demux open failed"，很容易误判成解封装能力缺陷。
+      IMAGES/VIDEO 由 MediaSelector 模块声明并合并进来，这里补上 AUDIO。
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
     <!-- 网络源测试需要 -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -24,6 +32,7 @@
         <activity
             android:name=".console.ConsoleActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.LZConsole"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout"
             android:screenOrientation="fullUser">

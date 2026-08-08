@@ -1,7 +1,10 @@
 package com.example.lzplayer.console
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -20,6 +23,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.ctw.mediaselector.MediaSelectorActivity
 import com.ctw.mediaselector.MediaType
@@ -45,6 +49,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
     companion object {
         private const val TAG = "LZConsole"
         private const val REQ_PICK = 1001
+        private const val RC_MEDIA_PERM = 1002
         private val SPEEDS = floatArrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
         /** 控件在横屏下的自动隐藏延迟 */
         private const val AUTO_HIDE_MS = 3000L
@@ -60,6 +65,16 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
          */
         const val EXTRA_SOURCE = "source"
         const val EXTRA_AUTOPLAY = "autoplay"
+        /**
+         * 策略开关也可由 intent 指定，否则只能手点诊断面板，回归脚本没法跑。
+         * 与面板开关同义：在建链之前生效。
+         *
+         *   --ez software true --ez vulkan true
+         *
+         * 注意 vulkan 只作用于软解，单开它不会有任何变化。
+         */
+        const val EXTRA_FORCE_SOFTWARE = "software"
+        const val EXTRA_PREFER_VULKAN = "vulkan"
     }
 
     private lateinit var etSource: EditText
@@ -122,7 +137,48 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             }
         }
         applyOrientation(resources.configuration.orientation)
+        ensureMediaPermissions()
         handleLaunchIntent(intent)
+    }
+
+    /**
+     * 申请读媒体所需权限。
+     *
+     * Android 13(API 33) 起按类型拆分：只有 READ_MEDIA_VIDEO 时，纯音频文件
+     * 会在 native 侧 open 失败并上报 "demux open failed"，看着像解封装不支持，
+     * 实际是权限。这里三类一起要，测试台需要能放任意本地媒体。
+     */
+    private fun ensureMediaPermissions() {
+        val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(
+                Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.READ_MEDIA_AUDIO,
+            )
+        } else {
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        val missing = needed.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, missing.toTypedArray(), RC_MEDIA_PERM)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != RC_MEDIA_PERM) return
+        val denied = permissions.filterIndexed { i, _ ->
+            grantResults.getOrNull(i) != PackageManager.PERMISSION_GRANTED
+        }
+        if (denied.isNotEmpty()) {
+            eventLog.warn("PERMISSION", "denied: ${denied.joinToString()}")
+            Toast.makeText(this, "缺少媒体读取权限，部分文件无法打开", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -135,6 +191,16 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         val path = i.getStringExtra(EXTRA_SOURCE)?.trim()
         if (path.isNullOrEmpty()) return
         autoPlayWhenPrepared = i.getBooleanExtra(EXTRA_AUTOPLAY, false)
+        // 策略必须在 openSource 之前落到字段上：openSource 会新建 native
+        // 播放器并把这些字段重新下发一遍
+        if (i.hasExtra(EXTRA_FORCE_SOFTWARE)) {
+            forceSoftware = i.getBooleanExtra(EXTRA_FORCE_SOFTWARE, false)
+            eventLog.warn("POLICY", "强制软解 ${if (forceSoftware) "开" else "关"}（intent）")
+        }
+        if (i.hasExtra(EXTRA_PREFER_VULKAN)) {
+            preferVulkan = i.getBooleanExtra(EXTRA_PREFER_VULKAN, false)
+            eventLog.warn("POLICY", "Vulkan 渲染 ${if (preferVulkan) "开" else "关"}（intent）")
+        }
         etSource.setText(path)
         eventLog.info("LAUNCH_INTENT", path)
         if (surfaceReady) {
@@ -305,6 +371,8 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         // 实际却还在走硬解——开关成了摆设。
         p.setForceSoftwareDecoder(forceSoftware)
         p.setForceSlesAudio(forceSles)
+        p.setPreferVulkanRender(preferVulkan)
+        startupTraceDumped = false
         if (p.init(source) != 0) {
             eventLog.crit("INIT_FAILED", source)
             toast("打开失败：$source")
@@ -320,6 +388,31 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         updateHud()
     }
 
+    /**
+     * 起播后拉一次启播里程碑并打进事件流与 logcat。
+     *
+     * 为什么用延迟而不是等 FIRST_FRAME 事件：那个事件**启播时根本不发**——
+     * native 侧 m_NotifyFirstFrame 只在 seek 路径置真。所以这里给渲染链一点
+     * 时间把 T6/T7 走完，再主动拉取。步骤5 有了性能面板后改由面板按需拉，
+     * 这段临时打印可以去掉。
+     */
+    private fun dumpStartupTrace() {
+        val p = player ?: return
+        val json = p.startupTraceJson
+        eventLog.info("STARTUP_TRACE", json)
+        Log.i(TAG, "STARTUP_TRACE $json")
+        // 同时落盘。**不能只依赖 logcat**：部分 ROM(实测 ColorOS)对单进程
+        // 日志有配额(LOG_FLOWCTRL "OVER PROC QUOTA")，本工程 native 层的
+        // ALOGV 每秒就能打满，应用自己的日志会被静默丢弃——排查时会误以为
+        // 代码没执行。落盘的这份是唯一可靠来源，也是后续跑分报告的雏形。
+        runCatching {
+            val dir = java.io.File(filesDir, "perf").apply { mkdirs() }
+            java.io.File(dir, "last-startup.json").writeText(json)
+            // 稳态读数原样落一份：步骤4 的解析类还没写，先靠原始 JSON 核对
+            java.io.File(dir, "last-stats.json").writeText(p.statsJsonRaw)
+        }.onFailure { Log.w(TAG, "write perf files failed: ${it.message}") }
+    }
+
     private fun togglePlay() {
         val p = player ?: return toast("还没打开片源")
         if (!prepared) return toast("还没 prepare 完")
@@ -331,6 +424,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             p.start()
             playing = true
             eventLog.info("START", "")
+            Log.d(TAG, "START dispatched, waiting for first progress to dump trace")
         }
         btnPlayPause.text = if (playing) "暂停" else "播放"
         updateHud()
@@ -450,8 +544,11 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             eventLog = eventLog,
             // 直接问播放器要：暂停时 onProgress 不再回调，缓存会停在最后一帧的值
             statsProvider = { player?.stats ?: PlayerStats.empty() },
+            statsJsonProvider = { player?.statsJsonRaw ?: "{}" },
+            startupTraceProvider = { player?.startupTraceJson ?: "{\"valid\":false}" },
             forceSoftware = forceSoftware,
             forceSles = forceSles,
+            preferVulkan = preferVulkan,
             // 用 player?. 而不是捕获的引用：面板可能跨越一次换源
             onForceSoftware = { on ->
                 forceSoftware = on
@@ -462,12 +559,20 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
                 forceSles = on
                 player?.setForceSlesAudio(on)
                 eventLog.warn("POLICY", "强制 SLES ${if (on) "开" else "关"}（下次 prepare 生效）")
+            },
+            onPreferVulkan = { on ->
+                preferVulkan = on
+                player?.setPreferVulkanRender(on)
+                eventLog.warn("POLICY", "Vulkan 渲染 ${if (on) "开" else "关"}（下次 prepare 生效，仅软解）")
             }
         ).also { it.show() }
     }
 
     private var forceSoftware = false
     private var forceSles = false
+    private var preferVulkan = false
+    /** 每次换源只打印一次启播里程碑 */
+    private var startupTraceDumped = false
     /** 由 intent 指定的自动起播，PREPARED 之后触发一次 */
     private var autoPlayWhenPrepared = false
     /** intent 带来的片源，等 surface 就绪后再打开(见 handleLaunchIntent) */
@@ -751,6 +856,16 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             tvPosition.text = formatTime(progressMs.toLong())
             // 借进度回调的节奏刷读数
             refreshStats()
+            // 起播里程碑在首帧上屏后才齐全，而进度已经在推进说明那一刻早已过去。
+            // 挂在这里而不是用 postDelayed：进度回调是确定会来的，延迟消息会被
+            // 各种 removeCallbacks 之类的清理波及。
+            // 每个 tick 覆盖写一次：里程碑是逐步补齐的(T7/T8 可能晚于首个
+            // 进度回调)，只在首个 tick 写会得到一份"看着像漏采集"的残缺快照。
+            // 文件很小，一秒两次写可以忽略；步骤5 由面板按需拉取后去掉。
+            if (progressMs > 0) {
+                startupTraceDumped = true
+                dumpStartupTrace()
+            }
         }
     }
 
