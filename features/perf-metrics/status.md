@@ -1,0 +1,389 @@
+# perf-metrics 进度
+
+> 最后更新: 2026-08-08
+> 总体状态: Doing
+
+## 计划外的顺序调整（2026-08-08，用户反馈推动）
+
+用户问"为啥没有按照设计稿生成结果"。原因是计划把 UI 面板排在步骤5、前面四步全是 native 采集，
+所以做完步骤1、2 之后**界面上完全看不到变化** —— 用户批了设计稿、说了开工，
+结果只拿到两个 JSON 文件。**这个反馈是对的。**
+
+已做的调整：
+
+1. **提前实施步骤5（性能面板 UI），跳过步骤4（Java 结构化解析类）**。
+   面板直接用 `org.json.JSONObject` 读原始 JSON，没有等中间层。
+2. **步骤4 重新定位为「后续重构」**：把面板里的内联 JSON 解析抽成
+   `StartupTrace` / `SeekTrace` / `PlayerStats` 扩展类，**不再是步骤5 的前置**。
+   触发时机是第二个消费方出现时（步骤7 跑分报告也要解析同样的 JSON）。
+3. plan.md 的「依赖与顺序」与「关键约束 9」已同步：**有 UI 的 feature，
+   只要有一路真实数据可展示就先把 UI 做出来，中间层等第二个消费方再抽。**
+
+## Done
+
+- [x] 步骤1: native 时间基准与启播里程碑 T0~T8 + `getStartupTraceJson()` (2026-08-08)
+  - 新增 `lzplayer_core/src/main/cpp/utils/VEStartupTrace.h/.cpp`：steady_clock、mutex 保护、
+    `mark()` 首次写入生效、`toJson()` 一次算完全部派生量。
+  - 共 12 个打点（T4a/T6/T7 各含软硬解两处）：T0/T0_DISPATCH/T4/T5 在 `VEPlayer.cpp`；
+    T1/T2/T3 在 `VEDemux.cpp`；T4a(begin/end)+T6 软解在 `VEVideoDecoder.cpp`、硬解在
+    `VEMediaCodecVideoDecoder.cpp`；T7 软解在 `VEVideoDisplay::onRender`、硬解在
+    `releaseOutputBuffer` 后；T8 在 `VEAudioRender::anchorClock`。
+  - 注入口均为**非纯虚默认空实现**：`VESource::setStartupTrace`、`IMediaDecoder::setStartupTrace`、
+    `VEVideoDisplay::setStartupTrace`、`VEAudioRender::setStartupTrace`。
+  - JNI 链路：`VEPlayer::getStartupTraceJson()` → `VEPlayerDriver::getStartupTrace()` →
+    `nativeGetStartupTrace`（已注册进 VEJvmOnLoad 方法表）→ `NativeLib.getStartupTrace()`。
+    独立 getter，未塞进 `getStatsJson`，未新增回调通道（符合关键约束 8）。
+  - 里程碑同时落盘 `filesDir/perf/last-startup.json`（既为绕开设备 logcat 配额，也是步骤7 报告雏形）。
+  - 真机验证通过（OPPO PHK110 / Android 16，素材 640x360 h264），7 条验收标准全过，详见下方。
+
+- [x] 步骤2: native 稳态指标（直方图 + 队列峰值 + 扩展 `getStatsJson()`）(2026-08-08)
+  - 新增 `lzplayer_core/src/main/cpp/utils/`：
+    - `VEPerfHistogram.h/.cpp` —— 固定桶宽直方图，**单写者无锁**（桶计数用 relaxed 原子：
+      既避免数据竞争的 UB，在 ARM 上又几乎零成本）。只出 p50/p95/max + 样本数，
+      不跨 JNI 传原始样本。**样本 < 30 时三个分位数一律输出 -1**。
+      分位数取桶上界（**宁高不低，报低会掩盖问题**）；溢出桶返回真实 max。
+    - `VEPerfStats.h` —— 共享容器 + `nowUs()`（steady_clock）+ `bumpPeak()` CAS 峰值。
+      **用共享对象而非给各接口加 getter**：视频解码器有软硬解两个实现、显示端也有两条路径，
+      靠 getter 取会让 `VEPlayer` 对每种组合做 `dynamic_cast` 分支。
+  - 打点（软硬解各一套）：软解解码耗时在 `VEVideoDecoder::onDecode` 两个产出点；
+    音频解码耗时在 `VEAudioDecoder` 两个产出点（重采样与直通，**第一次只改了直通那处，
+    补齐后才对**）；上屏耗时与同步余量在 `VEVideoDisplay::onRender`（软解）与
+    `releaseOutputBuffer` 前后（硬解）；包队列峰值在 `VEDemux::putPacket`
+    （用 `getDataSize()`，**不是 `size()`**）；帧队列峰值在 `VEVideoDisplay` 入队处。
+  - `getStatsJson()` 先处理了截断风险：buf 放大到 1024，且改为 `std::string` 拼接后
+    追加稳态片段。实测最长输出 618 字符，JSON 合法。
+  - 真机验证通过（OPPO PHK110，素材 shortaudio.mp4 = 10s 视频 + 3s 音频），
+    6 条验收逐条有结论，详见下方两节。
+
+## Doing
+
+- [ ] 步骤3: seek 追踪（三阶段 + 首帧 + 精度）+ `getSeekTraceJson()`，保留最近 10 次
+  — **trace 容器已就绪，待接打点与 getter**。
+  - 已完成：`lzplayer_core/src/main/cpp/utils/VESeekTrace.h` —— 环形缓冲 10 条、
+    三阶段 `closeStage`、精度算「首帧 pts − 请求位置」、abort 也入库。
+  - **未完成**：尚未接进 `VEPlayer` 的三阶段转换点（PAUSING / SEEKING / PRIMING），
+    也还没有 JNI / Java 链路。该头文件目前**未被任何 .cpp 引用，不影响编译**。
+  - 因此性能面板 Seek 页仍是占位说明。
+  - **仍需先造出触发 seek 的手段**（seek 的 intent extra 或 UI 自动化路径），
+    一并验掉步骤2 遗留的「seek 后队列峰值归零」。
+
+- [ ] 步骤5: 性能面板 UI —— **主体已完成并真机逐页核对通过，剩三项交付未做**
+  - 剩余项 1：面板尚不支持拖到全屏高度（当前是 BottomSheet 默认 peek，内容需滚动）。
+  - 剩余项 2：**清理每 tick 写 perf 文件的临时脚手架**（原定本步骤清理，现在面板已能按需拉取，
+    可以清了）—— 见下方「步骤2 遗留的临时脚手架」。
+  - 剩余项 3：Seek 页接通（等步骤3）。
+  - 「跑分」按钮不属本步骤，归步骤7。
+  - 完成明细见下方「步骤5 完成情况」。
+
+## Todo
+
+- [ ] **步骤2 遗留验收项：seek 后队列峰值归零**（代码已在 seek 路径与 `mVideoEOS`/`mAudioEOS`
+  复位处一起 reset，但本轮无触发 seek 的 intent extra，未真机验证）—— 并入步骤3 一起验
+- [ ] 步骤4（**已重定位为后续重构，不再是步骤5 前置**）：把面板里的内联 JSON 解析抽成
+  `StartupTrace` / `SeekTrace` / `PlayerStats` 扩展类；触发时机 = 步骤7 成为第二个消费方时
+- [ ] 步骤6: 性能 HUD（主控台左下角三行小字 + 开关）
+- [ ] 步骤7: 基准序列（6 步自动序列 + txt/json 双份报告 + 环境指纹头部）
+- [ ] 步骤8: 真机验证，逐条对照设计第 6 节 12 条验收标准，报告落 `test-reports/`
+
+## 步骤5 完成情况（2026-08-08 真机 OPPO PHK110 截图逐页核对通过）
+
+`DiagnosticsSheet.kt` 由单页诊断面板改为**六分页性能面板**（概览 / 启播 / Seek / 稳态 / 资源 / 日志），
+标题栏加 SMPTE 彩条。逐页核对结论：
+
+| 页 | 状态 | 要点 |
+|----|------|------|
+| 概览 | 真实数据 | 四个大字读数：启播总耗时 126ms（判定「良 · 线 500/1000」）、帧率 25.2fps（标注「均值口径」）、丢帧率 0.00%（0/236）、进程 CPU。下方八项读数栅格 + 三个策略开关（Vulkan 带「需同时强制软解」提示）。**每个大字读数都带文字判定，灰度可读** |
+| 启播 | 真实数据 | 瀑布图：总耗时 125.6ms · hardware · 视频基准；堆叠条按耗时占比分宽度；分段明细七项，最大项自动标「← 最大项」（首帧解码 108.2ms）；`解码器 configure 101.6ms` 标注「叠加在首帧窗口内」而非算进分段；`就绪→起播 12.9ms` 标注「不计入总耗时」；末行自校验「分段之和 125.5ms，与总耗时差 0.10ms（应 < 5ms，否则采集点有漏）」 |
+| Seek | **占位说明** | 明写「尚未接通（perf-metrics 步骤3）」并列出接通后会显示什么。**刻意不留空白页** |
+| 稳态 | 真实数据 | 分位数表五行；`视频解码(软解)` 在硬解跑时正确显示 `--` n=0；codec 延迟 184.00/326.00/396.47 n=250；音频解码 0.05/0.15/0.74 n=130；上屏 1.30/2.40/3.88 n=236；同步余量 10.50/39.50/169.95 n=236。队列水位「当前/峰值」音 0/44、视 0/216、帧 —/0（附「硬解为 0 属正常」说明）。两条判读提示（codec 延迟含背压不可比、同步余量是丢帧前兆）页内常驻 |
+| 资源 | 真实数据 | CPU 单核归一 4.9% + 整机占比 0.61%（8 核，**两个口径都给**）、RSS 254MB（**该数字不可用于判断，见下方「两条结论的撤回与降级」第 2 条**）、Native heap 22MB、线程 CPU 排序列表 |
+| 日志 | 行为不变 | 原事件流下沉为一页 |
+
+顺带的链路改动：`ConsoleActivity` 新增 `statsJsonProvider` / `startupTraceProvider` 两个构造参数
+传给面板；`VEPlayer.java` 新增 `getStatsJsonRaw()`。
+
+### 步骤5 实施中发现并修掉的两点（plan 与设计稿已同步）
+
+1. **面板需要自有 1 秒采样节拍**。原设计写"刷新搭既有进度 tick，不另开定时器"，
+   但 **CPU 占用必须两次采样求差**，而暂停/播完后进度回调就停发了，
+   导致 CPU 永远显示"首次采样"。已加一个**只在面板显示期间运行**的 1s ticker
+   （`setOnShowListener` 起、`setOnDismissListener` 停）——这与设计 §5.4
+   「采样区间固定 1 秒，面板打开时才采」本来就一致。
+   设计稿 3.A.3 的适用范围已改清楚：**HUD 搭进度 tick，面板自有节拍**。
+2. **提示文案里误写了 Markdown 星号**（`**不是**`），`TextView` 不解析、直接把星号显示出来了。
+   已去掉。**纯文本 UI 里不要写 Markdown 强调。**
+
+## 全部基线数据的适用范围（2026-08-08 追加，重要）
+
+**本 feature 步骤1 与步骤2 的全部实测数字都是用 ffmpeg 造的 640×360 合成小素材测的，
+只能证明采集点完整、字段自洽，不能作为性能基线。**
+
+换成设备上的 1080p 真实素材（`/sdcard/Movies/VID_20230814_205835.mp4`，
+1920×1080 h264 30fps 20Mbps 9.5s + AAC）重测后，瓶颈排序**完全变了**：
+
+| | 640×360（本 feature 基线） | 1920×1080 真实素材 |
+|---|---|---|
+| 解析流信息 | 2.4 / 2.1ms（可忽略） | **145.0 / 133.8ms（第一大项）** |
+| 启播总耗时 硬解 | 101.7ms | 231.2ms |
+| 启播总耗时 软解 | 11.8ms | 246.4ms |
+
+下方「结论：硬解起播比软解慢约 8.6 倍，瓶颈是 configure」**已被推翻**：
+1080p 上软硬解基本持平，第一大项是解析流信息。那个结论是**素材的性质**，
+不是播放器的性质。1080p 基线与后续优化工作已登记为独立 feature
+**startup-cpu-opt**（见 `docs/startup-cpu-opt-design.md` §0 / §1）。
+
+**性能基线一律以 startup-cpu-opt 设计文档 §1 为准。**
+
+## 步骤2 遗留的口径缺陷：软解 `videoDecodeMs` 量错了 —— **已于 2026-08-08 修完**
+
+> **修复已完成（startup-cpu-opt 步骤2，2026-08-08）**：`VEVideoDecoder` / `VEAudioDecoder`
+> 各加 `mDecodeAccumUs` 累加 `avcodec_send_packet` 耗时，产出一帧时与本次 receive/转换耗时
+> 一并入库并清零，`onFlush` 清零。**1080p 软解修正后的正确值**：
+>
+> | 指标 | 旧（错） | **新（正确，2026-08-08 起）** |
+> |---|---|---|
+> | 视频解码 p50 / p95 / max | 0.1 / 0.1 / 0.34 | **14.0 / 23.6 / 60.25**（n=287） |
+> | 音频解码 p50 / p95 | 0.05 / 0.3 | **0.3 / 0.65**（n=445） |
+>
+> 交叉校验通过：`vdec_thread` 79.5% ÷ 30fps ≈ 26.5ms/帧，与 wall p50 14 / p95 23.6 同量级。
+> **本 feature 下方所有 `videoDecodeMs` / `audioDecodeMs` 旧数字与新口径不可比**
+> （旧数字既是 640×360 素材，又是错口径，双重不可用）。
+
+以下为缺陷原文，保留备查：
+
+`avcodec_send_packet`（`VEVideoDecoder.cpp:472` / `475`）才是真正干活的地方，
+而本 feature 步骤2 的计时区间只覆盖了 `avcodec_receive_frame` 与格式转换那一侧，
+**只量到取帧那一侧**。1080p 软解报 p50 = **0.1ms**，而同一份数据里
+`vdec_thread` 占 **81% CPU**（30fps 摊算每帧约 27ms）——**差 270 倍**。
+
+因此下方「步骤2 验收数据」表里软解 `videoDecodeMs p50=0.1 p95=0.1 max=0.34` 三个数
+**无效**，其余字段不受影响。
+
+**这与「硬解解码耗时口径不对」是同一个病根的第二次发作**（见下节）：
+指标名与它实际度量的东西不是一回事。修复方案（send 耗时累加器 →
+产出一帧时入库，得"每产出一帧的解码成本"）与新增规则
+（**第三次打点前先自问"这个数字的名字和它量到的东西是不是同一件事"**，
+且每个新指标必须有一个独立来源的交叉校验）已登记在
+`features/startup-cpu-opt/plan.md` 步骤2。
+
+## 两条结论的撤回与降级（2026-08-08，1080p 实测后）
+
+1. **「缓冲按包数封顶」这个担心不成立 —— 从优化建议中撤回。**
+   1080p 20Mbps 下视频包队列峰值只有 **64~71**，而 640×360 是 **216**。
+   若上限按包数算，高码率素材应该同样撞到 216；峰值反而更低，
+   说明上限本来就是按**字节/时长**算的（`kMaxTotalBytes` 16MB 全局封顶 +
+   每路时长达标，见 demux-buffering 设计），高码率下自然更早触及字节封顶、包数因此更少。
+   **是设计意图，不是缺陷**，不需要改 demux-buffering。
+
+2. **「RSS 254MB」降级为「待测」，不是问题。**
+   该数字（上方资源页一行）不可用于判断：① 测于 **640×360** 素材；
+   ② **含大量共享库映射**（FFmpeg 各 so、GLES 驱动），RSS 口径本身把共享页算进来。
+   1080p 下**没有单独测过内存**。要判断需专门测一轮：
+   区分 RSS / PSS / native heap 三个口径，并在同一素材上做"播放前 vs 播放中"差分。
+   是否立项等那轮数据。
+
+## 步骤2 的两处定义纠偏（重要，实施时才发现，plan 与设计口径已随之调整）
+
+### 1. 硬解的「解码耗时」口径不对，已拆成两个字段
+
+原方案（(a) 方案）把硬解 pts→出队的端到端延迟当「解码耗时」。实测三个分位数全等于 384ms
+——落进溢出桶。更根本的问题是**这个数字的含义不对**：这段延迟里**绝大部分是背压等待**
+（解码器故意跑在同步时钟之前，输出队列一满就停止取输出，输入包因此在 codec 里排队），
+真正的解码工作只占很小一部分。把它和软解的 send/receive CPU 成本塞进同一个 `videoDecodeMs`
+字段，正是**「口径不可互比」最隐蔽的形态——字段名一样，看的人根本不会察觉**。
+
+已拆成两个字段，各自只表达一件事：
+
+| 字段 | 谁填 | 含义 |
+|------|------|------|
+| `videoDecodeMs` | 只有软解 | 单帧解码的 CPU 成本 |
+| `codecLatencyMs` | 只有硬解 | codec 端到端延迟，**含背压**；注释已写明它不是解码耗时 |
+
+`codecLatencyMs` 的用途是判断 codec 是否跟得上：**持续增长 = 产能不足；稳定在与缓冲深度
+成正比的水平 = 正常**。两条路径互相看对方的字段都是 n=0 → 输出 -1 → 上层显示 `--`。
+
+### 2. 桶宽初值过粗，已重设
+
+软解单帧解码约 0.1~0.3ms，原 250us 桶宽让 p50 与 p95 双双落在 0 号桶、都报 0.25。现为：
+
+| 指标 | 桶宽 × 桶数 | 量程 |
+|------|-------------|------|
+| videoDecode | 100us × 512 | 0~51.2ms |
+| audioDecode | 50us × 256 | 0~12.8ms |
+| present | 100us × 256 | 0~25.6ms |
+| syncMargin | 500us × 400 | −50~150ms |
+| codecLatency | 2ms × 512 | 0~1024ms |
+
+## 步骤2 验收数据（2026-08-08 真机 OPPO PHK110，素材 shortaudio.mp4 = 10s 视频 + 3s 音频）
+
+| 指标 | 硬解 | 软解 |
+|------|------|------|
+| videoDecodeMs | -- (n=0) | ~~p50=0.1 p95=0.1 max=0.34 n=250~~ **口径错误，见上方修正块（1080p 正确值 p50=14.0）** |
+| codecLatencyMs | p50=182.0 p95=328.0 max=466.2 n=250 | -- (n=0) |
+| audioDecodeMs | ~~p50=0.05 p95=0.3~~ **同上，口径已修正（1080p 软解 p50=0.3 / p95=0.65）** | — |
+| presentMs | p50=1.5 p95=2.5 | p50=2.9 p95=4.5 |
+| syncMarginMs | p50=4.5 p95=39.5 max=179.3 | p50=10.0 p95=39.0 max=144.4 |
+| 队列峰值 音/视/帧 | 44 / 216 / 0 | 44 / 232 / 6 |
+| rendered / dropped | 235 / 0 | 250 / 0 |
+
+硬解帧队列峰值为 0 属正确——硬解不经 `VEVideoDisplay`。
+
+逐条验收：
+
+1. 分位数合理、样本不足给标记 —— **通过**
+2. 同步余量 p95 > 0（39.5 / 39.0）—— **通过**
+3. 队列峰值 ≥ 当前值 —— **通过**；「seek 后归零」**未验**，已记为 Todo 并并入步骤3
+4. JSON 合法无截断 —— **通过**（最长 618 < 1024）
+5. 打点前后无可测退化 —— **通过，但判定方式已修正**（见下）
+6. 每帧路径无字符串格式化、无跨 JNI 传样本 —— **通过**（格式化只在 `appendJson`/`toJsonFragment`）
+
+### 验收 5 的判定方式修正：「两次跑差异 < 15%」对软解不可用
+
+软解启播连跑三次得 21.3 / 12.4 / 11.7ms，中位数 12.4 对比基线 11.8ms 属噪声内；
+硬解 106.5 vs 基线 101.7（+4.7%）。两路 dropped 均为 0、rendered 与预期帧数一致。
+
+关键观察：**确定性段几乎不动**（打开 4.4~4.8、解析 1.7~2.5、建链 0.5~0.6），
+**全部方差集中在首帧解码/上屏两段**（1.5~7.4ms 抖动）。
+软解总耗时绝对值只有约 12ms，单次首帧调度抖动即可超过 15%，故百分比阈值无意义。
+
+**已改为**：N ≥ 3 次取中位数；只对确定性段（打开/解析/建链）做严格比对；
+首帧两段单独看分布。plan 的步骤2、步骤7 验收与风险 6 均已同步更新。
+
+## 步骤2 遗留的临时脚手架（步骤5 须清理）
+
+`ConsoleActivity.dumpStartupTrace()` 现在**每个进度 tick 覆盖写两个文件**：
+`filesDir/perf/last-startup.json` 与 `last-stats.json`（新增 `VEPlayer.getStatsJsonRaw()`
+供其取原始 JSON）。动因是这台设备 logcat 有配额会丢日志。
+步骤5 性能面板做好后改为**面板按需拉取**，这段每 tick 写文件的逻辑要删掉。
+
+**2026-08-08 更新**：面板已能按需拉取（`statsJsonProvider` / `startupTraceProvider`），
+**这段脚手架现在可以清了**，已记为步骤5 的剩余交付项 2。
+
+## 步骤1 验收数据（2026-08-08 真机 OPPO PHK110 / Android 16 / ColorOS，640x360 h264）
+
+| 段 | 硬解 (ms) | 软解 (ms) |
+|----|-----------|-----------|
+| 打开 | 10.0 | 4.7 |
+| 解析 | 2.4 | 2.1 |
+| 建链 | 2.7 | 0.4 |
+| configure（叠加区间） | **80.9** | 0.4 |
+| 首帧解码 | 85.9 | 2.4 |
+| 首帧上屏 | 0.7 | 2.1 |
+| **总耗时** | **101.7** | **11.8** |
+| 分段之和误差 | 0.10（< 5ms） | 0.00 |
+
+其余验收项：
+- 纯音频 m4a/mp3：T8 采到（首声 76.7 / 42.5ms），`totalBasis=audio`，`decodePath='-'`。
+- 换源不残留：视频→音频后 `firstFrameMs` 变 −1、basis 切 audio。
+- 回归 shortaudio.mp4：音频 EOS 在 2.9s 到达未收尾，等视频 9.6s 才 complete，
+  先前的 EOS 修复仍成立。
+
+### ~~结论：硬解起播比软解慢约 8.6 倍，瓶颈是 MediaCodec configure 的 80.9ms~~ —— 已被推翻
+
+> **2026-08-08 推翻**：该结论只在 640×360 合成小素材上成立，是**素材的性质**而非播放器的性质。
+> 1080p 真实素材上软硬解总耗时基本持平（231.2 / 246.4ms），
+> **第一大项是解析流信息（145.0 / 133.8ms）**，configure 退为第二大项（66.3ms）。
+> 详见上方「全部基线数据的适用范围」与 `docs/startup-cpu-opt-design.md` §0。
+
+原文保留备查：101.7 vs 11.8ms。这是拆分段后立刻得到的结论——
+只看总耗时一个数字不会指向 configure（**这一点仍然成立**，分段拆解本身是有效的，
+错的是把小素材的分段结果当成了性能基线）。
+configure 优化已归入 **startup-cpu-opt 步骤4b**（含"把 configure 挪进 prepare 不算优化"的反模式约束），
+不再挂在 high-perf-player 名下。设计稿 3.C2 与 5.2 已同步标注。
+
+## 步骤1 推翻的两条原设计假设（设计稿已同步修订）
+
+1. **T7 不能复用 `FIRST_FRAME` 事件**：该事件只在 seek 路径上报
+   （`m_NotifyFirstFrame` / `mNotifyFirstFrame` 仅由 `onSeekTo` / `onSeek` 置真），起播时始终为假；
+   且 `VEPlayer` 会忽略非 `SEEK_STAGE_PRIMING` 的首帧。已改为在两处渲染提交点就地打点，
+   **未改动该事件语义**（它已透到 Java 层，改语义会影响 app 行为）。
+2. **configure 不嵌在建链段内**：解码器 prepare 是异步的，`continuePrepare` 在 configure 执行前
+   就返回，因此 T3→T4「建链」只是接线耗时（实测 0.4~2.7ms），configure 落在 start 之后的
+   首帧窗口内。原设计按「建链 − configure」算「建链其余」会得到 −80.3 这类负数。
+   已改为把 configure 作为**跨段叠加区间**呈现：新增 JSON 字段 `configureOverlapsFirstFrame`，
+   删除 `buildChainOtherMs`。
+
+另修正：`decodePath` 只在确实有视频轨时才填，纯音频输出 `-`
+（原先无条件上报 `mVideoHardware=false` 会显示 "software"，会被误当成真正的软解去做对照）。
+
+## 步骤1 顺带修掉的两个既有 bug（不属于本 feature 范围，但已随步骤1 改动）
+
+1. **`ConsoleActivity` 缺 `launchMode="singleTop"`**：manifest 未配置，默认 standard，
+   导致 `am start` 每次叠一个新实例（实测栈内堆了 13 个），代码里的 `onNewIntent`
+   **从未被调用**——即此前加的 intent 换源功能只在冷启动生效。已加 singleTop，
+   实例数回到 1，同进程换源验证通过。（归属上属 test-console-ui 的缺陷，已在此顺修，
+   test-console-ui 步骤8 自测时无需重复排查。）
+2. 启播里程碑落盘 `filesDir/perf/last-startup.json`（动因见下方排查教训）。
+
+## 排查教训：真机验证方式必须调整（影响后续所有步骤的真机验收）
+
+- **测试设备已更换**：小米 `fa04e593` → **OPPO PHK110 `e9d6e706` / Android 16 / ColorOS**。
+- **该机对单进程 logcat 有 300 行配额**，超出静默丢弃，日志中出现
+  `W LOG_FLOWCTRL: ==LOGS OVER PROC QUOTA(300) ... DROPPED==`。
+  本工程 native 的 ALOGV（尤其 `VEDemux` 每条消息都打）每秒即打满配额，
+  导致**应用自身的 Log.i/Log.d 被丢弃**。曾因此误判「dumpStartupTrace 没执行」，
+  反复重建重装排查很久。
+- **结论：这台设备上不得只依赖 logcat 验证。被测代码必须写文件**，再用
+  `adb shell run-as com.example.lzplayer cat files/<path>` 读回。
+- `pm grant` 在该机被 SecurityException 拦截，权限需**手动授予**。
+
+### ~~待用户决策的衍生任务建议（尚未登记）~~ —— 已登记，且**性能理由已被实测证伪**
+
+> **2026-08-08 结论（startup-cpu-opt 步骤3 已完成对照实验）：
+> 「ALOGV 洪水消耗 CPU、与测量目标冲突」这条理由被证伪 —— 差值只有
+> 软解 −1.5pp（146% → 144.5%）、硬解 −4.5pp（110.5% → 106.0%）。**
+>
+> 因此下方建议的**第二条理由（打日志消耗 CPU）作废**，「日志分级收敛」
+> **不再是性能优化项**，在 startup-cpu-opt 里已降级为「可选清理」。
+> 仍然成立的只有**第一条理由**：这台 OPPO 设备 logcat 有 300 行/进程配额，
+> 日志洪水会挤掉应用自身的 Log.i/Log.d，损害可调试性（本 feature 步骤1 曾因此误判很久）。
+>
+> 对关键约束 1「测量不能影响被测对象」的影响：**本工程的 ALOGV 对 CPU 测量的干扰
+> 实测在 5pp 以内**，不构成测量有效性问题（但报告仍应记录是否为静音构建）。
+> 落地开关名为 `VE_QUIET_LOG`（默认 OFF，`-PveQuietLog=true` 打开），
+> **与下文猜测的 `VE_FORCE_QUIET_LOG` 名字不同，以代码为准**。
+
+以下为原建议，保留备查（含已作废的第二条理由）：
+
+native 层 ALOGV 密度过高，正常播放每秒上百条。建议单独起一个「日志分级收敛」小任务：
+把 `VEDemux` 逐消息 ALOGV 降级或加编译开关。理由有两条——该设备上永远看不到完整日志；
+且打日志本身消耗 CPU，与 perf-metrics 的测量目标直接冲突（关键约束 1「测量不能影响被测对象」）。
+
+> **2026-08-08 已登记为 startup-cpu-opt 步骤3。** 1080p 实测给了它更硬的动因：
+> 播放中 CPU 两条路都超过一个核（软解 146%、硬解 110.5%），且**硬解 110.5% 里
+> `vdec_thread` 只占 23%，其余散在几十个小线程上** —— 这种"没有热点、到处都热"
+> 正是每线程共有开销（如日志）的特征。步骤3 的第一件事是**开/关 ALOGV 的对照实验**
+> （`utils/Log.h` 已有 `VE_LOG_VERBOSE_ENABLED` 机制，但 Debug 构建下 ALOGV 全开，
+> 需补一个 `VE_FORCE_QUIET_LOG` 开关），先拿到数字再决定是否收敛。
+>
+> **↑ 这段推理已被实测证伪（见本节顶部）。"没有热点、到处都热 ⇒ 日志"是错的**：
+> 静音后 CPU 构成实测为——软解 `vdec_thread` 79.5% + `video_render` 27.0% + 音频路径约 21%；
+> 硬解 `vdec_thread` 24% + MediaCodec 14.5% + 音频路径约 26% + HwBinder 7%。
+> 见 `docs/startup-cpu-opt-design.md` §7.4。
+
+## 备注
+
+- 设计文档未新建，方案在 `docs/test-console-ui-design.md` 第 3.A.3 / 3.C / 3.F / 5 / 6 / 7 节；
+  步骤1 的两条修订已落在 3.C2 与 5.2；步骤5 的节拍/纯文本/不留空白页三条已落在 3.A.3 与 3.C 开头。
+- 与 test-console-ui 会碰 `DiagnosticsSheet.kt` 与 `ConsoleActivity.kt`：**步骤5 已在这两个文件上落地**
+  （原「建议等 test-console-ui 步骤8 收口再动」的建议因用户反馈提前推进而未采纳），
+  test-console-ui 步骤8 自测时需连带核对这两个文件的现状。
+
+## 步骤1 开工核实结论（2026-08-08 逐点核对代码，保留备查）
+
+| 点 | 实际位置 | 备注 |
+|----|----------|------|
+| T0 | `VEPlayer::onPrepare` 入口 | prepare 已异步化：`isFlowBusy()` 时排 PendingAction，真正执行在 `doPrepare()`。故另记 `T0_DISPATCH`，否则排队等待被误算进「打开」段 |
+| T1 | `VEDemux::openInput` 返回后 | 跑在 demux 自己的 looper 上 |
+| T2 | `avformat_find_stream_info` 返回后 | 同上 |
+| T3 | `VEDemux::buildTrackList` 返回后 | 同上 |
+| T4 | `VEPlayer::continuePrepare` 返回前 | 由 PREPARE_DONE 回执驱动 |
+| T4a | 硬解 `VEMediaCodecVideoDecoder::configureCodec` 末尾／软解 `VEVideoDecoder::onPrepare` 末尾 | 软解实际函数名是 `onPrepare` 不是 `prepare`；实施时拆成 begin/end 两点以算 configure 区间 |
+| T5 | `VEPlayer::onStart` 入口 | |
+| T6 | 软解产出首个 `VEFrame` 处／硬解 `drainOutput` 首次 `mOutQueue.push_back` | |
+| T7 | 软解 `VEVideoDisplay::onRender` 中 `renderFrame` 返回后／硬解 `releaseOutputBuffer(render=true)` 后 | 见上方「推翻的假设 1」 |
+| T8 | `VEAudioRender::anchorClock` 首次调用 | |
+
+跨对象聚合：T1~T3 在 `VEDemux`（自有 looper）、T6/T7 在解码器/渲染器、T8 在音频渲染，
+由 `VEPlayer` 持有共享 trace 对象（`shared_ptr` 注入，内部 mutex + 纯整型字段），
+`getStartupTraceJson()` 从 JNI 线程读取。

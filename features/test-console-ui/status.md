@@ -52,6 +52,12 @@
 ## Todo
 
 - [ ] 步骤8: 真机自测（adb-ops 逐屏截图核对 A/B/C/D 四块屏幕 + 灰度可读性 + Phase 0~5 能力覆盖清单），报告落 `test-reports/` —— **唯一阻塞步骤 1~7 标 Done 的事项**。执行时 `adb devices` 为空，需插设备后再做。
+  - **2026-08-08 前置变更（perf-metrics 步骤5 已改动本 feature 的文件）**：`DiagnosticsSheet.kt`
+    已由单页诊断面板改为**六分页性能面板**（概览/启播/Seek/稳态/资源/日志），
+    `ConsoleActivity` 新增 `statsJsonProvider` / `startupTraceProvider` 两个构造参数。
+    **步骤8 的 C 屏核对必须以当前六分页形态为准**，不能按本 feature 原设计的八项读数单页去对。
+    perf-metrics 已在其步骤5 做过逐页真机截图核对，可作参考。另：`ConsoleActivity` 缺
+    `launchMode="singleTop"` 的缺陷（`onNewIntent` 从未被调用）已由 perf-metrics 顺修，无需重复排查。
 - [ ] 代码提交（CLAUDE.md 要求提交前需用户明确同意；当前全部改动未提交）。
 
 ## 待记录的决策（已回填）

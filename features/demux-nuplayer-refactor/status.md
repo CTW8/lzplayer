@@ -13,3 +13,12 @@
 - [ ] 步骤 5: 真机回归（prepare/start/pause/seek/EOS/换源 reset） — 等待主对话触发 lzplayer-test-expert agent 跑全功能回归
 
 ## Todo
+
+## 备注
+
+- **2026-08-08 归属说明**：解码器"饥饿双唤醒源未去重"的缺陷（`requestReadNotify` + 500ms 兜底同时武装）
+  虽在本 feature 关注的同一条数据面链路上，但**不并入本 feature**：它由 high-perf-player Phase 4 引入，
+  且本 feature 范围是"驱动模型内核行级不变"、步骤5 回归的验收标准正是"确认驱动模型无回归"——
+  塞入一处故意改变运行期行为的修复会污染该基线。已独立跟踪于
+  [decoder-starve-wake-dedup](../decoder-starve-wake-dedup/)。
+  步骤5 回归时若发现解码链路行为差异，先排除该修复（工作区已含其改动）再归因到本重构。

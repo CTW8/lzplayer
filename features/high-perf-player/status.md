@@ -53,6 +53,12 @@
 
 - [ ] Phase 4: 能耗与调度精修 — **实现完成 + 构建通过，真机回归未做**
   - `IMediaSource` 新增 `requestReadNotify`（one-shot 登记-通知）；VEDemux 实现（per-track 槽 + `putPacket` 触发 + 登记后复查防丢唤醒）；两个解码器饥饿改登记 + 500ms 兜底重试，删除 10ms 轮询。
+  - **缺陷与修复（2026-08-08，回答用户 NuPlayer 提问时对照发现）**：上面这条"登记 + 500ms 兜底"**对一次饥饿武装了两个唤醒源**，
+    而 `kWhatDecode` 成功后自我续投，两条消息 `epoch` 相同互相过滤不掉 → 形成两条并行自驱解码循环（有界：撞 credit 上限时全部退出，
+    每次 park 收敛回 1；credit 一直不满时持续多条空转）。漏抄了 NuPlayer `DecoderBase::onRequestInputBuffers` 的
+    `mRequestInputBuffersPending` 去重。**已用 `mStarveGen` 代次修复并验过无回归，独立跟踪于
+    [decoder-starve-wake-dedup](../decoder-starve-wake-dedup/)**，其步骤4（正向验证互斥生效）建议与 **Phase 3 网络源真机验证合并做**
+    —— 需要持续饥饿的源，`adb reverse` + 限速 HTTP 一次覆盖两件事。
   - 新增 `platform/android/renders/VEAAudioRender.{h,cpp}`（AAudio，LOW_LATENCY，data callback 拉模型 + 内部环形缓冲对接推模型；`getTimestamp` 给真实呈现位置以根治音频时钟精度）。
   - VEAudioRender 按 `isAvailable()` 选后端，configure 失败自动退回 SLES。
   - **重要实现细节**：AAudio 必须用 dlopen + dlsym——直接链接会让 `libaaudio.so` 成为 DT_NEEDED 硬依赖，API 24/25 机型上整个 so 加载失败；已验证产物不含 libaaudio 硬依赖。
