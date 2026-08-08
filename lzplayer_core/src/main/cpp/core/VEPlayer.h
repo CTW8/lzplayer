@@ -99,10 +99,16 @@ namespace VE {
         /// 可跨线程调用——内部取的都是原子量或自带锁的对象。
         std::string getStatsJson();
 
+        /// 启播链路里程碑 JSON。独立 getter 而非塞进 getStatsJson()：
+        /// 后者每个进度 tick 都会被解析，而这份数据一次启播只变一次
+        std::string getStartupTraceJson();
+
         /// 测试开关：强制软解 / 强制 OpenSL ES。
         /// 改的是"下次建链"的策略，当前管线不受影响，需重新 prepare 才生效。
         void setForceSoftwareDecoder(bool force);
         void setForceSlesAudio(bool force);
+        /// 软解显示端用 Vulkan 还是 GLES。硬解直出 Surface，不受此开关影响
+        void setPreferVulkanRender(bool prefer);
 
         /// setPlaybackParams
 
@@ -403,6 +409,7 @@ namespace VE {
         DecoderPolicy mDecoderPolicy;
         /// 强制音频走 SLES(测试开关，建链时传给 VEAudioRender)
         std::atomic<bool> mForceSlesAudio{false};
+        std::atomic<bool> mPreferVulkanRender{false};
         /// 用户显式要求的强制软解。与 mDecoderPolicy.forceSoftware 分开存：
         /// 后者会被运行期 fallback 置位，重建时不能把用户意图弄丢。
         std::atomic<bool> mUserForceSoftware{false};
@@ -426,6 +433,13 @@ namespace VE {
         int mNextExternalTrackIndex = kExternalTrackIndexBase;
 
         std::shared_ptr<VEMediaInfo> mMediaInfo = nullptr;
+        /// 启播里程碑。跨多个 looper 写入，自身加锁；shared_ptr 在
+        /// doPrepare 时就建好并分发下去，之后不再换对象(只 reset 内容)，
+        /// 免得各组件持有的指针失效
+        std::shared_ptr<VEStartupTrace> mStartupTrace;
+        /// 稳态指标。与 mStartupTrace 同样在 doPrepare 时建好并分发，
+        /// 之后只 reset 内容不换对象
+        std::shared_ptr<VEPerfStats> mPerfStats;
 
         std::string mPath;
 

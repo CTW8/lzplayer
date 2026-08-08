@@ -358,6 +358,11 @@ namespace VE {
         if (!m_AVSync) {
             return;
         }
+        // T8：首个音频帧已进设备、时钟首次起锚。纯音频文件没有 T6/T7，
+        // 启播总耗时会退化成以这个点为准(见 VEStartupTrace::toJson)
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T8_FIRST_AUDIO);
+        }
         // 设备里还没播出去的数据，按实时时长计；换算成媒体时长要乘速率
         // (2 倍速下 100ms 的设备数据对应 200ms 的媒体内容)
         const double queuedRealUs =

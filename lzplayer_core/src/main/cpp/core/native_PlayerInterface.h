@@ -40,10 +40,12 @@ namespace VE {
     jint nativeAddExternalSubtitle(JNIEnv *env, jobject obj, jlong handle, jstring path);
 
     jstring nativeGetStats(JNIEnv *env, jobject obj, jlong handle);
+    jstring nativeGetStartupTrace(JNIEnv *env, jobject obj, jlong handle);
 
     jint nativeSetForceSoftwareDecoder(JNIEnv *env, jobject obj, jlong handle, jboolean force);
 
     jint nativeSetForceSlesAudio(JNIEnv *env, jobject obj, jlong handle, jboolean force);
+    jint nativeSetPreferVulkanRender(JNIEnv *env, jobject obj, jlong handle, jboolean prefer);
 
 #ifdef __cplusplus
     }

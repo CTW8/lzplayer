@@ -1,4 +1,5 @@
 #include "VEVideoDecoder.h"
+#include "utils/VEPerfStats.h"
 #include <iostream>
 
 /// 解码帧队列深度。帧现在是引用而非整帧拷贝，但仍占住解码器的缓冲池，
@@ -144,6 +145,16 @@ namespace VE {
                     ALOGV("VEVideoDecoder::onDecode is not started, exiting");
                     break;
                 }
+                int32_t starveGen = 0;
+                if (msg->findInt32("starveGen", &starveGen)) {
+                    // 饥饿唤醒消息：同一次饥饿的两个唤醒源只允许一个生效
+                    if (starveGen != mStarveGen) {
+                        ALOGV("VEVideoDecoder stale starve wake, gen=%d cur=%d",
+                              starveGen, mStarveGen);
+                        break;
+                    }
+                    ++mStarveGen;   // 让兄弟唤醒源作废
+                }
 
                 VEResult ret = onDecode();
                 if (ret == VE_OK) {
@@ -204,6 +215,9 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onPrepare(std::shared_ptr<AMessage> msg) {
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T4A_CONFIGURE_BEGIN);
+        }
         ALOGV("VEVideoDecoder::onPrepare enter");
         std::shared_ptr<void> tmp;
         if (!msg->findObject("demux", &tmp)) {
@@ -258,6 +272,10 @@ namespace VE {
             return VE_UNKNOWN_ERROR;
         }
 
+        if (mStartupTrace != nullptr) {
+            // 软解没有独立的 configure 阶段，avcodec_open2 就是它的等价物
+            mStartupTrace->mark(VEStartupTrace::T4A_CONFIGURE_END);
+        }
         ALOGI("VEVideoDecoder::onPrepare success");
         return VE_OK;
     }
@@ -296,6 +314,8 @@ namespace VE {
 
     VEResult VEVideoDecoder::onFlush() {
         ALOGV("VEVideoDecoder::onFlush enter");
+        // 已送包但没结算的耗时随 flush 作废，否则会挂到 flush 后的第一帧上
+        mDecodeAccumUs = 0;
         // 递增 epoch，使 flush 之前投递的解码消息与旧帧的消费回执全部失效
         ++mEpoch;
         mIsStarted = false;
@@ -374,6 +394,18 @@ namespace VE {
             return VE_NO_MEMORY;
         }
 
+        // 单帧解码成本 = 送包耗时(累计) + 取帧/转换耗时。
+        //
+        // **avcodec_send_packet 才是真正干活的地方**，receive_frame 只是把
+        // 已解好的帧递出来。早先只量 receive 那一侧，1080p 软解报 p50=0.1ms，
+        // 而同一时刻 vdec_thread 占 81% CPU(30fps 摊算每帧约 27ms)——差 270 倍。
+        // 一帧对应的包可能是前几次 onDecode 送进去的，所以 send 耗时必须累加，
+        // 产出帧时一起结算再清零。
+        //
+        // 这与硬解那次是同源错误：**指标名与它实际度量的东西不一致**。
+        // 已经犯过两次，下次打点前先自问：这个数字的名字和它量到的是同一件事吗。
+        const int64_t decodeBeginUs = nowUs();
+
         VEResult ret = VE_OK;
         do {
             auto frame = std::make_shared<VEFrame>();
@@ -410,6 +442,10 @@ namespace VE {
                     frame->setPts(decoded->pts);
                     frame->setDts(decoded->pkt_dts);
                     ALOGV("VEVideoDecoder::onDecode got a frame: pts=%" PRId64, decoded->pts);
+                    if (mPerfStats) {
+                        mPerfStats->videoDecodeUs.add(mDecodeAccumUs + nowUs() - decodeBeginUs);
+                    mDecodeAccumUs = 0;
+                    }
                     queueFrame(frame);
                     return VE_OK;
                 }
@@ -418,6 +454,10 @@ namespace VE {
                 auto videoFrame = convertToYuv420p(frame);
                 if (videoFrame == nullptr) {
                     return VE_UNKNOWN_ERROR;
+                }
+                if (mPerfStats) {
+                    mPerfStats->videoDecodeUs.add(mDecodeAccumUs + nowUs() - decodeBeginUs);
+                        mDecodeAccumUs = 0;
                 }
                 queueFrame(videoFrame);
                 return VE_OK;
@@ -437,10 +477,15 @@ namespace VE {
             // 消息带当前 epoch，flush/seek 后自动作废；这是纯数据面事件，
             // 不触碰命令态。同时投一条兜底重试，防源实现漏发通知。
             ALOGV("VEVideoDecoder::onDecode starving, waiting for data notify");
+            const int32_t starveGen = ++mStarveGen;
             auto notify = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
             notify->setInt32("epoch", mEpoch);
+            notify->setInt32("starveGen", starveGen);
             mDemux->requestReadNotify(ETrackType::VIDEO, notify);
-            postDecode(kStarveBackstopUs);
+            auto backstop = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
+            backstop->setInt32("epoch", mEpoch);
+            backstop->setInt32("starveGen", starveGen);
+            backstop->post(kStarveBackstopUs);
             return VE_NOT_ENOUGH_DATA;
         }
         if (!packet) {
@@ -453,7 +498,11 @@ namespace VE {
             ret = avcodec_send_packet(mVideoCtx, nullptr);
         } else {
             ALOGV("VEVideoDecoder::onDecode got normal packet, size=%d", packet->getPacket()->size);
+            const int64_t sendBeginUs = mPerfStats ? nowUs() : 0;
             ret = avcodec_send_packet(mVideoCtx, packet->getPacket());
+            if (mPerfStats) {
+                mDecodeAccumUs += nowUs() - sendBeginUs;
+            }
         }
 
         if (ret == AVERROR(EAGAIN)) {
@@ -498,6 +547,11 @@ namespace VE {
 
     void VEVideoDecoder::queueFrame(std::shared_ptr<VEFrame> frame) {
         ALOGV("VEVideoDecoder::queueFrame enter");
+        // T6：首帧解出。三条产出路径都汇到这个函数，打在这里不会漏；
+        // mark() 自带首次生效语义，不必自己判断是不是第一帧
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T6_FIRST_FRAME_DECODED);
+        }
         if (!mSink) {
             return;
         }

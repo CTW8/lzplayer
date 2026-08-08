@@ -1,4 +1,5 @@
 #include "VEMediaCodecVideoDecoder.h"
+#include "utils/VEPerfStats.h"
 
 #include <cstring>
 #include "utils/Log.h"
@@ -226,6 +227,9 @@ namespace VE {
     }
 
     VEResult VEMediaCodecVideoDecoder::configureCodec() {
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T4A_CONFIGURE_BEGIN);
+        }
         const char *mime = mimeForCodec(mTrack.codecId);
         if (mime == nullptr) {
             return VE_INVALID_PARAMS;
@@ -270,6 +274,9 @@ namespace VE {
         }
 
         mCodecReady = true;
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T4A_CONFIGURE_END);
+        }
         ALOGI("VEMediaCodecVideoDecoder::%s ready: %s %dx%d rot=%d", __FUNCTION__,
               mime, mTrack.width, mTrack.height, mTrack.rotationDegrees);
         return VE_OK;
@@ -325,6 +332,9 @@ namespace VE {
         }
         mOutQueue.clear();
         mRenderPending = false;
+        // 被 flush 掉的包不会再有对应输出，留着会让表撑满并让后续样本
+        // 配到错误的入队时刻
+        mFeedTimeUs.clear();
         return VE_OK;
     }
 
@@ -467,6 +477,14 @@ namespace VE {
             if (out) av_packet_free(&out);
         }
 
+        if (mPerfStats && written > 0) {
+            // 有界表：codec 内部通常只压几帧，64 条足够；满了丢最旧的，
+            // 避免异常情况下无界增长
+            if (mFeedTimeUs.size() >= kMaxPendingTimes) {
+                mFeedTimeUs.erase(mFeedTimeUs.begin());
+            }
+            mFeedTimeUs[ptsUs] = nowUs();
+        }
         AMediaCodec_queueInputBuffer(mCodec, index, 0, written,
                                      static_cast<uint64_t>(ptsUs), 0);
         return written > 0;
@@ -533,6 +551,23 @@ namespace VE {
             return true;
         }
 
+        // T6：硬解的"首帧解出"——codec 已经吐出可渲染的 buffer。
+        // 注意这不是首帧上屏，上屏还要等同步时钟放行(见 T7)
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T6_FIRST_FRAME_DECODED);
+        }
+        if (mPerfStats) {
+            auto it = mFeedTimeUs.find(ptsUs);
+            if (it != mFeedTimeUs.end()) {
+                // 写进 codecLatencyUs 而**不是** videoDecodeUs：这个数字里
+                // 大部分是背压等待，不是解码的 CPU 成本。混进同一字段会让
+                // 软硬解的对照彻底失真。
+                mPerfStats->codecLatencyUs.add(nowUs() - it->second);
+                // 用完即删，顺带把比它更早的残留一起清掉(那些包被 codec
+                // 丢弃或重排了，留着只会让表被撑满)
+                mFeedTimeUs.erase(mFeedTimeUs.begin(), std::next(it));
+            }
+        }
         mOutQueue.push_back({index, ptsUs});
         return true;
     }
@@ -573,8 +608,21 @@ namespace VE {
 
         // 零拷贝上屏：直接把 buffer 交还给 codec 并要求它渲染到绑定的
         // Surface。全程不经 CPU，也没有 GL 纹理上传。
+        if (mPerfStats && mAVSync) {
+            mPerfStats->syncMarginUs.add(mAVSync->getLastDiffUs());
+        }
+        const int64_t presentBeginUs = mPerfStats ? nowUs() : 0;
         AMediaCodec_releaseOutputBuffer(mCodec, out.index, true);
+        if (mPerfStats) {
+            mPerfStats->presentUs.add(nowUs() - presentBeginUs);
+        }
         ++mRenderedFrames;
+        // T7：硬解路径的首帧上屏。物理含义是"交给 SurfaceFlinger 合成"，
+        // 与软解的"提交 GLES/Vulkan 并 swap"不同，两者不可直接互比——
+        // JSON 里的 decodePath 字段就是为此存在的
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T7_FIRST_FRAME_PRESENTED);
+        }
 
         if (mNotifyFirstFrame) {
             mNotifyFirstFrame = false;

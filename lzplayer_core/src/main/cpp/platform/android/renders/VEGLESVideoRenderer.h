@@ -20,6 +20,10 @@ namespace VE {
         // IVideoRender接口实现
         VEResult initialize(VEBundle params) override;
         VEResult changeSurface(ANativeWindow *win,int viewWidth,int viewHeight) override;
+
+        void setPerfStats(const std::shared_ptr<VEPerfStats> &stats) override {
+            mPerfStats = stats;
+        }
         VEResult renderFrame(const std::shared_ptr<VEFrame> &frame) override;
         VEResult uninitialize() override;
 
@@ -36,6 +40,10 @@ namespace VE {
         GLuint loadShader(GLenum type, const char *shaderSrc);
         GLuint createProgram(const char *vertexSource, const char *fragmentSource);
         bool createTextures();
+
+        /// 按给定尺寸确保纹理存储就绪。尺寸变化会重建(glTexStorage2D 分配的
+        /// 是不可变存储)。prepare 阶段用容器声明的尺寸先分配，首帧就不必现分配
+        void ensureTexStorage(int width, int height);
         void destroyTextures();
 
         // 渲染相关方法
@@ -85,6 +93,8 @@ namespace VE {
         int mLastColorRange = -1;
         int mLastColorSpace = -1;
         /// 纹理存储是否已按当前尺寸分配(glTexStorage2D 只做一次)
+        /// 稳态指标，由显示端注入。只在渲染线程写
+        std::shared_ptr<VEPerfStats> mPerfStats;
         bool mTexStorageReady = false;
         int mTexAllocWidth = 0;
         int mTexAllocHeight = 0;

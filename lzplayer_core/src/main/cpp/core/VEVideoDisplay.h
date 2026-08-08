@@ -5,7 +5,9 @@
 #ifndef LZPLAYER_VEVIDEODISPLAY_H
 #define LZPLAYER_VEVIDEODISPLAY_H
 
-#include "IVideoRender.h"
+#include "VEVideoRenderFactory.h"
+#include "utils/VEStartupTrace.h"
+#include "utils/VEPerfStats.h"
 #include "IFrameSink.h"
 #include "IVEComponent.h"
 #include "AHandler.h"
@@ -25,8 +27,11 @@ namespace VE {
 
         /// 推模型下显示端不再持有解码器：帧由解码器 queueFrame 推进来
         /// rotationDegrees: 容器标注的画面旋转角(0/90/180/270)，竖拍视频靠它摆正
+        /// frameWidth/frameHeight: 容器标注的画面尺寸。传进来是为了让渲染器
+        /// 在 prepare 阶段就把纹理存储分配好——否则首帧上屏要现分配，
+        /// 实测软解 1080p 首帧上屏 57.2ms 对比稳态 5.7ms，差了十倍
         VEResult prepare(ANativeWindow *win, int width, int height, int fps,
-                         int rotationDegrees);
+                         int rotationDegrees, int frameWidth = 0, int frameHeight = 0);
 
         /// IFrameSink：解码器线程调用，转投自己的 looper(盖当前队列代次)
         void queueFrame(const std::shared_ptr<VEFrame> &frame,
@@ -46,6 +51,26 @@ namespace VE {
         VEResult release() override;
 
         VEResult setSurface(ANativeWindow *win, int width, int height);
+
+        /// 选 Vulkan 还是 GLES。必须在 prepare 之前调用——渲染器一旦建出来
+        /// 就不会因为这个开关而重建，和 setForceSles 的时机约束一致
+        void setPreferVulkan(bool prefer) { mRenderPolicy.preferVulkan = prefer; }
+
+        /// 注入启播里程碑记录器(软解路径的 T7 在此打点)
+        void setStartupTrace(const std::shared_ptr<VEStartupTrace> &trace) {
+            mStartupTrace = trace;
+        }
+
+        /// 注入稳态指标容器(上屏耗时、同步余量、帧队列峰值)
+        void setPerfStats(const std::shared_ptr<VEPerfStats> &stats) {
+            mPerfStats = stats;
+        }
+
+        /// 实际生效的后端名("Vulkan"/"OpenGL ES")。要求 Vulkan 但初始化
+        /// 失败会回退，所以这里报的是事实而非意图
+        const char *renderBackendName() const {
+            return VEVideoRenderFactory::backendName(mUsedVulkan);
+        }
 
         // —— 诊断计数(原子，供其它线程读) ——
         int64_t renderedFrames() const { return mRenderedFrames.load(); }
@@ -107,6 +132,15 @@ namespace VE {
         };
 
         std::shared_ptr<IVideoRender> m_pVideoRender = nullptr;
+        /// 渲染后端策略。必须在 prepare 之前设好：渲染器在 onPrepare
+        /// (或 surface 到位时)就建定了，之后改这个字段不会重建
+        VEVideoRenderFactory::Policy mRenderPolicy;
+        /// 实际用上的是不是 Vulkan(要求 Vulkan 但初始化失败会回退 GLES，
+        /// 此处仍为假)。诊断面板显示后端名用它，不能直接显示策略里的意图
+        bool mUsedVulkan = false;
+        /// 启播里程碑，由 VEPlayer 注入。只在本 looper 上访问
+        std::shared_ptr<VEStartupTrace> mStartupTrace;
+        std::shared_ptr<VEPerfStats> mPerfStats;
         /// 本地帧队列(帧 + 它的消费回执)。只在本 looper 上访问，无需加锁。
         /// 队列空 ⟺ 渲染链停摆，帧到达即重新拉起。
         std::deque<std::pair<std::shared_ptr<VEFrame>,
@@ -122,6 +156,9 @@ namespace VE {
         int mFrameHeight = 0;
         /// 容器标注的旋转角，建渲染器时传下去
         int mRotationDegrees = 0;
+        /// 容器标注的画面尺寸，用于 prepare 阶段预分配纹理(0=未知，退回首帧分配)
+        int mDeclaredFrameWidth = 0;
+        int mDeclaredFrameHeight = 0;
 
         bool m_IsStarted = false;
         /// surface 被销毁时正在播放：新 surface 到来后自动复活渲染链

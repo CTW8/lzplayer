@@ -299,6 +299,15 @@ namespace VE {
         return env->NewStringUTF(json.c_str());
     }
 
+    jstring nativeGetStartupTrace(JNIEnv *env, jobject obj, jlong handle) {
+        VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
+        if (vePlayer == nullptr) {
+            return env->NewStringUTF("{\"valid\":false}");
+        }
+        const std::string json = vePlayer->getStartupTrace();
+        return env->NewStringUTF(json.c_str());
+    }
+
     jint nativeSetForceSoftwareDecoder(JNIEnv *env, jobject obj, jlong handle, jboolean force) {
         VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
         CHECK_NULL();
@@ -309,6 +318,12 @@ namespace VE {
         VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
         CHECK_NULL();
         return vePlayer->setForceSlesAudio(force == JNI_TRUE);
+    }
+
+    jint nativeSetPreferVulkanRender(JNIEnv *env, jobject obj, jlong handle, jboolean prefer) {
+        VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
+        CHECK_NULL();
+        return vePlayer->setPreferVulkanRender(prefer == JNI_TRUE);
     }
 
     jint nativeSetPlaySpeed(JNIEnv *env, jobject obj, jlong handle, jfloat speed) {

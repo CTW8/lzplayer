@@ -4,7 +4,7 @@
 
 #include "VEVideoDisplay.h"
 #include "VEVideoDecoder.h"
-#include "VEGLESVideoRenderer.h"
+#include "VEVideoRenderFactory.h"
 #include "VEDef.h"
 
 namespace VE {
@@ -23,7 +23,7 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::prepare(ANativeWindow *win, int width, int height, int fps,
-                                     int rotationDegrees) {
+                                     int rotationDegrees, int frameWidth, int frameHeight) {
         ALOGV("VEVideoDisplay::%s enter",__FUNCTION__ );
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
         msg->setPointer("win", win);
@@ -31,6 +31,8 @@ namespace VE {
         msg->setInt32("height", height);
         msg->setInt32("fps", fps);
         msg->setInt32("rotation", rotationDegrees);
+        msg->setInt32("frameWidth", frameWidth);
+        msg->setInt32("frameHeight", frameHeight);
         msg->post();
         return 0;
     }
@@ -183,6 +185,10 @@ namespace VE {
                 }
                 mFrames.emplace_back(std::static_pointer_cast<VEFrame>(f),
                                      std::static_pointer_cast<AMessage>(r));
+                if (mPerfStats) {
+                    VEPerfStats::bumpPeak(mPerfStats->frameQueuePeak,
+                                          static_cast<int>(mFrames.size()));
+                }
                 if (m_IsStarted && mFrames.size() == 1) {
                     // 队列从空转非空：链条此前已停摆，帧到达即重新拉起。
                     // 链条活着时队列必然非空，不会重复踢
@@ -218,6 +224,8 @@ namespace VE {
         msg->findInt32("width", &mViewWidth);
         msg->findInt32("height", &mViewHeight);
         msg->findInt32("rotation", &mRotationDegrees);
+        msg->findInt32("frameWidth", &mDeclaredFrameWidth);
+        msg->findInt32("frameHeight", &mDeclaredFrameHeight);
 
         if(mWin == nullptr){
             // surface 还没设置：渲染器延迟到 setSurface 时创建
@@ -230,8 +238,12 @@ namespace VE {
         params.set("width",mViewWidth);
         params.set("height",mViewHeight);
         params.set("rotation",mRotationDegrees);
-        m_pVideoRender = std::make_shared<VEGLESVideoRenderer>();
-        m_pVideoRender->initialize(params);
+        params.set("frameWidth", mDeclaredFrameWidth);
+        params.set("frameHeight", mDeclaredFrameHeight);
+        m_pVideoRender = VEVideoRenderFactory::create(params, mRenderPolicy, &mUsedVulkan);
+        if (m_pVideoRender) {
+            m_pVideoRender->setPerfStats(mPerfStats);
+        }
         return 0;
     }
 
@@ -341,8 +353,25 @@ namespace VE {
         mFrameWidth = frame->getFrame()->width;
         mFrameHeight = frame->getFrame()->height;
 
+        // 同步余量取在提交**之前**：正=帧提前就绪(健康)，负=已迟到。
+        // 用 AVSync 现成的 getLastDiffUs()，不再自己重算一遍 pts−clock
+        // (getWaitTime/getLastDiffUs/shouldDropFrame 已经各算过一次了)
+        if (mPerfStats && m_pAvSync) {
+            mPerfStats->syncMarginUs.add(m_pAvSync->getLastDiffUs());
+        }
+        const int64_t presentBeginUs = mPerfStats ? nowUs() : 0;
         m_pVideoRender->renderFrame(frame);
+        if (mPerfStats) {
+            mPerfStats->presentUs.add(nowUs() - presentBeginUs);
+        }
         ++mRenderedFrames;
+        // T7：软解路径的"首帧上屏"。**不能复用 FIRST_FRAME 事件**——
+        // 那个事件只在 seek 路径发(m_NotifyFirstFrame 仅由 onSeekTo 置真)，
+        // 起播时根本不会走到，而且它已经透到 Java 层，改语义会影响 app 行为。
+        // mark() 自带"首次生效"语义，所以这里无条件调用即可。
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T7_FIRST_FRAME_PRESENTED);
+        }
         consumeFront();
 
         if (m_NotifyFirstFrame) {
@@ -454,8 +483,12 @@ namespace VE {
             params.set("width", mViewWidth);
             params.set("height", mViewHeight);
             params.set("rotation", mRotationDegrees);
-            m_pVideoRender = std::make_shared<VEGLESVideoRenderer>();
-            m_pVideoRender->initialize(params);
+            params.set("frameWidth", mDeclaredFrameWidth);
+            params.set("frameHeight", mDeclaredFrameHeight);
+            m_pVideoRender = VEVideoRenderFactory::create(params, mRenderPolicy, &mUsedVulkan);
+            if (m_pVideoRender) {
+                m_pVideoRender->setPerfStats(mPerfStats);
+            }
             if (m_IsStarted) {
                 // 渲染链可能因没有渲染器早已断掉，surface 到位后重新拉起
                 postSync(0);

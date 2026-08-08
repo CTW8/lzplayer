@@ -24,6 +24,13 @@ namespace VE {
     protected:
         VEResult openInput(AVFormatContext *ctx, const std::string &path) override;
 
+        /// 网络源沿用 FFmpeg 默认探测上限。本地那套激进值(512KB/1s)在这里
+        /// 不适用：字节要现拉，探测量不足会漏轨道或拿不到 fps——那是功能
+        /// 缺陷，不是能拿来换启播速度的东西
+        ProbeLimits probeLimits() const override {
+            return ProbeLimits{0, 0, -1};
+        }
+
         /// 网络场景要缓得更深：一次卡顿的代价远高于多占几十 MB 内存
         size_t maxTotalBytes() const override { return 64 * 1024 * 1024; }
         int64_t bufferedDurationTargetUs() const override { return 10 * 1000000; }

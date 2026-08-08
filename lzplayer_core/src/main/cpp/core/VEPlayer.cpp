@@ -296,6 +296,17 @@ namespace VE {
 
     VEResult VEPlayer::onPrepare(std::shared_ptr<AMessage> msg) {
         ALOGV("VEPlayer::%s enter", __FUNCTION__);
+        // T0 打在最外层：即使因拆解未完而排队，等待时间也属于用户感知的
+        // 启播耗时，必须记进来(单独作为 queueWait 段列出，不与打开容器混算)
+        if (mStartupTrace == nullptr) {
+            mStartupTrace = std::make_shared<VEStartupTrace>();
+        }
+        if (mPerfStats == nullptr) {
+            mPerfStats = std::make_shared<VEPerfStats>();
+        }
+        mStartupTrace->reset();
+        mPerfStats->reset();
+        mStartupTrace->mark(VEStartupTrace::T0_REQUEST);
         if (isFlowBusy()) {
             // 拆解期间不能对半释放的 demux 发 prepare，排队执行
             PendingAction action;
@@ -316,6 +327,14 @@ namespace VE {
         // 异步 prepare：player looper 不再被 avformat_open_input 挂住，
         // 期间到来的命令由 Flow 队列排队；PREPARE_DONE 回执驱动建链后半段
         mState = STATE_PREPARING;
+        if (mStartupTrace != nullptr) {
+            // 排队等待到此结束，T1~T3 由源在自己的 looper 上打点
+            mStartupTrace->mark(VEStartupTrace::T0_DISPATCH);
+            mSource->setStartupTrace(mStartupTrace);
+            if (auto demux = std::dynamic_pointer_cast<VEDemux>(mSource)) {
+                demux->setPerfStats(mPerfStats);
+            }
+        }
         mSource->prepareAsync(mPath);
         return VE_OK;
     }
@@ -362,10 +381,12 @@ namespace VE {
             mAudioOutputLooper->registerHandler(mAudioOutput);
             // 测试开关必须在 prepare 之前设：后端在 prepare 里就选定了
             mAudioOutput->setForceSles(mForceSlesAudio.load());
+            mAudioOutput->setStartupTrace(mStartupTrace);
             mAudioOutput->prepare(audioOut);
 
             mAudioDecoder = std::make_shared<VEAudioDecoder>(mRenderNotifyMsg);
             mAudioDecodeLooper->registerHandler(mAudioDecoder);
+            mAudioDecoder->setPerfStats(mPerfStats);
             mAudioDecoder->prepare(mSource, audioOut,
                                    std::static_pointer_cast<IFrameSink>(mAudioOutput));
             setRole(ROLE_IDX_AUDIO_DECODER, mAudioDecoder, mAudioDecodeLooper,
@@ -379,6 +400,15 @@ namespace VE {
         }
 
         mState = STATE_PREPARED;
+        if (mStartupTrace != nullptr) {
+            // 只有真的有视频轨才谈解码路径。纯音频文件 mVideoHardware 恒为
+            // false，直接上报会变成 "software"——对照报告里看见这个值的人
+            // 会以为它跑了软解视频，从而拿它和真正的软解数据比。
+            if (mMediaInfo != nullptr && mMediaInfo->hasVideo()) {
+                mStartupTrace->setDecodePath(mVideoHardware);
+            }
+            mStartupTrace->mark(VEStartupTrace::T4_CHAIN_READY);
+        }
         if (onPreparedCallback) {
             onPreparedCallback();
         }
@@ -413,6 +443,8 @@ namespace VE {
             // VEPlayer 的分阶段握手因此完全不必区分软硬解。
             VEBundle params;
             params.set("surface", mWindow);
+            mVideoDecoder->setStartupTrace(mStartupTrace);
+            mVideoDecoder->setPerfStats(mPerfStats);
             mVideoDecoder->prepare(mSource, nullptr, params);
             setRole(ROLE_IDX_VIDEO_DECODER, mVideoDecoder, mVideoDecodeLooper,
                     EComponentType::E_COMPONENT_TYPE_VIDEO_DECODER);
@@ -427,9 +459,16 @@ namespace VE {
         mVideoRenderLooper->start(false);
         mVideoRender = std::make_shared<VEVideoDisplay>(mRenderNotifyMsg, mAVSync);
         mVideoRenderLooper->registerHandler(mVideoRender);
+        // 与 setForceSles 同样的时机约束：必须在 prepare 之前
+        mVideoRender->setPreferVulkan(mPreferVulkanRender.load());
         mVideoRender->prepare(mWindow, mViewWidth, mViewHeight, mMediaInfo->fps(),
-                              mMediaInfo->rotationDegrees());
+                              mMediaInfo->rotationDegrees(),
+                              track->width, track->height);
 
+        mVideoRender->setStartupTrace(mStartupTrace);
+        mVideoRender->setPerfStats(mPerfStats);
+        mVideoDecoder->setStartupTrace(mStartupTrace);
+        mVideoDecoder->setPerfStats(mPerfStats);
         mVideoDecoder->prepare(mSource,
                                std::static_pointer_cast<IFrameSink>(mVideoRender),
                                VEBundle());
@@ -853,6 +892,25 @@ namespace VE {
               __FUNCTION__, force);
     }
 
+    void VEPlayer::setPreferVulkanRender(bool prefer) {
+        mPreferVulkanRender = prefer;
+        ALOGI("VEPlayer::%s prefer Vulkan render = %d (takes effect on next prepare, "
+              "software decode only)", __FUNCTION__, prefer);
+    }
+
+    std::string VEPlayer::getStartupTraceJson() {
+        // 可跨线程调用(JNI 线程)：trace 自身加锁，这里只需防 shared_ptr 撕裂
+        std::shared_ptr<VEStartupTrace> trace;
+        {
+            std::lock_guard<std::mutex> lk(mMutex);
+            trace = mStartupTrace;
+        }
+        if (trace == nullptr) {
+            return "{\"valid\":false}";
+        }
+        return trace->toJson();
+    }
+
     std::string VEPlayer::getStatsJson() {
         // 可跨线程调用：先在锁下取 shared_ptr 副本，之后各对象自己保证线程安全
         std::shared_ptr<VEMediaClock> clock;
@@ -909,14 +967,18 @@ namespace VE {
             }
         }
 
-        char buf[768];
+        // 定长 buf + 单次 snprintf 撑不住了：加上稳态分位数与队列峰值后
+        // 输出会逼近并越过 768，而 snprintf 是**静默截断**——结果是一个缺
+        // 右花括号的 JSON，Java 侧直接抛解析异常，现象却是"面板忽然全空"，
+        // 极难定位。改成 std::string 拼接，长度不再是隐患。
+        char buf[1024];
         snprintf(buf, sizeof(buf),
                  "{\"state\":\"%s\",\"decoder\":\"%s\",\"codec\":\"%s\","
                  "\"audioBackend\":\"%s\",\"avOffsetMs\":%lld,"
                  "\"renderedFrames\":%lld,\"droppedFrames\":%lld,"
                  "\"audioQueue\":%d,\"videoQueue\":%d,\"bufferedMs\":%lld,"
                  "\"source\":\"%s\",\"speed\":%.2f,\"buffering\":%s,"
-                 "\"positionMs\":%lld,\"durationMs\":%lld}",
+                 "\"positionMs\":%lld,\"durationMs\":%lld,",
                  stateName,
                  mVideoHardware ? "hardware" : (mMediaInfo && mMediaInfo->hasVideo() ? "software" : "-"),
                  videoCodecName, audioBackend,
@@ -927,7 +989,19 @@ namespace VE {
                  sourceKind, mPlaybackSpeed, mBuffering ? "true" : "false",
                  static_cast<long long>(clock ? clock->getCurrentMediaTime() / 1000 : 0),
                  static_cast<long long>(info ? info->duration : 0));
-        return std::string(buf);
+        std::string out(buf);
+        std::shared_ptr<VEPerfStats> perf;
+        {
+            std::lock_guard<std::mutex> lk(mMutex);
+            perf = mPerfStats;
+        }
+        if (perf) {
+            out += perf->toJsonFragment();
+        } else {
+            out += "\"videoDecodeMs\":{\"p50\":-1,\"p95\":-1,\"max\":-1,\"n\":0}";
+        }
+        out += "}";
+        return out;
     }
 
     VEResult VEPlayer::onStart(std::shared_ptr<AMessage> msg) {
@@ -952,6 +1026,11 @@ namespace VE {
         }
 
         mState = STATE_STARTED;
+        // T5 打在这里而不是函数入口：入口之后还有"seek 中"与"播完重播"
+        // 两个提前 return 的分支，那两种情况并不是一次真正的起播
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T5_START);
+        }
         if (mMediaClock) {
             if (mAudioOutput == nullptr && !mMediaClock->isAnchored()) {
                 // 纯视频文件没有音频帧驱动时钟：首次起播手动起锚。
@@ -1188,6 +1267,11 @@ namespace VE {
 
         mVideoEOS = false;
         mAudioEOS = false;
+        if (mPerfStats) {
+            // seek 会让队列骤降骤升、解码器追帧，这段的样本与峰值不代表
+            // 稳态，留着会污染整段读数
+            mPerfStats->reset();
+        }
         setAllRoles(ROLE_NONE);
         ALOGI("VEPlayer::%s exit", __FUNCTION__);
     }
@@ -1429,9 +1513,15 @@ namespace VE {
             return;
         }
 
-        // 只统计实际存在的链路：纯音频/纯视频文件不该等一条永远不会到来的 EOS
-        bool videoDone = (mVideoRender == nullptr) || mVideoEOS;
-        bool audioDone = (mAudioOutput == nullptr) || mAudioEOS;
+        // 只统计实际存在的链路：纯音频/纯视频文件不该等一条永远不会到来的 EOS。
+        //
+        // 判据必须是"轨道在不在"，不能拿渲染器对象是否为空来代替：硬解路径下
+        // 显示端就是解码器本身，mVideoRender 永远是 null，用它判会让带音频的
+        // 视频在音频 EOS 一到就判定播完，视频尾巴被截掉。
+        const bool needVideoEOS = (mMediaInfo != nullptr) && mMediaInfo->hasVideo();
+        const bool needAudioEOS = (mMediaInfo != nullptr) && mMediaInfo->hasAudio();
+        bool videoDone = !needVideoEOS || mVideoEOS;
+        bool audioDone = !needAudioEOS || mAudioEOS;
 
         if (videoDone && audioDone) {
             ALOGI("VEPlayer::%s play complate", __FUNCTION__);

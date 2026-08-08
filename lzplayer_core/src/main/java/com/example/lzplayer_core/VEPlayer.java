@@ -135,6 +135,27 @@ public class VEPlayer {
      * 运行期统计快照。诊断面板按进度回调的节奏拉取即可，不必另开定时器。
      * @return {@link PlayerStats}；播放器未就绪时各字段为默认值
      */
+    /**
+     * 启播链路里程碑原始 JSON。
+     *
+     * <p>结构化解析类放在 perf-metrics 步骤4，本步先把通道打通，
+     * 便于用 adb 直接把这段 JSON 打出来核对采集点是否齐全。
+     */
+    public String getStartupTraceJson() {
+        if (mNativeHandle != null) {
+            return mNativeHandle.getStartupTrace();
+        }
+        return "{\"valid\":false}";
+    }
+
+    /** 稳态读数原始 JSON。结构化解析(含分位数)归 perf-metrics 步骤4 */
+    public String getStatsJsonRaw() {
+        if (mNativeHandle != null) {
+            return mNativeHandle.getStats();
+        }
+        return "{}";
+    }
+
     public PlayerStats getStats() {
         if (mNativeHandle == null) {
             return PlayerStats.empty();
@@ -154,6 +175,20 @@ public class VEPlayer {
     public int setForceSlesAudio(boolean force) {
         if (mNativeHandle != null) {
             return mNativeHandle.setForceSlesAudio(force);
+        }
+        return -1;
+    }
+
+    /**
+     * 软解显示端改用 Vulkan 渲染。改的是下次 prepare 的策略。
+     *
+     * <p>只影响软解：硬解由 MediaCodec 直出 Surface，既不走 GLES 也不走
+     * Vulkan。所以要看到效果必须同时打开强制软解，否则这个开关毫无观感变化。
+     * Vulkan 初始化失败会自动回退 GLES，播放不会因此中断。
+     */
+    public int setPreferVulkanRender(boolean prefer) {
+        if (mNativeHandle != null) {
+            return mNativeHandle.setPreferVulkanRender(prefer);
         }
         return -1;
     }

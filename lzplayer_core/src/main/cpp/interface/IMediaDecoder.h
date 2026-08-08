@@ -3,6 +3,8 @@
 
 #include <memory>
 #include "IVEComponent.h"
+#include "utils/VEStartupTrace.h"
+#include "utils/VEPerfStats.h"
 #include "IMediaSource.h"
 #include "IFrameSink.h"
 #include "VEBundle.h"
@@ -24,6 +26,17 @@ namespace VE {
         virtual VEResult prepare(std::shared_ptr<IMediaSource> source,
                                  std::shared_ptr<IFrameSink> sink,
                                  const VEBundle &params) = 0;
+
+        /// 注入启播里程碑记录器(T4a/T6，硬解还负责 T7)。
+        /// 非纯虚：不关心启播耗时的解码器实现无需覆写
+        virtual void setStartupTrace(const std::shared_ptr<VEStartupTrace> &trace) {
+            (void) trace;
+        }
+
+        /// 注入稳态指标容器(解码耗时；硬解还负责上屏耗时与同步余量)
+        virtual void setPerfStats(const std::shared_ptr<VEPerfStats> &stats) {
+            (void) stats;
+        }
     };
 }
 

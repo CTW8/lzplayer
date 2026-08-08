@@ -404,12 +404,36 @@ namespace VE {
             ALOGE("VEDemux::onPrepare couldn't open input");
             return VE_UNKNOWN_ERROR;
         }
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T1_CONTAINER_OPEN);
+        }
+
+        // 收紧探测上限：启播链路最大的一笔可省开销(本地 1080p 实测
+        // 133~145ms)。收得过狠会漏轨道，所以具体值交给 probeLimits()，
+        // 网络源覆写成宽松值
+        const ProbeLimits limits = probeLimits();
+        if (limits.probeSizeBytes > 0) {
+            mFormatContext->probesize = limits.probeSizeBytes;
+        }
+        if (limits.analyzeDurationUs > 0) {
+            mFormatContext->max_analyze_duration = limits.analyzeDurationUs;
+        }
+        if (limits.fpsProbeFrames >= 0) {
+            // fpsprobesize 只有 AVOption，没有结构体字段
+            av_opt_set_int(mFormatContext, "fpsprobesize", limits.fpsProbeFrames, 0);
+        }
+        ALOGI("VEDemux::onPrepare probe: size=%lld analyze=%lldus fpsFrames=%lld",
+              (long long) limits.probeSizeBytes, (long long) limits.analyzeDurationUs,
+              (long long) limits.fpsProbeFrames);
 
         // 获取流信息
         if (avformat_find_stream_info(mFormatContext, nullptr) < 0) {
             ALOGE("VEDemux::onPrepare couldn't find stream information");
             avformat_close_input(&mFormatContext);
             return VE_UNKNOWN_ERROR;
+        }
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T2_STREAM_INFO);
         }
         // duration 可能为 AV_NOPTS_VALUE(部分流式容器)，不能直接除以 1000
         mDuration = (mFormatContext->duration != AV_NOPTS_VALUE)
@@ -418,6 +442,9 @@ namespace VE {
         VEResult ret = buildTrackList();
         if (ret != VE_OK) {
             return ret;
+        }
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T3_TRACKS_READY);
         }
 
         mAudioPacketQueue = std::make_shared<VEPacketQueue>(kQueueBackstopPackets);
@@ -742,6 +769,15 @@ namespace VE {
             // (字幕队列不参与节流，满了直接丢最旧的语义由上层不敏感兜住)
             ALOGW("VEDemux::putPacket queue full (type %d), packet dropped",
                   static_cast<int>(type));
+        }
+        if (mPerfStats) {
+            // 峰值只在生产侧更新即可：队列只在这里变长，消费侧只让它变短
+            const int depth = queue->getDataSize();
+            if (type == ETrackType::AUDIO) {
+                VEPerfStats::bumpPeak(mPerfStats->audioQueuePeak, depth);
+            } else if (type == ETrackType::VIDEO) {
+                VEPerfStats::bumpPeak(mPerfStats->videoQueuePeak, depth);
+            }
         }
         // 唤醒等这条轨道数据的消费者(one-shot：取走即清)
         std::shared_ptr<AMessage> notify;

@@ -2,6 +2,7 @@
 #define LZPLAYER_VEMEDIACODECVIDEODECODER_H
 
 #include <atomic>
+#include <map>
 #include <deque>
 #include <memory>
 #include <android/native_window.h>
@@ -44,6 +45,14 @@ namespace VE {
         ~VEMediaCodecVideoDecoder() override;
 
         /// params 需带 "surface"(ANativeWindow*)。sink 不使用(直出 Surface)。
+        void setStartupTrace(const std::shared_ptr<VEStartupTrace> &trace) override {
+            mStartupTrace = trace;
+        }
+
+        void setPerfStats(const std::shared_ptr<VEPerfStats> &stats) override {
+            mPerfStats = stats;
+        }
+
         VEResult prepare(std::shared_ptr<IMediaSource> source,
                          std::shared_ptr<IFrameSink> sink,
                          const VEBundle &params) override;
@@ -150,6 +159,19 @@ namespace VE {
         bool mRenderPending = false;
         /// seek 后首帧上屏要回 FIRST_FRAME
         bool mNotifyFirstFrame = false;
+        /// 启播里程碑，由 VEPlayer 注入。硬解把解码与上屏合在一个组件里，
+        /// 所以 T4a / T6 / T7 三个点都在这里打
+        std::shared_ptr<VEStartupTrace> mStartupTrace;
+        std::shared_ptr<VEPerfStats> mPerfStats;
+        /// pts → 入队时刻(us)。硬解的 dequeueOutputBuffer 是 timeout 0 的
+        /// 非阻塞轮询，直接测那个调用只会得到近似 0 的无意义数字，所以改测
+        /// "入队到出队"的端到端延迟。**这个口径与软解的 send/receive 往返
+        /// 不可直接互比**，报告需带解码路径脚注。
+        ///
+        /// 有界：超过 kMaxPendingTimes 条就丢最旧的。flush/seek 必须清空，
+        /// 否则被丢弃的那些包会永久占位，并让后续样本配错时刻。
+        std::map<int64_t, int64_t> mFeedTimeUs;
+        static constexpr size_t kMaxPendingTimes = 64;
         /// surface 失效期间：继续解码但丢弃输出，不画向废窗口
         bool mSurfaceLost = false;
 

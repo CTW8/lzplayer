@@ -59,10 +59,12 @@ namespace VE {
 
         /// 运行期统计快照(JSON)，诊断面板用
         std::string getStats();
+        std::string getStartupTrace();
 
         /// 测试开关：下次 prepare 生效
         VEResult setForceSoftwareDecoder(bool force);
         VEResult setForceSlesAudio(bool force);
+        VEResult setPreferVulkanRender(bool prefer);
 
         VEResult setListener(std::shared_ptr<MediaPlayerListener> listener);
 

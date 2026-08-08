@@ -324,6 +324,12 @@ namespace VE {
         return mPlayer->getStatsJson();
     }
 
+    std::string VEPlayerDriver::getStartupTrace() {
+        // 同样不校验状态：启播失败的那次数据最该看，不能因为状态是 ERROR 就拒
+        std::lock_guard<std::mutex> lk(mMutex);
+        return mPlayer->getStartupTraceJson();
+    }
+
     VEResult VEPlayerDriver::setForceSoftwareDecoder(bool force) {
         std::lock_guard<std::mutex> lk(mMutex);
         mPlayer->setForceSoftwareDecoder(force);
@@ -333,6 +339,12 @@ namespace VE {
     VEResult VEPlayerDriver::setForceSlesAudio(bool force) {
         std::lock_guard<std::mutex> lk(mMutex);
         mPlayer->setForceSlesAudio(force);
+        return VE_OK;
+    }
+
+    VEResult VEPlayerDriver::setPreferVulkanRender(bool prefer) {
+        std::lock_guard<std::mutex> lk(mMutex);
+        mPlayer->setPreferVulkanRender(prefer);
         return VE_OK;
     }
 

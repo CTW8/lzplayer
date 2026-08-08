@@ -13,11 +13,13 @@
 #include "VEError.h"
 #include "IMediaSource.h"
 #include "VESource.h"
+#include "utils/VEPerfStats.h"
 
 extern "C"
 {
     #include "libavformat/avformat.h"
     #include "libavcodec/avcodec.h"
+    #include "libavutil/opt.h"
     #include "libavutil/avutil.h"
     #include "libavutil/timestamp.h"
 }
@@ -39,6 +41,15 @@ namespace VE {
 
         /// 中断阻塞中的 FFmpeg IO(open/read)。可从任意线程调用。
         void abort() override;
+
+        void setStartupTrace(const std::shared_ptr<VEStartupTrace> &trace) override {
+            mStartupTrace = trace;
+        }
+
+        /// 注入稳态指标容器(包队列峰值)
+        void setPerfStats(const std::shared_ptr<VEPerfStats> &stats) {
+            mPerfStats = stats;
+        }
 
         VEResult seekTo(double timestamp) override;
 
@@ -108,6 +119,22 @@ namespace VE {
         /// (读循环/节流/seek/队列/命令面)因此可以原样复用。
         virtual VEResult openInput(AVFormatContext *ctx, const std::string &path);
 
+        /// find_stream_info 的探测上限。默认给本地文件的激进值——实测
+        /// 1920x1080 20Mbps 的本地 mp4 上 avformat_find_stream_info 要
+        /// 133~145ms，是启播链路最大的单项(比 MediaCodec configure 的 66ms
+        /// 还大)，而它探测的那些信息容器头里本来就有。
+        ///
+        /// **网络源必须覆写成更宽松的值**：数据要现拉，探测量不足会直接导致
+        /// 轨道漏检或 fps 拿不到，那是功能缺陷而不是性能取舍。
+        struct ProbeLimits {
+            int64_t probeSizeBytes;      ///< <=0 表示不改，沿用 FFmpeg 默认
+            int64_t analyzeDurationUs;   ///< <=0 表示不改
+            int64_t fpsProbeFrames;      ///< <0 不改；0=不为测 fps 解帧
+        };
+        virtual ProbeLimits probeLimits() const {
+            return ProbeLimits{512 * 1024, 1000000, 0};
+        }
+
         /// 缓冲节流参数。网络场景要缓更深，子类可覆写放大。
         virtual size_t maxTotalBytes() const;
         virtual int64_t bufferedDurationTargetUs() const;
@@ -167,6 +194,9 @@ namespace VE {
 
         /// prepare 完成后媒体信息即不变，缓存一份直接返回，
         /// 免去每次 getFileInfo 都 new + 逐字段拷贝
+        /// 启播里程碑，由 VEPlayer 注入。只在 onPrepare 里写，无需加锁
+        std::shared_ptr<VEStartupTrace> mStartupTrace;
+        std::shared_ptr<VEPerfStats> mPerfStats;
         std::shared_ptr<VEMediaInfo> mCachedFileInfo = nullptr;
 
     private:

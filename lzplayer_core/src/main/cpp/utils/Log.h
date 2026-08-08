@@ -10,7 +10,11 @@ namespace VE {
 // 三级编译期剔除，只保留 W/E；Debug 构建保持全量输出。
 //
 // 想在 Release 包上临时打开详细日志，编译时加 -DVE_FORCE_VERBOSE_LOG 即可。
-#if defined(NDEBUG) && !defined(VE_FORCE_VERBOSE_LOG)
+//
+// 反过来，Debug 包上想量"日志本身吃了多少 CPU"，加 -DVE_QUIET_LOG 即可
+// 剔除 V/D/I 而保留 Debug 的其它特性——这是做日志开销对照实验的开关，
+// 不改构建类型就能对比，避免把 NDEBUG 带来的其它差异混进来。
+#if defined(VE_QUIET_LOG) || (defined(NDEBUG) && !defined(VE_FORCE_VERBOSE_LOG))
 #define VE_LOG_VERBOSE_ENABLED 0
 #else
 #define VE_LOG_VERBOSE_ENABLED 1

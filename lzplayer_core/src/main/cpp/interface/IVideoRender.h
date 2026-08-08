@@ -8,6 +8,7 @@
 #include "core/VEFrame.h"
 #include "VEBundle.h"
 #include "VEError.h"
+#include "utils/VEPerfStats.h"
 
 namespace VE {
     class IVideoRender {
@@ -24,6 +25,9 @@ namespace VE {
 
         // 释放渲染器资源
         virtual VEResult uninitialize() = 0;
+
+        /// 注入稳态指标容器(上传/绘制/swap 三段拆分)。非纯虚：不关心的实现无需覆写
+        virtual void setPerfStats(const std::shared_ptr<VEPerfStats> &stats) { (void) stats; }
     };
 }
 

@@ -24,6 +24,10 @@ extern "C" {
 namespace VE {
     class VEAudioDecoder : public AHandler, public IMediaDecoder{
     public:
+        void setPerfStats(const std::shared_ptr<VEPerfStats> &stats) override {
+            mPerfStats = stats;
+        }
+
         VEAudioDecoder(std::shared_ptr<AMessage> &notify);
 
         ~VEAudioDecoder() override;
@@ -108,9 +112,25 @@ namespace VE {
 
         std::shared_ptr<AMessage> mNotifyEvent = nullptr;
 
+        /// 稳态指标，由 VEPlayer 注入。只在本 looper 上写
+
+        std::shared_ptr<VEPerfStats> mPerfStats;
+        /// 已送包但还没结算到某一帧上的解码耗时(微秒)。同 VEVideoDecoder
+        int64_t mDecodeAccumUs = 0;
+
         bool mIsStarted = false;
 
         /// 解码消息的代次，flush/seek 时递增以作废在途的解码消息
+        /// 饥饿唤醒代次。一次饥饿会同时武装**两个**唤醒源(数据到达通知 +
+        /// 兜底重试)，常见情况下两者都会触发：通知在几十毫秒后拉起链路，
+        /// 兜底消息在 500ms 时又拉起一条。而 kWhatDecode 成功后会自我续投，
+        /// 于是变成两条并行的自驱循环——两条消息 epoch 相同，互相过滤不掉。
+        ///
+        /// 用代次让它们互斥：两个唤醒源带同一个 gen，谁先到谁生效并递增 gen，
+        /// 另一个到达时代次已过期直接丢弃。这与 epoch / queueGen 是同一个套路。
+        ///
+        /// (credit 复活那条路径本身是边沿触发的，不需要这层保护)
+        int32_t mStarveGen = 0;
         int32_t mEpoch = 0;
         /// 精准 seek 目标(微秒)，其之前解出的帧全部丢弃
         int64_t mSeekTargetUs = kNoSeekTarget;

@@ -92,6 +92,14 @@ public class NativeLib {
         return "{}";
     }
 
+    /** 启播链路里程碑 JSON。一次启播只变一次，不必每 tick 取 */
+    public synchronized String getStartupTrace(){
+        if(mHandle != 0){
+            return nativeGetStartupTrace(mHandle);
+        }
+        return "{\"valid\":false}";
+    }
+
     public synchronized int setForceSoftwareDecoder(boolean force){
         if(mHandle != 0){
             return nativeSetForceSoftwareDecoder(mHandle,force);
@@ -102,6 +110,13 @@ public class NativeLib {
     public synchronized int setForceSlesAudio(boolean force){
         if(mHandle != 0){
             return nativeSetForceSlesAudio(mHandle,force);
+        }
+        return -1;
+    }
+
+    public synchronized int setPreferVulkanRender(boolean prefer){
+        if(mHandle != 0){
+            return nativeSetPreferVulkanRender(mHandle,prefer);
         }
         return -1;
     }
@@ -328,8 +343,10 @@ public class NativeLib {
     private native int nativeInit(Object mediaplayerThis,long handle,String path);
     private native int nativeSetSurface(long handle,Surface surface,int width,int height);
     private native String nativeGetStats(long handle);
+    private native String nativeGetStartupTrace(long handle);
     private native int nativeSetForceSoftwareDecoder(long handle,boolean force);
     private native int nativeSetForceSlesAudio(long handle,boolean force);
+    private native int nativeSetPreferVulkanRender(long handle,boolean prefer);
     private native String nativeGetTrackInfo(long handle);
     private native int nativeSelectTrack(long handle,int trackIndex);
     private native int nativeDeselectTrack(long handle,int trackIndex);

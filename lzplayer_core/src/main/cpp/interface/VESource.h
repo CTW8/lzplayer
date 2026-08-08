@@ -9,6 +9,7 @@
 #include "IVEComponent.h"
 #include "VEDef.h"     // EComponentType
 #include "VEError.h"   // VEResult
+#include "utils/VEStartupTrace.h"
 
 namespace VE {
 
@@ -46,6 +47,13 @@ namespace VE {
 
         /// 中断阻塞中的 FFmpeg IO(open/read)。可从任意线程调用，同步返回。
         virtual void abort() = 0;
+
+        /// 注入启播里程碑记录器(T1/T2/T3 在源内部打点)。
+        /// 故意**不是纯虚**：只有关心启播耗时的源才需要覆写，
+        /// 否则每加一个新源都被迫写一遍空实现。
+        virtual void setStartupTrace(const std::shared_ptr<VEStartupTrace> &trace) {
+            (void) trace;
+        }
 
         // —— 数据面：read / getFileInfo 已继承自 IMediaSource(纯虚) ——
 

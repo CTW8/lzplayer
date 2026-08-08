@@ -2,6 +2,7 @@
 #define __VE_AUDIO_RENDER__
 
 #include "IAudioRender.h"
+#include "utils/VEStartupTrace.h"
 #include "IFrameSink.h"
 #include "IVEComponent.h"
 #include "VEAudioOutputConfig.h"
@@ -50,6 +51,11 @@ class VEAudioRender : public AHandler, public IFrameSink, public IVEComponent{
 
         /// 强制使用 OpenSL ES(测试用)。必须在 prepare 之前调用。
         void setForceSles(bool force) { m_ForceSles = force; }
+
+        /// 注入启播里程碑记录器(T8 首个音频帧进设备时打点)
+        void setStartupTrace(const std::shared_ptr<VEStartupTrace> &trace) {
+            mStartupTrace = trace;
+        }
 
         /// 实际生效的后端名，诊断面板显示用。prepare 之后才有意义。
         const char *backendName() const { return m_BackendName.load(); }
@@ -100,6 +106,8 @@ private:
         bool m_IsStarted = false;
         /// 测试开关：强制走 SLES(prepare 前设置)
         bool m_ForceSles = false;
+        /// 启播里程碑，由 VEPlayer 注入
+        std::shared_ptr<VEStartupTrace> mStartupTrace;
         /// 实际生效的后端名(prepare 时写一次，之后只读)
         std::atomic<const char *> m_BackendName{"none"};
         /// 设备侧硬错误闩：置位后停止喂帧，等播放器收敛。

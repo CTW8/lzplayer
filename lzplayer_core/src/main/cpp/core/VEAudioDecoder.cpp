@@ -1,4 +1,5 @@
 #include "VEAudioDecoder.h"
+#include "utils/VEPerfStats.h"
 #include "VEError.h"
 
 #define AUDIO_FRAME_QUEUE_SIZE 50
@@ -131,6 +132,16 @@ namespace VE {
                     ALOGV("VEAudioDecoder::onDecode is not started, exiting");
                     break;
                 }
+                int32_t starveGen = 0;
+                if (msg->findInt32("starveGen", &starveGen)) {
+                    // 饥饿唤醒消息：同一次饥饿的两个唤醒源只允许一个生效
+                    if (starveGen != mStarveGen) {
+                        ALOGV("VEAudioDecoder stale starve wake, gen=%d cur=%d",
+                              starveGen, mStarveGen);
+                        break;
+                    }
+                    ++mStarveGen;   // 让兄弟唤醒源作废
+                }
 
                 VEResult ret = onDecode();
                 if (ret == VE_OK) {
@@ -249,6 +260,7 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onFlush() {
+        mDecodeAccumUs = 0;
         ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         // 递增 epoch，使 flush 之前投递的解码消息与旧帧的消费回执全部失效
         ++mEpoch;
@@ -290,6 +302,7 @@ namespace VE {
 
         do {
             std::shared_ptr<VEFrame> frame = std::make_shared<VEFrame>();
+            const int64_t decodeBeginUs = mPerfStats ? nowUs() : 0;
             ret = avcodec_receive_frame(mAudioCtx, frame->getFrame());
             if (ret == AVERROR_EOF) {
                 ALOGI("VEAudioDecoder::onDecode AVERROR_EOF");
@@ -391,6 +404,10 @@ namespace VE {
                     audioFrame->setPts(audioFrame->getFrame()->pts);
                     audioFrame->setDts(audioFrame->getFrame()->pkt_dts);
                     audioFrame->setFrameType(E_FRAME_TYPE_AUDIO);
+                    if (mPerfStats) {
+                        mPerfStats->audioDecodeUs.add(mDecodeAccumUs + nowUs() - decodeBeginUs);
+                        mDecodeAccumUs = 0;
+                    }
                     queueFrame(audioFrame);
                 } else {
                     // 解码输出已是目标格式，直通不重采样。pts 必须照样搬到
@@ -400,6 +417,10 @@ namespace VE {
                     frame->setPts(frame->getFrame()->pts);
                     frame->setDts(frame->getFrame()->pkt_dts);
                     frame->setFrameType(E_FRAME_TYPE_AUDIO);
+                    if (mPerfStats) {
+                        mPerfStats->audioDecodeUs.add(mDecodeAccumUs + nowUs() - decodeBeginUs);
+                        mDecodeAccumUs = 0;
+                    }
                     queueFrame(frame);
                 }
                 ALOGV("VEAudioDecoder Audio frame: pts=%s, nb_samples=%d, channels=%d samplerate:%d format:%d\n",
@@ -425,10 +446,15 @@ namespace VE {
             // 消息带当前 epoch，flush/seek 后自动作废；这是纯数据面事件，
             // 不触碰命令态。同时投一条兜底重试，防源实现漏发通知。
             ALOGV("VEAudioDecoder::onDecode starving, waiting for data notify");
+            const int32_t starveGen = ++mStarveGen;
             auto notify = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
             notify->setInt32("epoch", mEpoch);
+            notify->setInt32("starveGen", starveGen);
             mDemux->requestReadNotify(ETrackType::AUDIO, notify);
-            postDecode(kStarveBackstopUs);
+            auto backstop = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
+            backstop->setInt32("epoch", mEpoch);
+            backstop->setInt32("starveGen", starveGen);
+            backstop->post(kStarveBackstopUs);
             return VE_NOT_ENOUGH_DATA;
         }
 
@@ -437,7 +463,13 @@ namespace VE {
         }
 
         if (packet->getPacketType() == E_PACKET_TYPE_AUDIO) {
+            const int64_t sendBeginUs = mPerfStats ? nowUs() : 0;
             ret = avcodec_send_packet(mAudioCtx, packet->getPacket());
+            if (mPerfStats) {
+                // 与视频同理：真正的解码工作在 send_packet 里，
+                // 只量 receive 会把每帧成本报低一个数量级
+                mDecodeAccumUs += nowUs() - sendBeginUs;
+            }
             ALOGV("VEAudioDecoder::onDecode send packet pts:%" PRId64 ", dts:%" PRId64,
                   packet->getPacket()->pts, packet->getPacket()->dts);
         } else if (packet->getPacketType() == E_PACKET_TYPE_EOF) {
