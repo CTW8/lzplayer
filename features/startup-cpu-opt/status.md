@@ -79,19 +79,97 @@
 
 ## Doing
 
-- [ ] 步骤4: 零拷贝上屏 + codec 预热 — **刚领取，优先级已按前三步数据定序（见下）**
-  - **4a（先做）软解零拷贝上屏**：软解路径最大可优化项。上屏 p50 **5.7** / p95 **8.2ms**，
-    `video_render` **27.0% CPU = 软解总 CPU 的 18.7%**。方向 `AHardwareBuffer` + `EGLImage`，
-    消掉三平面 `glTexSubImage2D`。
-    **附带项可独立先做**：软解起播「首帧上屏 **57.2ms**」是首次纹理分配，
-    可在 prepare 阶段按已知分辨率预分配掉（纯启播收益）。
-  - **4b 硬解 codec 预热/复用**：configure **61~66ms**，是硬解启播剩余最大项。
-    **反模式提醒仍然有效**：把 configure 挪进 prepare 等它完成**不算优化**，只是搬时间；
-    收益只能来自预热（用等用户操作的空闲时间）或复用（换源省整次 configure）。
-  - **4c 音频路径 CPU 复查（新增子项，见下方「后续议题」）**。
-  - **验收**：以**启播总耗时**与**进程 CPU** 判定，不接受只有单段变短、总耗时不变的结果。
-  - **动手前须确认 vulkan-renderer 工作区状态**（4a 与它碰同一批渲染文件，
-    其步骤7 真机验证仍被锁屏问题阻塞、改动仍在工作区）。
+- [ ] 步骤4: codec configure 拆分与预热 + 软解首帧不等时钟 + 音频路径 CPU 复查
+  — **2026-08-08 第二次重排：零拷贝撤回、纹理预分配收益记 0，子项换成 4a/4b（见下）**
+
+  - **4a（当前最大项，先做）硬解 codec configure 拆分与预热**：configure **61~66ms**，
+    占硬解启播 **169ms** 的 **39%**，剩余最大单项。
+    - **第一个交付物是拆分数据，不是优化代码**：在 `VEStartupTrace` 增
+      `T4A_CODEC_CREATED` / `T4A_CODEC_CONFIGURED`，把 T4a 拆成 **创建 / 配置 / 启动** 三段输出。
+    - 三段分别是 `AMediaCodec_createDecoderByType`（组件加载 + binder 到 codec2 服务）、
+      `AMediaCodec_configure`、`AMediaCodec_start`。**哪段占大头决定预热要预热什么**：
+      - createDecoderByType 占大头 → 播放器构造时后台线程预建常用 mime 的 codec 实例，configure 时复用；
+      - configure 占大头 → 预热无效，改为**与 `find_stream_info` 并行**
+        （mp4 在 `avformat_open_input` 后 streams 已带 codec_id/width/height/extradata(avcC)，
+        可让两个 66ms 变成一个）；该路改动大，需 demux 在 open_input 后就暴露轨道参数。
+    - 反模式仍有效：把 configure 挪进 prepare 等它完成**不算优化**，只是搬时间。
+    - 验收：三段拆分与现有 T4a 区间自洽；优化后看**启播总耗时**。
+
+    **4a 工作区现状（2026-08-08 核对，均为未提交改动）—— 拆分已出数，方向已由数据选定：**
+    - 拆分打点已落地：`VEStartupTrace.h` 增 `T4A_CODEC_CREATED` / `T4A_CODEC_CONFIGURED`，
+      `VEStartupTrace.cpp` 输出 `codecCreateMs` / `codecConfigureMs` / `codecStartMs`
+      并把 `marks` 扩为 `t4aCreated` / `t4aConfigured`；
+      打点埋在 `VEMediaCodecVideoDecoder.cpp` 的 `createDecoderByType` 与
+      `AMediaCodec_configure` 之后。**软解不填这两个点。**
+    - **拆分结论（据工作区代码注释记录的实测值）**：硬解 configure 总 **64~87ms** 中
+      `AMediaCodec_createDecoderByType` 独占 **50~66ms（76~78%）**，
+      `AMediaCodec_configure` 只占 **5.6~7.7ms**。
+      → **命中"createDecoderByType 占大头"分支**；
+      **"configure 与 `find_stream_info` 并行"那条大改动因此不必做**（它只值 5.6~7.7ms）。
+    - 据此实施的优化：新增 `platform/android/decoders/VECodecWarmup.{h,cpp}`（未跟踪文件）——
+      在 `VEDemux` 的 `avformat_open_input` 返回后（约 5ms 处、`codec_id` 已知，**不是猜 mime**）
+      按 codec_id 在后台线程预建 codec 实例，**完整藏进随后 `find_stream_info` 的 51~66ms 窗口**；
+      解码器侧 `take(mime)` 优先取预热实例、取不到照常自建（预热是"赶上就赶上"，不作正确性依赖）；
+      `VEPlayer::onRelease` 调 `discard()` 兜底，避免无人取用的实例长期占着有限系统资源。
+      跳过内嵌封面流（`AV_DISPOSITION_ATTACHED_PIC`）。
+    - **待办**：真机验证**硬解启播总耗时**的实际下降（当前 169.0ms），
+      以及"预热未被取用"路径（非硬解白名单 / 回退软解 / prepare 失败）不泄漏 codec 实例；
+      改动尚未提交。
+
+  - **4b（新增）软解首帧不等同步时钟，立即上屏**：那 57ms 等待可以靠
+    「首帧不等同步时钟、立即上屏」消掉 —— 常规做法是**先把第一帧画出来，再启动时钟对齐**。
+    直接压缩感知延迟，**改动比零拷贝小**。
+    风险：首帧可能比音频略早显示，需确认**无可见跳动**。
+    验收：软解 T6→T7 显著下降**且启播总耗时同步下降**。
+
+  - **4c（保留原位）音频路径 CPU 复查**：21~26% 单核 CPU，见下方「后续议题」。
+
+  - **动手前须确认 vulkan-renderer 工作区状态** —— 4a 已不碰渲染文件，
+    但 **4b 会碰 `VEVideoDisplay` / `VEAVsync`**（其步骤7 真机验证仍被锁屏问题阻塞、改动仍在工作区）。
+
+### 步骤4 已撤回/降级的两个子项（2026-08-08 实测，保留追溯）
+
+1. **~~4a-旧 软解零拷贝上屏~~ → 撤回，不做。实测否掉了它。**
+   `present` p50 4.4ms 的三段构成：
+
+   | 段 | p50 | p95 |
+   |---|---|---|
+   | 纹理上传 | **1.8ms** | 4.1ms |
+   | 绘制 | 0.3ms | — |
+   | `eglSwapBuffers` | 1.8ms | 3.0ms |
+
+   零拷贝只能省"上传"那 1.8ms → 30fps 下单核 **5.4%**，在软解总 CPU **144.5%** 里占 **3.7%**。
+   代价：`AHardwareBuffer_lockPlanes` 要 **API 29**（minSdk 24）、
+   YUV→RGB 交给驱动会**丢掉已修好的 BT.601/709 × full/limited 控制**、
+   需要 FFmpeg 自定义 `get_buffer2` + 缓冲池 + EGLImage 生命周期，且仍需保留回退路径。
+   **投入产出不成立。**
+   **顺带更正一处早先归因**：`video_render` 27% CPU 里只有约 **13%** 在 `renderFrame` 内
+   （4.4ms × 30fps），另一半在 **AVSync 调度、消息循环、帧队列**上。
+   把 27% 整个归给"三平面上传"是不准的。
+
+2. **纹理预分配 → 已实施并提交，但不计入收益（记 0）。**
+   GLES 纹理改为 prepare 阶段按容器声明尺寸预分配。但**没有改善目标读数**：
+   首帧上屏三次实测 **51.7 / 98.2 / 58.8ms**，与预分配前同量级且方差很大。
+   原因是**又一次搞错了段落含义** —— T6→T7 量的是「首帧解出 → 提交上屏」，
+   **中间包含 AVSync 的等待**，软解带音频时视频首帧在等音频时钟起锚（首声 38.1ms 就在这个量级）。
+   **铁证**：同一份数据里 `present` 的 **max 只有 9.98ms**，`renderFrame()` 从来没花过 57ms。
+   预分配本身无害（确实省掉首帧的 `glTexStorage2D`×3），**代码保留，收益记 0**。
+   真正该做的事因此变成 **4b**。
+
+### 本 feature 第三次同类错误（2026-08-08 记录）
+
+本轮在**"先假设某个数字代表什么、再照着它去优化"**上连续栽三次，**三次都是靠先做拆分测量才拦住**：
+
+| 次 | 读数 | 当时以为 | 拆分后真相 |
+|---|---|---|---|
+| 1 | 硬解 `videoDecodeMs` | 解码耗时 | pts→出队端到端延迟，绝大部分是背压等待 |
+| 2 | 软解 `videoDecodeMs` | 解码耗时 | 只覆盖 receive 侧，不含 `avcodec_send_packet` |
+| 3 | 软解「首帧上屏 57.2ms」 | 首次纹理分配 | 含 AVSync 等音频时钟起锚；`present` max 仅 9.98ms |
+
+已沉淀规则"新指标必须有独立来源的交叉校验"**没能防住第 3 次**
+（采集点与数字都没错，错在**读法**：把复合区间当成单一操作的耗时）。
+**因此追加一条规则：动手优化某个读数之前，先确认它的构成，不能只看它的名字。**
+（已写入 plan 关键约束 8 与设计文档 §0 第 4 条 / §0.1。）
 
 ## Todo
 
@@ -107,7 +185,7 @@
 | 解析流信息 | 66.1（原 145.0） | 51.1（原 133.8） |
 | **启播总耗时** | **169.0（原 231.2，−27%）** | **209.1（原 246.4，−15%）** |
 | configure | 61~66 | — |
-| 首帧上屏 | 0.7 | 57.2（首次纹理分配，可预分配掉） |
+| 首帧上屏 | 0.7 | 57.2（~~首次纹理分配~~ → **实为 AVSync 等音频时钟起锚**，见步骤4 第 2 条） |
 | 上屏 p50 / p95 | 1.5 / 2.7 | 5.7 / 8.2 |
 
 静音日志后的 CPU 构成：
@@ -147,6 +225,9 @@
 
 线程 CPU：软解 `vdec_thread` 81%、`video_render` 27.5%；
 硬解 `vdec_thread` 23%、NDK MediaCodec 10.5%、HwBinder 7%。
+
+**注意 2（2026-08-08 追加）**：表中软解「首帧上屏 57.2ms」**不是渲染耗时** ——
+T6→T7 含 AVSync 等音频时钟起锚，`present` max 仅 9.98ms。该数字不可用于判定渲染优化收益。
 
 **注意**：表中软解 `videoDecodeMs`（perf-metrics 报 p50=0.1ms）**是错的**，
 口径缺陷已在步骤2 修完，**修正后实测 p50 = 14.0ms**（原预期 20~30ms，实际略低但同量级）。
