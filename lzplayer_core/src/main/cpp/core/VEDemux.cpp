@@ -1,4 +1,5 @@
 #include "VEDemux.h"
+#include "platform/android/decoders/VECodecWarmup.h"
 #include "VEPacket.h"
 #include "VEError.h"
 
@@ -406,6 +407,21 @@ namespace VE {
         }
         if (mStartupTrace != nullptr) {
             mStartupTrace->mark(VEStartupTrace::T1_CONTAINER_OPEN);
+        }
+
+        // 硬解 codec 实例创建要 50~66ms，且只依赖 mime。此刻 open_input 已
+        // 返回、codec_id 已知，而 find_stream_info 还要跑 51~66ms——把创建
+        // 塞进那段窗口里并行做，正好互相抵消。不是猜 mime，是拿准了才预热。
+        for (unsigned int i = 0; i < mFormatContext->nb_streams; ++i) {
+            AVStream *st = mFormatContext->streams[i];
+            if (st->codecpar->codec_type != AVMEDIA_TYPE_VIDEO) {
+                continue;
+            }
+            if (st->disposition & AV_DISPOSITION_ATTACHED_PIC) {
+                continue;   // 内嵌封面不是可播放视频流
+            }
+            VECodecWarmup::warmUpForCodec(st->codecpar->codec_id);
+            break;
         }
 
         // 收紧探测上限：启播链路最大的一笔可省开销(本地 1080p 实测

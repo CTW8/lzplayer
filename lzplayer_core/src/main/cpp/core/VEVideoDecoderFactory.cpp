@@ -1,4 +1,5 @@
 #include "VEVideoDecoderFactory.h"
+#include "platform/android/decoders/VECodecWarmup.h"
 
 #include "VEVideoDecoder.h"
 #include "decoders/VEMediaCodecVideoDecoder.h"
@@ -43,6 +44,11 @@ namespace VE {
         }
         ALOGI("VEVideoDecoderFactory::%s software decoder for codec %d",
               __FUNCTION__, track.codecId);
+        // 走软解就没人来取那个预热实例了。在这里就丢掉而不是等 onRelease——
+        // MediaCodec 实例是有限的系统资源，整段播放都握着不用会挤掉其它
+        // 应用的分配。预热是在 open_input 之后按 codec_id 无条件发起的，
+        // 那时还不知道最终会选软解(强制软解开关、无 surface、硬解建链失败)。
+        VECodecWarmup::discard();
         return std::make_shared<VEVideoDecoder>(notify);
     }
 }

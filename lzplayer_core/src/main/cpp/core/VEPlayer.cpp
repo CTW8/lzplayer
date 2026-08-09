@@ -1,4 +1,5 @@
 #include "VEPlayer.h"
+#include "platform/android/decoders/VECodecWarmup.h"
 #include "VEDemux.h"
 #include "VESourceRegistry.h"
 #include "decoders/VEMediaCodecVideoDecoder.h"
@@ -1307,6 +1308,10 @@ namespace VE {
     }
 
     VEResult VEPlayer::onRelease(std::shared_ptr<AMessage> msg) {
+        // 预热的 codec 实例若没人来取(非硬解白名单、回退软解、prepare 失败)，
+        // 必须在这里丢掉——MediaCodec 实例是有限的系统资源，握着不用会挤掉
+        // 其它应用的分配
+        VECodecWarmup::discard();
         ALOGI("VEPlayer::%s enter", __FUNCTION__);
         // release 是同步调用(Driver 析构在等)，但拆解要跨多轮消息握手，
         // 所以先扣下 replyToken；无论直接执行还是排队，最终都必须回复。

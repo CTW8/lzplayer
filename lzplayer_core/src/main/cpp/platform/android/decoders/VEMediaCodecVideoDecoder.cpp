@@ -1,4 +1,5 @@
 #include "VEMediaCodecVideoDecoder.h"
+#include "VECodecWarmup.h"
 #include "utils/VEPerfStats.h"
 
 #include <cstring>
@@ -235,7 +236,15 @@ namespace VE {
             return VE_INVALID_PARAMS;
         }
 
-        mCodec = AMediaCodec_createDecoderByType(mime);
+        // 优先用预热好的实例(见 VECodecWarmup)。取不到就照常自建——
+        // 预热是"赶上就赶上"的优化，不能成为正确性依赖
+        mCodec = VECodecWarmup::take(mime);
+        if (mCodec == nullptr) {
+            mCodec = AMediaCodec_createDecoderByType(mime);
+        }
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T4A_CODEC_CREATED);
+        }
         if (mCodec == nullptr) {
             ALOGE("VEMediaCodecVideoDecoder::%s createDecoderByType(%s) failed",
                   __FUNCTION__, mime);
@@ -260,6 +269,9 @@ namespace VE {
         }
 
         media_status_t st = AMediaCodec_configure(mCodec, format, mWindow, nullptr, 0);
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->mark(VEStartupTrace::T4A_CODEC_CONFIGURED);
+        }
         AMediaFormat_delete(format);
         if (st != AMEDIA_OK) {
             ALOGE("VEMediaCodecVideoDecoder::%s configure failed: %d", __FUNCTION__, st);

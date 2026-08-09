@@ -1,6 +1,7 @@
 #include "VEStartupTrace.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 
 namespace VE {
@@ -13,10 +14,12 @@ namespace VE {
 
         /// 往 JSON 里追加一个毫秒字段。缺失值原样输出 -1，不做美化——
         /// 上层据此显示 "--"
+        /// NaN → JSON null(没采到)；其余原样输出，含负数(采集点顺序颠倒)。
+        /// 不再用 -1 兼表两种状态——-1 本身是个合法时长，混用就分不出来了
         void appendMs(std::string &out, const char *key, double ms, bool comma = true) {
             char buf[96];
-            if (ms < 0) {
-                snprintf(buf, sizeof(buf), "\"%s\":-1%s", key, comma ? "," : "");
+            if (std::isnan(ms)) {
+                snprintf(buf, sizeof(buf), "\"%s\":null%s", key, comma ? "," : "");
             } else {
                 snprintf(buf, sizeof(buf), "\"%s\":%.1f%s", key, ms, comma ? "," : "");
             }
@@ -35,6 +38,8 @@ namespace VE {
         }
         mHardware = false;
         mHasDecodePath = false;
+        mFirstFrameWaitUs = -1;
+        mHasFirstFrameWait = false;
     }
 
     void VEStartupTrace::mark(Milestone m) {
@@ -55,6 +60,27 @@ namespace VE {
         return mAt[m] >= 0;
     }
 
+    void VEStartupTrace::markIfArmed(Milestone gate, Milestone m) {
+        if (gate < 0 || gate >= kMilestoneCount || m < 0 || m >= kMilestoneCount) {
+            return;
+        }
+        std::lock_guard<std::mutex> lk(mMutex);
+        if (mAt[gate] < 0) {
+            return;   // 门还没开，这次执行与目标事件无关
+        }
+        if (mAt[m] < 0) {
+            mAt[m] = nowNs();
+        }
+    }
+
+    void VEStartupTrace::setFirstFrameWaitUs(int64_t waitUs) {
+        std::lock_guard<std::mutex> lk(mMutex);
+        if (!mHasFirstFrameWait) {
+            mFirstFrameWaitUs = waitUs;
+            mHasFirstFrameWait = true;
+        }
+    }
+
     void VEStartupTrace::setDecodePath(bool hardware) {
         std::lock_guard<std::mutex> lk(mMutex);
         mHardware = hardware;
@@ -63,7 +89,7 @@ namespace VE {
 
     double VEStartupTrace::spanMs(Milestone from, Milestone to) const {
         if (mAt[from] < 0 || mAt[to] < 0) {
-            return -1;
+            return std::nan("");
         }
         return static_cast<double>(mAt[to] - mAt[from]) / 1e6;
     }
@@ -84,6 +110,10 @@ namespace VE {
         const double trackList   = spanMs(T2_STREAM_INFO, T3_TRACKS_READY);
         const double buildChain  = spanMs(T3_TRACKS_READY, T4_CHAIN_READY);
         const double configure   = spanMs(T4A_CONFIGURE_BEGIN, T4A_CONFIGURE_END);
+        // configure 内部三段(仅硬解)：创建 / 配置 / 启动
+        const double codecCreate = spanMs(T4A_CONFIGURE_BEGIN, T4A_CODEC_CREATED);
+        const double codecConfig = spanMs(T4A_CODEC_CREATED, T4A_CODEC_CONFIGURED);
+        const double codecStart  = spanMs(T4A_CODEC_CONFIGURED, T4A_CONFIGURE_END);
         const double firstDecode = spanMs(T5_START, T6_FIRST_FRAME_DECODED);
         const double firstPresent= spanMs(T6_FIRST_FRAME_DECODED, T7_FIRST_FRAME_PRESENTED);
 
@@ -146,6 +176,9 @@ namespace VE {
         appendMs(out, "trackListMs", trackList);
         appendMs(out, "buildChainMs", buildChain);
         appendMs(out, "decoderConfigureMs", configure);
+        appendMs(out, "codecCreateMs", codecCreate);
+        appendMs(out, "codecConfigureMs", codecConfig);
+        appendMs(out, "codecStartMs", codecStart);
         out += configureOverlapsFirstFrame
                ? "\"configureOverlapsFirstFrame\":true,"
                : "\"configureOverlapsFirstFrame\":false,";
@@ -155,6 +188,22 @@ namespace VE {
         // 引向错误方向，所以这里绝不提供"合成版"之外的唯一口径。
         appendMs(out, "firstFrameDecodeMs", firstDecode);
         appendMs(out, "firstFramePresentMs", firstPresent);
+        // T6→T7 的内部拆分
+        appendMs(out, "ffQueueHopMs", spanMs(T6_FIRST_FRAME_DECODED, T6B_FRAME_QUEUED));
+        appendMs(out, "ffSyncEnterMs", spanMs(T6B_FRAME_QUEUED, T6C_SYNC_ENTER));
+        appendMs(out, "ffRenderEnterMs", spanMs(T6C_SYNC_ENTER, T6D_RENDER_ENTER));
+        appendMs(out, "ffRenderMs", spanMs(T6D_RENDER_ENTER, T7_FIRST_FRAME_PRESENTED));
+        appendMs(out, "ffSyncWaitMs",
+                 mHasFirstFrameWait ? static_cast<double>(mFirstFrameWaitUs) / 1000.0
+                                    : std::nan(""));
+        // 子分段自洽校验：四段之和应等于父段(首帧上屏)。
+        // 顶层分段一直有这条校验，子分段没有——T6C 记错了因此无人发现。
+        // 规则：任何分段一旦拆出子分段，必须同时给出与父段的差值。
+        const double ffSum = spanMs(T6_FIRST_FRAME_DECODED, T6B_FRAME_QUEUED) +
+                             spanMs(T6B_FRAME_QUEUED, T6C_SYNC_ENTER) +
+                             spanMs(T6C_SYNC_ENTER, T6D_RENDER_ENTER) +
+                             spanMs(T6D_RENDER_ENTER, T7_FIRST_FRAME_PRESENTED);
+        appendMs(out, "ffSumDeltaMs", ffSum - firstPresent);
         appendMs(out, "prepareTotalMs", prepareTotal);
         appendMs(out, "firstFrameMs", firstFrame);
         appendMs(out, "firstSoundMs", firstSound);
@@ -163,8 +212,9 @@ namespace VE {
         // 原始里程碑(相对 T0 的偏移)，用于校验分段是否漏了空隙
         out += "\"marks\":{";
         static const char *kKeys[kMilestoneCount] = {
-                "t0", "t0d", "t1", "t2", "t3", "t4aBegin", "t4aEnd",
-                "t4", "t5", "t6", "t7", "t8"
+                "t0", "t0d", "t1", "t2", "t3", "t4aBegin",
+                "t4aCreated", "t4aConfigured", "t4aEnd",
+                "t4", "t5", "t6", "t6b", "t6c", "t6d", "t7", "t8"
         };
         for (int i = 0; i < kMilestoneCount; ++i) {
             appendMs(out, kKeys[i], offsetMs(static_cast<Milestone>(i)),
