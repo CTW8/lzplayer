@@ -388,9 +388,12 @@ class DiagnosticsSheet(
             Triple("建链(接线)", "buildChainMs", R.color.con_warn),
             Triple("首帧解码", "firstFrameDecodeMs", R.color.con_ok),
             Triple("首帧上屏", "firstFramePresentMs", R.color.con_track_subtitle)
-        ).map { (label, key, c) -> Triple(label, t.optDouble(key, -1.0), c) }
+        ).map { (label, key, c) -> Triple(label, msOrNull(t, key), c) }
 
-        val present = segs.filter { it.second >= 0 }
+        // 只有"采到了"的段参与堆叠条与求和；负数是 bug 信号，单独标出来
+        val present = segs.filter { it.second != null && it.second!! >= 0 }
+                          .map { Triple(it.first, it.second!!, it.third) }
+        val bogus = segs.filter { it.second != null && it.second!! < 0 }
         val sum = present.sumOf { it.second }
         val total = t.optDouble("startupTotalMs", -1.0)
         val maxSeg = present.maxByOrNull { it.second }
@@ -427,6 +430,11 @@ class DiagnosticsSheet(
             waterfallHost.addView(bar)
         }
 
+        // 采集点顺序颠倒的段：必须显眼，不能和"没采到"一样显示成 --
+        bogus.forEach { (label, ms, _) ->
+            startupLegend.addView(legendRow(ctx, label, "%.1f ms".format(ms),
+                R.color.con_crit, "← 负值：采集点顺序颠倒"))
+        }
         // 明细：最大项标 ← 最大项，省去人工比对
         present.forEach { (label, ms, colorRes) ->
             val isMax = maxSeg != null && label == maxSeg.first
@@ -487,6 +495,23 @@ class DiagnosticsSheet(
         steadyHost.addView(hintText(ctx,
             "同步余量是丢帧前兆：正=帧提前就绪。丢帧还是 0 但 p95 逼近 0 时，" +
             "再多一点负载就会开始掉帧。"))
+
+        steadyHost.addView(sectionLabel(ctx, "丢帧构成 · 按原因分类"))
+        val late = d.optLong("dropLate")
+        val overflow = d.optLong("dropOverflow")
+        val stale = d.optLong("dropStale")
+        val catchup = d.optLong("dropSeekCatchup")
+        // late/overflow 才是问题；stale 是 flush/seek 的正常结果，
+        // seekCatchup 是精准 seek 的成本。混成一个"丢帧数"会把正常当缺陷
+        steadyHost.addView(legendRow(ctx, "迟到被丢", "$late",
+            if (late > 0) R.color.con_warn else R.color.con_ok, "解码或渲染跟不上"))
+        steadyHost.addView(legendRow(ctx, "队列溢出", "$overflow",
+            if (overflow > 0) R.color.con_crit else R.color.con_ok,
+            if (overflow > 0) "credit 记账失守，属异常" else ""))
+        steadyHost.addView(legendRow(ctx, "代次过期", "$stale",
+            R.color.con_ink_dim, "flush/seek 的正常结果"))
+        steadyHost.addView(legendRow(ctx, "seek 追帧", "$catchup",
+            R.color.con_ink_dim, "精准 seek 的成本，非缺陷"))
 
         steadyHost.addView(sectionLabel(ctx, "队列水位 当前 / 峰值"))
         steadyHost.addView(legendRow(ctx, "音频包",
@@ -614,6 +639,19 @@ class DiagnosticsSheet(
     private fun parseJson(raw: String): org.json.JSONObject? = runCatching {
         org.json.JSONObject(raw)
     }.getOrNull()
+
+    /**
+     * 读一个毫秒字段的三态。
+     *
+     * native 侧已把"没采到"(JSON null)与"采集点顺序颠倒"(负数)分开了，
+     * 但 `optDouble(key, -1.0)` 会把 null 变成 -1，等于在 UI 上又把两者合回去。
+     * 必须用 isNull 判断——否则前面那层修正只走到 JSON、没走到界面。
+     */
+    private fun msOrNull(o: org.json.JSONObject, key: String): Double? =
+        if (!o.has(key) || o.isNull(key)) null else o.optDouble(key)
+
+    /** null → "--"；负数原样显示并由调用方标红(它只可能是采集点顺序错误) */
+    private fun fmtMs(v: Double?): String = if (v == null) "--" else "%.1f ms".format(v)
 
     private fun bigCell(ctx: Context, label: String, key: String): View {
         val cell = LinearLayout(ctx).apply {

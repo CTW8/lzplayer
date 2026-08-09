@@ -425,6 +425,8 @@ namespace VE {
                     if (pts != AV_NOPTS_VALUE && pts < mSeekTargetUs) {
                         ALOGD("VEVideoDecoder::onDecode drop frame pts=%" PRId64
                                       " until %" PRId64, pts, mSeekTargetUs);
+                        // 精准 seek 的追帧丢弃：属 seek 成本，不是渲染缺陷
+                        if (mPerfStats) { ++mPerfStats->dropSeekCatchup; }
                         return VE_OK;
                     }
                     ALOGI("VEVideoDecoder::onDecode reached seek target pts=%" PRId64, pts);

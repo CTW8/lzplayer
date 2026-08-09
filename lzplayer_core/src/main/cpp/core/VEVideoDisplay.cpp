@@ -168,6 +168,8 @@ namespace VE {
                     // 解码器 flush 时已把 credit 清算归零
                     ALOGI("VEVideoDisplay stale queued frame gen=%d cur=%d",
                           gen, mQueueGen.load());
+                    // 代次过期是 flush/seek 的正常结果，单独记账以免被算成缺陷
+                    if (mPerfStats) { ++mPerfStats->dropStale; }
                     break;
                 }
                 std::shared_ptr<void> f, r;
@@ -178,6 +180,9 @@ namespace VE {
                 if (mFrames.size() >= kMaxFramesBackstop) {
                     ALOGW("VEVideoDisplay::onQueueFrame frames overflow %zu, drop oldest",
                           mFrames.size());
+                    // 此前这条路径完全不计数：credit 记账失守时丢的帧不进任何统计
+                    ++mDroppedFrames;
+                    if (mPerfStats) { ++mPerfStats->dropOverflow; }
                     if (mFrames.front().second) {
                         mFrames.front().second->post();
                     }
@@ -269,6 +274,8 @@ namespace VE {
 
     VEResult VEVideoDisplay::onSeekTo(double timestampMs) {
         ALOGV("VEVideoDisplay::onSeekTo enter timestampMs:%f", timestampMs);
+        // seek 后的首帧是用户在等的预览画面，最该立刻出——重新武装豁免
+        m_AwaitingFirstFrame = true;
         // 作废在途的渲染/同步消息，避免 seek 后把旧帧画上去
         ++m_Epoch;
         // 队列代次递增 + 清本地队列：在途的旧帧到达时被丢弃。
@@ -283,6 +290,8 @@ namespace VE {
 
     VEResult VEVideoDisplay::onFlush(std::shared_ptr<AMessage> msg) {
         ALOGV("VEVideoDisplay::onFlush enter");
+        // 重新武装首帧豁免：flush 之后的第一帧同样应立刻上屏
+        m_AwaitingFirstFrame = true;
         ++m_Epoch;
         ++mQueueGen;
         mFrames.clear();
@@ -379,6 +388,7 @@ namespace VE {
         if (mStartupTrace != nullptr) {
             mStartupTrace->mark(VEStartupTrace::T7_FIRST_FRAME_PRESENTED);
         }
+        m_AwaitingFirstFrame = false;
         consumeFront();
 
         if (m_NotifyFirstFrame) {
@@ -441,15 +451,17 @@ namespace VE {
         // 都可以忽略。而单帧的 A/V 对齐误差没人能察觉，几十毫秒的黑屏所有人
         // 都能察觉，这笔交换是明确划算的。
         //
-        // 判据用"还没上屏过任何一帧"而不是 seek 的 m_NotifyFirstFrame：后者
-        // 只在 seek 路径置真，起播时恒为假(这一点先前误判过一次)。
-        // 只影响第一帧，第二帧起恢复正常同步。
-        const bool isVeryFirstFrame = (mRenderedFrames.load() == 0);
+        // 判据见 m_AwaitingFirstFrame 的声明：它在起播与**每次 flush/seek**
+        // 后都会重新置真，所以 seek 的首帧同样免等待——这与 NuPlayer 在
+        // onFlush 里重置 mVideoSampleReceived 是同一个语义。
+        // 只影响每段播放的第一帧，第二帧起恢复正常同步。
+        const bool isVeryFirstFrame = m_AwaitingFirstFrame;
 
         if (!isVeryFirstFrame && m_pAvSync->shouldDropFrame()) {
             // 已经严重落后：丢弃(照样回执还 credit)，立即取下一帧追赶
             ALOGI("VEVideoDisplay::%s Dropping frame pts=%" PRId64, __FUNCTION__, frame->getPts());
             ++mDroppedFrames;
+            if (mPerfStats) { ++mPerfStats->dropLate; }
             consumeFront();
             postSync(0);
             return VE_OK;

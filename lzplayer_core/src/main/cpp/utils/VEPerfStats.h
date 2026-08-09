@@ -64,6 +64,21 @@ namespace VE {
         std::atomic<int> videoQueuePeak{0};
         std::atomic<int> frameQueuePeak{0};
 
+        /// 丢帧按**原因**分类。原先只有一个 droppedFrames，而它只统计了
+        /// "同步判定太晚"这一种——队列溢出兜底、代次过期、seek 追帧三条丢帧
+        /// 路径完全没入账。于是面板上"丢帧 0"的真实含义是"没有因迟到而丢帧"，
+        /// 不是"没丢帧"，又是一个名字与实际度量不符的读数。
+        ///
+        /// 分开记是因为对策完全不同：
+        ///   late        解码或渲染跟不上 → 查解码耗时/上屏耗时
+        ///   overflow    credit 记账失守 → 查回执链路，属异常
+        ///   stale       flush/seek 后的在途旧帧 → 正常，只是别当成问题
+        ///   seekCatchup 精准 seek 追帧丢的 → seek 性能的一部分，不是缺陷
+        std::atomic<int64_t> dropLate{0};
+        std::atomic<int64_t> dropOverflow{0};
+        std::atomic<int64_t> dropStale{0};
+        std::atomic<int64_t> dropSeekCatchup{0};
+
         void reset() {
             videoDecodeUs.reset();
             audioDecodeUs.reset();
@@ -76,6 +91,10 @@ namespace VE {
             audioQueuePeak.store(0, std::memory_order_relaxed);
             videoQueuePeak.store(0, std::memory_order_relaxed);
             frameQueuePeak.store(0, std::memory_order_relaxed);
+            dropLate.store(0, std::memory_order_relaxed);
+            dropOverflow.store(0, std::memory_order_relaxed);
+            dropStale.store(0, std::memory_order_relaxed);
+            dropSeekCatchup.store(0, std::memory_order_relaxed);
         }
 
         /// 只涨不落地更新峰值
@@ -108,10 +127,16 @@ namespace VE {
             syncMarginUs.appendJson(out, "syncMarginMs");
             char buf[128];
             snprintf(buf, sizeof(buf),
-                     ",\"audioQueuePeak\":%d,\"videoQueuePeak\":%d,\"frameQueuePeak\":%d",
+                     ",\"audioQueuePeak\":%d,\"videoQueuePeak\":%d,\"frameQueuePeak\":%d"
+                     ",\"dropLate\":%lld,\"dropOverflow\":%lld"
+                     ",\"dropStale\":%lld,\"dropSeekCatchup\":%lld",
                      audioQueuePeak.load(std::memory_order_relaxed),
                      videoQueuePeak.load(std::memory_order_relaxed),
-                     frameQueuePeak.load(std::memory_order_relaxed));
+                     frameQueuePeak.load(std::memory_order_relaxed),
+                     (long long) dropLate.load(std::memory_order_relaxed),
+                     (long long) dropOverflow.load(std::memory_order_relaxed),
+                     (long long) dropStale.load(std::memory_order_relaxed),
+                     (long long) dropSeekCatchup.load(std::memory_order_relaxed));
             out += buf;
             return out;
         }

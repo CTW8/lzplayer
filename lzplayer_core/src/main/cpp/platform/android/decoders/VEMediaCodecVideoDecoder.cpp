@@ -595,6 +595,7 @@ namespace VE {
             // 落后太多：丢帧追赶(render=false 即丢弃，不上屏)
             AMediaCodec_releaseOutputBuffer(mCodec, head.index, false);
             ++mDroppedFrames;
+            if (mPerfStats) { ++mPerfStats->dropLate; }
             mOutQueue.pop_front();
             scheduleRender();
             return;
