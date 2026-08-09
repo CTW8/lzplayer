@@ -60,6 +60,13 @@ class VEAudioRender : public AHandler, public IFrameSink, public IVEComponent{
         /// 实际生效的后端名，诊断面板显示用。prepare 之后才有意义。
         const char *backendName() const { return m_BackendName.load(); }
 
+        /// 设备欠载累计次数，-1 表示当前后端拿不到。
+        /// 跨线程读(JNI 取 stats)：后端对象在 prepare 后不再更换，
+        /// 具体查询由后端自己保证线程安全
+        int64_t underrunCount() const {
+            return m_AudioRenderer ? m_AudioRenderer->getUnderrunCount() : -1;
+        }
+
     enum {
         kWhatEOS = 'aeos',
         kWhatError = 'aerr'

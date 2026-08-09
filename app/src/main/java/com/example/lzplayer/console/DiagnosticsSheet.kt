@@ -29,6 +29,7 @@ class DiagnosticsSheet(
     /// 面板先直接读 JSON，免得为了一个中间层把这一步也堵住
     private val statsJsonProvider: () -> String,
     private val startupTraceProvider: () -> String,
+    private val seekTraceProvider: () -> String,
     forceSoftware: Boolean,
     forceSles: Boolean,
     preferVulkan: Boolean,
@@ -496,6 +497,14 @@ class DiagnosticsSheet(
             "同步余量是丢帧前兆：正=帧提前就绪。丢帧还是 0 但 p95 逼近 0 时，" +
             "再多一点负载就会开始掉帧。"))
 
+        steadyHost.addView(sectionLabel(ctx, "音频设备"))
+        val ur = d.optLong("audioUnderruns", -1)
+        // -1 = 该后端拿不到，与"0 次"必须分开显示——混成 0 会让人以为音频正常
+        steadyHost.addView(legendRow(ctx, "欠载(underrun)",
+            if (ur < 0) "--" else "$ur",
+            if (ur > 0) R.color.con_crit else R.color.con_ok,
+            if (ur < 0) "当前后端拿不到" else if (ur > 0) "对应爆音/断音" else ""))
+
         steadyHost.addView(sectionLabel(ctx, "丢帧构成 · 按原因分类"))
         val late = d.optLong("dropLate")
         val overflow = d.optLong("dropOverflow")
@@ -562,12 +571,46 @@ class DiagnosticsSheet(
 
     private fun refreshSeek(ctx: Context) {
         seekHost.removeAllViews()
-        // seek 追踪是 perf-metrics 步骤3，native 侧 getSeekTraceJson 还没接通。
-        // 明写出来而不是留个空白页——空白页会被当成"功能坏了"
-        seekHost.addView(hintText(ctx,
-            "seek 三阶段耗时与精度尚未接通（perf-metrics 步骤3）。\n" +
-            "接通后这里会列出最近 10 次 seek 的：暂停 / 定位 / 预热 三段耗时、" +
-            "seek 后首帧耗时，以及精度（首帧实际 pts − 请求位置，带符号）。"))
+        val root = parseJson(seekTraceProvider())
+        val items = root?.optJSONArray("items")
+        if (items == null || items.length() == 0) {
+            seekHost.addView(hintText(ctx,
+                "还没有 seek 记录。拖动进度条或用跳转后再看这一页。"))
+            return
+        }
+        seekHost.addView(sectionLabel(ctx, "最近 ${items.length()} 次 · 暂停/定位/预热 三阶段"))
+        val totals = ArrayList<Double>()
+        for (i in 0 until items.length()) {
+            val o = items.optJSONObject(i) ?: continue
+            val total = o.optDouble("totalMs", -1.0)
+            if (total >= 0) totals.add(total)
+            val acc = if (o.isNull("accuracyMs")) null else o.optDouble("accuracyMs")
+            // 定位段偏大 = 关键帧间距或 demux 回溯问题；预热段偏大 = 解码追帧问题。
+            // 分开显示才知道该动哪边，这是这一页存在的理由
+            val detail = "暂停%.0f 定位%.0f 预热%.0f".format(
+                o.optDouble("pausingMs", 0.0), o.optDouble("seekingMs", 0.0),
+                o.optDouble("primingMs", 0.0))
+            val accText = when {
+                o.optBoolean("aborted", false) -> "已中止"
+                acc == null -> "无首帧"
+                // 精度带符号：负=落在请求点之前(只能定位到关键帧时的常态)
+                else -> "精度 %+.0fms".format(acc)
+            }
+            seekHost.addView(legendRow(ctx,
+                "%d) %.2fs".format(i + 1, o.optDouble("requestedMs", 0.0) / 1000.0),
+                "%.0f ms".format(total),
+                if (o.optBoolean("aborted", false)) R.color.con_ink_dim
+                else if (total > 500) R.color.con_warn else R.color.con_ok,
+                "$detail · $accText"))
+        }
+        if (totals.size >= 3) {
+            val s = totals.sorted()
+            // 单次数据不足以判定回归，给分位数
+            seekHost.addView(hintText(ctx,
+                "总耗时 p50 %.0fms · max %.0fms（%d 次样本）".format(
+                    s[s.size / 2], s.last(), s.size)))
+        }
+        return
     }
 
     // ---------------------------------------------------------- CPU 采样

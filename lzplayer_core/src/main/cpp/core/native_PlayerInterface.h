@@ -41,6 +41,7 @@ namespace VE {
 
     jstring nativeGetStats(JNIEnv *env, jobject obj, jlong handle);
     jstring nativeGetStartupTrace(JNIEnv *env, jobject obj, jlong handle);
+    jstring nativeGetSeekTrace(JNIEnv *env, jobject obj, jlong handle);
 
     jint nativeSetForceSoftwareDecoder(JNIEnv *env, jobject obj, jlong handle, jboolean force);
 

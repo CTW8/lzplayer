@@ -39,6 +39,11 @@ namespace VE {
         /// 拿不到的实现返回 0。
         virtual int64_t getQueuedDurationUs() { return 0; }
 
+        /// 设备欠载(underrun/XRun)累计次数。**音频质量最重要的单一指标**——
+        /// 它直接对应用户听到的爆音与断音，而此前完全没有采集。
+        /// 返回 -1 表示该后端拿不到这个数(与"0 次"必须区分开)。
+        virtual int64_t getUnderrunCount() { return -1; }
+
         // 释放音频渲染器资源
         virtual VEResult release() = 0;
     };

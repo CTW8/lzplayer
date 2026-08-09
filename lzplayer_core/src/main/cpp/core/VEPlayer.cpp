@@ -912,6 +912,18 @@ namespace VE {
         return trace->toJson();
     }
 
+    std::string VEPlayer::getSeekTraceJson() {
+        std::shared_ptr<VESeekTrace> trace;
+        {
+            std::lock_guard<std::mutex> lk(mMutex);
+            trace = mSeekTrace;
+        }
+        if (trace == nullptr) {
+            return "{\"count\":0,\"items\":[]}";
+        }
+        return trace->toJson();
+    }
+
     std::string VEPlayer::getStatsJson() {
         // 可跨线程调用：先在锁下取 shared_ptr 副本，之后各对象自己保证线程安全
         std::shared_ptr<VEMediaClock> clock;
@@ -959,6 +971,8 @@ namespace VE {
 
         const int64_t avOffsetUs = mAVSync ? mAVSync->getLastDiffUs() : 0;
         const char *audioBackend = mAudioOutput ? mAudioOutput->backendName() : "none";
+        const long long audioUnderruns =
+                mAudioOutput ? (long long) mAudioOutput->underrunCount() : -1;
         const char *videoCodecName = "-";
         if (info) {
             const VETrackInfo *v = info->videoTrack();
@@ -979,7 +993,8 @@ namespace VE {
                  "\"renderedFrames\":%lld,\"droppedFrames\":%lld,"
                  "\"audioQueue\":%d,\"videoQueue\":%d,\"bufferedMs\":%lld,"
                  "\"source\":\"%s\",\"speed\":%.2f,\"buffering\":%s,"
-                 "\"positionMs\":%lld,\"durationMs\":%lld,",
+                 "\"positionMs\":%lld,\"durationMs\":%lld,"
+                 "\"audioUnderruns\":%lld,",
                  stateName,
                  mVideoHardware ? "hardware" : (mMediaInfo && mMediaInfo->hasVideo() ? "software" : "-"),
                  videoCodecName, audioBackend,
@@ -989,7 +1004,8 @@ namespace VE {
                  static_cast<long long>(bufferedUs / 1000),
                  sourceKind, mPlaybackSpeed, mBuffering ? "true" : "false",
                  static_cast<long long>(clock ? clock->getCurrentMediaTime() / 1000 : 0),
-                 static_cast<long long>(info ? info->duration : 0));
+                 static_cast<long long>(info ? info->duration : 0),
+                 audioUnderruns);
         std::string out(buf);
         std::shared_ptr<VEPerfStats> perf;
         {
@@ -1744,8 +1760,11 @@ namespace VE {
                 if (mSeekStage == SEEK_STAGE_PRIMING &&
                     type == EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER) {
                     if (mAbortSeek) {
+                        if (mSeekTrace) { mSeekTrace->abort(); }
                         abortSeekForAction();
                     } else {
+                        // 精度 = 首帧实际 pts − 请求位置，只有这里拿得到
+                        if (mSeekTrace) { mSeekTrace->endPriming(pts); }
                         seekFinish();
                     }
                 } else {
@@ -2000,6 +2019,12 @@ namespace VE {
         }
 
         ALOGI("VEPlayer::startSeek to %f ms", timestampMs);
+        if (mSeekTrace == nullptr) {
+            mSeekTrace = std::make_shared<VESeekTrace>();
+        }
+        // 打在这里而不是函数入口：上面"流程在途则排队合并"那条路径不算一次
+        // 真正的 seek，记进去会把排队等待算成 seek 耗时
+        mSeekTrace->begin(timestampMs, mVideoHardware);
         mSeekTargetMs = timestampMs;
         mStateBeforeSeek = (mState == STATE_SEEKING) ? mStateBeforeSeek : mState;
         mState = STATE_SEEKING;
@@ -2024,6 +2049,7 @@ namespace VE {
 
     void VEPlayer::seekStageSeek() {
         // ② demux 定位到目标关键帧，解码器 flush 并记下精准 seek 目标
+        if (mSeekTrace) { mSeekTrace->endPausing(); }
         ALOGI("VEPlayer::seek stage 2/3 - seeking demux & flushing decoders");
         mSeekStage = SEEK_STAGE_SEEKING;
         ++mFlowSeq;
@@ -2035,6 +2061,7 @@ namespace VE {
 
     void VEPlayer::seekStagePrime() {
         // ③ 把时钟重新定位到目标位置后重启管线，等第一帧真正上屏
+        if (mSeekTrace) { mSeekTrace->endSeeking(); }
         ALOGI("VEPlayer::seek stage 3/3 - priming first frame");
         mSeekStage = SEEK_STAGE_PRIMING;
         ++mFlowSeq;

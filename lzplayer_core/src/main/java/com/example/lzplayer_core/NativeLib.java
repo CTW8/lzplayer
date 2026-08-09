@@ -92,6 +92,14 @@ public class NativeLib {
         return "{}";
     }
 
+    /** 最近 10 次 seek 的三阶段耗时与精度 JSON */
+    public synchronized String getSeekTrace(){
+        if(mHandle != 0){
+            return nativeGetSeekTrace(mHandle);
+        }
+        return "{\"count\":0,\"items\":[]}";
+    }
+
     /** 启播链路里程碑 JSON。一次启播只变一次，不必每 tick 取 */
     public synchronized String getStartupTrace(){
         if(mHandle != 0){
@@ -344,6 +352,7 @@ public class NativeLib {
     private native int nativeSetSurface(long handle,Surface surface,int width,int height);
     private native String nativeGetStats(long handle);
     private native String nativeGetStartupTrace(long handle);
+    private native String nativeGetSeekTrace(long handle);
     private native int nativeSetForceSoftwareDecoder(long handle,boolean force);
     private native int nativeSetForceSlesAudio(long handle,boolean force);
     private native int nativeSetPreferVulkanRender(long handle,boolean prefer);

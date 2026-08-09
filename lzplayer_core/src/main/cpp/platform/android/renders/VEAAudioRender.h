@@ -34,6 +34,8 @@ namespace VE {
         VEResult stop() override;
         VEResult renderFrame(std::shared_ptr<VEFrame> frame) override;
         int64_t getQueuedDurationUs() override;
+
+        int64_t getUnderrunCount() override;
         VEResult release() override;
 
         /// 运行期是否可用：dlopen libaaudio 成功且符号齐全。

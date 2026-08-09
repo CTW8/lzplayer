@@ -156,6 +156,14 @@ public class VEPlayer {
         return "{}";
     }
 
+    /** 最近 10 次 seek 的三阶段耗时与精度原始 JSON */
+    public String getSeekTraceJson() {
+        if (mNativeHandle != null) {
+            return mNativeHandle.getSeekTrace();
+        }
+        return "{\"count\":0,\"items\":[]}";
+    }
+
     public PlayerStats getStats() {
         if (mNativeHandle == null) {
             return PlayerStats.empty();

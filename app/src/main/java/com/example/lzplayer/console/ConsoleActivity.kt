@@ -546,6 +546,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             statsProvider = { player?.stats ?: PlayerStats.empty() },
             statsJsonProvider = { player?.statsJsonRaw ?: "{}" },
             startupTraceProvider = { player?.startupTraceJson ?: "{\"valid\":false}" },
+            seekTraceProvider = { player?.seekTraceJson ?: "{\"count\":0,\"items\":[]}" },
             forceSoftware = forceSoftware,
             forceSles = forceSles,
             preferVulkan = preferVulkan,

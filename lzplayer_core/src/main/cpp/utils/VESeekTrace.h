@@ -52,6 +52,8 @@ namespace VE {
         void endSeeking() { closeStage(&Record::seekingMs); }
 
         /// 阶段③结束：首帧已上屏。actualPtsUs 为该帧的实际 pts，用于算精度
+        /// actualPtsUs < 0 表示"没有首帧可比对"(无视频轨)：照常结算三阶段
+        /// 耗时，但**不产生精度值**——造一个 0 出来会被当成"精度完美"
         void endPriming(int64_t actualPtsUs) {
             std::lock_guard<std::mutex> lk(mMutex);
             if (!mInFlight) {
@@ -62,9 +64,11 @@ namespace VE {
             mPending.totalMs = static_cast<double>(now - mPending.beginUs) / 1000.0;
             // 精度 = 首帧实际位置 − 请求位置。**符号有意义**：
             // 负=落在请求点之前(demux 只能定位到关键帧时的常态)
-            mPending.accuracyMs =
-                    static_cast<double>(actualPtsUs) / 1000.0 - mPending.requestedMs;
-            mPending.hasAccuracy = true;
+            if (actualPtsUs >= 0) {
+                mPending.accuracyMs =
+                        static_cast<double>(actualPtsUs) / 1000.0 - mPending.requestedMs;
+                mPending.hasAccuracy = true;
+            }
             commitLocked();
         }
 

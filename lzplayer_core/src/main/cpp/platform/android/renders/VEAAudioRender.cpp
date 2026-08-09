@@ -46,6 +46,11 @@ namespace VE {
             aaudio_result_t (*streamGetTimestamp)(AAudioStream *, clockid_t, int64_t *,
                                                   int64_t *) = nullptr;
             int64_t (*streamGetFramesWritten)(AAudioStream *) = nullptr;
+            /// AAudio 自带的欠载计数，这张表里原先漏了。
+            /// **刻意不加入下面的"全部指针有效"校验**：它是可选能力，
+            /// 老设备上取不到只该让这一个指标不可用，不该把整个 AAudio
+            /// 后端判为不可用而退回 OpenSL ES。
+            int32_t (*streamGetXRunCount)(AAudioStream *) = nullptr;
             const char *(*resultToText)(aaudio_result_t) = nullptr;
 
             AAudioApi() {
@@ -91,6 +96,8 @@ namespace VE {
                         sym("AAudioStream_getTimestamp"));
                 streamGetFramesWritten = reinterpret_cast<decltype(streamGetFramesWritten)>(
                         sym("AAudioStream_getFramesWritten"));
+                streamGetXRunCount = reinterpret_cast<decltype(streamGetXRunCount)>(
+                        sym("AAudioStream_getXRunCount"));
                 resultToText = reinterpret_cast<decltype(resultToText)>(
                         sym("AAudio_convertResultToText"));
 
@@ -253,6 +260,15 @@ namespace VE {
             mFull = true;
         }
         return VE_OK;
+    }
+
+    int64_t VEAAudioRender::getUnderrunCount() {
+        // 返回 -1 而不是 0："拿不到这个数"与"没有欠载"是两件事，
+        // 混成 0 会让人以为音频一切正常
+        if (api().streamGetXRunCount == nullptr || mStream == nullptr) {
+            return -1;
+        }
+        return api().streamGetXRunCount(mStream);
     }
 
     int64_t VEAAudioRender::getQueuedDurationUs() {

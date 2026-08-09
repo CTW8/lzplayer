@@ -23,6 +23,7 @@
 #include "VEDef.h"
 #include "VEAudioRender.h"
 #include "VEVideoDisplay.h"
+#include "utils/VESeekTrace.h"
 #include "VESubtitleTrack.h"
 #include <map>
 
@@ -102,6 +103,9 @@ namespace VE {
         /// 启播链路里程碑 JSON。独立 getter 而非塞进 getStatsJson()：
         /// 后者每个进度 tick 都会被解析，而这份数据一次启播只变一次
         std::string getStartupTraceJson();
+
+        /// 最近 10 次 seek 的三阶段耗时与精度 JSON
+        std::string getSeekTraceJson();
 
         /// 测试开关：强制软解 / 强制 OpenSL ES。
         /// 改的是"下次建链"的策略，当前管线不受影响，需重新 prepare 才生效。
@@ -440,6 +444,8 @@ namespace VE {
         /// 稳态指标。与 mStartupTrace 同样在 doPrepare 时建好并分发，
         /// 之后只 reset 内容不换对象
         std::shared_ptr<VEPerfStats> mPerfStats;
+        /// seek 三阶段耗时与精度，环形缓冲留最近 10 次
+        std::shared_ptr<VESeekTrace> mSeekTrace;
 
         std::string mPath;
 
