@@ -167,6 +167,14 @@ namespace VE {
         int32_t m_Epoch = 0;
         /// seek 后是否需要在首帧上屏时上报 FIRST_FRAME
         bool m_NotifyFirstFrame = false;
+        /// 本段播放还没上屏过任何一帧。对齐 NuPlayer 的 mVideoSampleReceived：
+        /// 起播时为真，**每次 flush/seek 后重新置真**，首帧上屏后清零。
+        ///
+        /// 不能用 mRenderedFrames == 0 代替：那是单调累加的诊断计数器，seek
+        /// 之后早就非 0 了，于是 seek 的首帧拿不到豁免、仍要等同步——而 seek
+        /// 后的首帧正是最该立刻出的那一帧(用户在等预览画面)。
+        /// 也不能用 m_NotifyFirstFrame 代替：它只在 seek 路径置真，起播时恒为假。
+        bool m_AwaitingFirstFrame = true;
         /// 诊断计数：累计上屏帧数与因落后被丢弃的帧数
         std::atomic<int64_t> mRenderedFrames{0};
         std::atomic<int64_t> mDroppedFrames{0};
