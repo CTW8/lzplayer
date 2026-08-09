@@ -183,6 +183,9 @@ namespace VE {
                     }
                     mFrames.pop_front();
                 }
+                if (mStartupTrace != nullptr) {
+                    mStartupTrace->mark(VEStartupTrace::T6B_FRAME_QUEUED);
+                }
                 mFrames.emplace_back(std::static_pointer_cast<VEFrame>(f),
                                      std::static_pointer_cast<AMessage>(r));
                 if (mPerfStats) {
@@ -325,6 +328,10 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::onRender(std::shared_ptr<AMessage> msg) {
+        if (mStartupTrace != nullptr) {
+            mStartupTrace->markIfArmed(VEStartupTrace::T6B_FRAME_QUEUED,
+                                       VEStartupTrace::T6D_RENDER_ENTER);
+        }
         ALOGV("VEVideoDisplay::%s enter", __FUNCTION__);
         if (!m_IsStarted) {
             ALOGW("VEVideoDisplay::%s - render not started", __FUNCTION__);
@@ -386,6 +393,11 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::onAVSync(std::shared_ptr<AMessage> msg) {
+        if (mStartupTrace != nullptr) {
+            // 门控：同步循环在首帧到达之前就已经在跑
+            mStartupTrace->markIfArmed(VEStartupTrace::T6B_FRAME_QUEUED,
+                                       VEStartupTrace::T6C_SYNC_ENTER);
+        }
 
         ALOGV("VEVideoDisplay::%s enter", __FUNCTION__);
         if (!m_IsStarted) {
@@ -419,7 +431,22 @@ namespace VE {
 
         m_pAvSync->updateVideoPts(frame->getPts());
 
-        if (m_pAvSync->shouldDropFrame()) {
+        // 首帧无条件立即上屏，既不参与丢帧判定也不等同步——对齐 NuPlayer
+        // (NuPlayerRenderer::onDrainVideoQueue 的
+        //  "Always render the first video frame while keeping stats on A/V sync")。
+        //
+        // 起播时音频起锚会减掉设备里排队的预填数据，时钟因此被锚在明显靠前的
+        // 位置，视频首帧相对它就成了"超前 46~74ms"而被要求等待——实测软解
+        // 1080p 的"首帧上屏"里 90% 以上是这段等待，投递 0.1ms、渲染 2.5ms
+        // 都可以忽略。而单帧的 A/V 对齐误差没人能察觉，几十毫秒的黑屏所有人
+        // 都能察觉，这笔交换是明确划算的。
+        //
+        // 判据用"还没上屏过任何一帧"而不是 seek 的 m_NotifyFirstFrame：后者
+        // 只在 seek 路径置真，起播时恒为假(这一点先前误判过一次)。
+        // 只影响第一帧，第二帧起恢复正常同步。
+        const bool isVeryFirstFrame = (mRenderedFrames.load() == 0);
+
+        if (!isVeryFirstFrame && m_pAvSync->shouldDropFrame()) {
             // 已经严重落后：丢弃(照样回执还 credit)，立即取下一帧追赶
             ALOGI("VEVideoDisplay::%s Dropping frame pts=%" PRId64, __FUNCTION__, frame->getPts());
             ++mDroppedFrames;
@@ -428,7 +455,11 @@ namespace VE {
             return VE_OK;
         }
 
-        int64_t waitTime = m_pAvSync->getWaitTime(); // 获取等待时间
+        int64_t waitTime = isVeryFirstFrame ? 0 : m_pAvSync->getWaitTime();
+        if (mStartupTrace != nullptr) {
+            // 首帧被要求等多久——判断"是不是在等时钟"的直接证据
+            mStartupTrace->setFirstFrameWaitUs(waitTime);
+        }
         ALOGV("VEVideoDisplay::%s waitTime:%" PRId64, __FUNCTION__, waitTime);
         // 渲染消息不携带帧：到点后渲染当前队首(队列只在本 looper 上变化)
         std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender,
