@@ -485,7 +485,9 @@ class DiagnosticsSheet(
             "codecLatencyMs" to "codec 延迟(硬解)",
             "audioDecodeMs" to "音频解码",
             "presentMs" to "上屏",
-            "syncMarginMs" to "同步余量"
+            "syncMarginMs" to "同步余量",
+            "presentIntervalMs" to "上屏间隔",
+            "starveMs" to "饥饿时长"
         ).forEach { (key, label) ->
             val h = d.optJSONObject(key)
             steadyHost.addView(percentileRow(ctx, label, h))
@@ -494,8 +496,23 @@ class DiagnosticsSheet(
             "codec 延迟含背压等待，不是解码 CPU 成本，不能和视频解码那行比。" +
             "看它是否持续增长即可：增长=产能不足。"))
         steadyHost.addView(hintText(ctx,
+            "上屏间隔的 p95 与 p50 之差就是抖动幅度。30fps 应稳定在 33.3ms —— " +
+            "帧率均值正常而间隔抖动大完全可能发生，而抖动才是用户看到的卡顿感。"))
+        steadyHost.addView(hintText(ctx,
             "同步余量是丢帧前兆：正=帧提前就绪。丢帧还是 0 但 p95 逼近 0 时，" +
             "再多一点负载就会开始掉帧。"))
+
+        steadyHost.addView(sectionLabel(ctx, "上下游瓶颈判据"))
+        val vPark = d.optLong("videoCreditPark"); val aPark = d.optLong("audioCreditPark")
+        val vStarve = d.optLong("videoStarve"); val aStarve = d.optLong("audioStarve")
+        // 频繁 park = 渲染端消费慢(解码有余力)；从不 park = 解码是瓶颈。
+        // 这两个数一起看才有意义，单看任一个都得不出结论
+        steadyHost.addView(legendRow(ctx, "credit park 视/音", "$vPark / $aPark",
+            R.color.con_accent,
+            if (vPark == 0L) "视频从不 park → 解码是瓶颈" else "解码有余力，瓶颈在下游"))
+        steadyHost.addView(legendRow(ctx, "上游饥饿 视/音", "$vStarve / $aStarve",
+            if (vStarve + aStarve > 0) R.color.con_warn else R.color.con_ok,
+            if (vStarve + aStarve > 0) "次数多时长短=供给抖动" else ""))
 
         steadyHost.addView(sectionLabel(ctx, "音频设备"))
         val ur = d.optLong("audioUnderruns", -1)

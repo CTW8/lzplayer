@@ -296,6 +296,7 @@ namespace VE {
         if (mInFlightFrames >= AUDIO_FRAME_QUEUE_SIZE) {
             // credit 用尽：park。渲染器每消费一帧就回执还 credit，
             // kWhatFrameConsumed 处理时会复活解码循环
+            if (mPerfStats) { ++mPerfStats->audioCreditPark; }
             ALOGV("VEAudioDecoder::onDecode out of credit, parking");
             return VE_NO_MEMORY;
         }
@@ -446,6 +447,11 @@ namespace VE {
             // 消息带当前 epoch，flush/seek 后自动作废；这是纯数据面事件，
             // 不触碰命令态。同时投一条兜底重试，防源实现漏发通知。
             ALOGV("VEAudioDecoder::onDecode starving, waiting for data notify");
+            if (mPerfStats) {
+                ++mPerfStats->audioStarve;
+                // 只在"从不饥饿转饥饿"时记起点：饥饿期间可能被唤醒多次
+                if (mStarveBeginUs == 0) { mStarveBeginUs = nowUs(); }
+            }
             const int32_t starveGen = ++mStarveGen;
             auto notify = std::make_shared<AMessage>(kWhatDecode, shared_from_this());
             notify->setInt32("epoch", mEpoch);
@@ -458,6 +464,10 @@ namespace VE {
             return VE_NOT_ENOUGH_DATA;
         }
 
+        if (mPerfStats && mStarveBeginUs != 0) {
+            mPerfStats->starveUs.add(nowUs() - mStarveBeginUs);
+            mStarveBeginUs = 0;
+        }
         if (packet == nullptr) {
             return VE_UNKNOWN_ERROR;
         }

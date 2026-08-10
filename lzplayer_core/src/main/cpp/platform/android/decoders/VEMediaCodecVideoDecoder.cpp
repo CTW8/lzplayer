@@ -627,7 +627,12 @@ namespace VE {
         const int64_t presentBeginUs = mPerfStats ? nowUs() : 0;
         AMediaCodec_releaseOutputBuffer(mCodec, out.index, true);
         if (mPerfStats) {
-            mPerfStats->presentUs.add(nowUs() - presentBeginUs);
+            const int64_t nowU = nowUs();
+            mPerfStats->presentUs.add(nowU - presentBeginUs);
+            if (mLastPresentUs != 0) {
+                mPerfStats->presentIntervalUs.add(nowU - mLastPresentUs);
+            }
+            mLastPresentUs = nowU;
         }
         ++mRenderedFrames;
         // T7：硬解路径的首帧上屏。物理含义是"交给 SurfaceFlinger 合成"，

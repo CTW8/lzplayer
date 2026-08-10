@@ -163,6 +163,7 @@ namespace VE {
         /// 所以 T4a / T6 / T7 三个点都在这里打
         std::shared_ptr<VEStartupTrace> mStartupTrace;
         std::shared_ptr<VEPerfStats> mPerfStats;
+        int64_t mLastPresentUs = 0;
         /// pts → 入队时刻(us)。硬解的 dequeueOutputBuffer 是 timeout 0 的
         /// 非阻塞轮询，直接测那个调用只会得到近似 0 的无意义数字，所以改测
         /// "入队到出队"的端到端延迟。**这个口径与软解的 send/receive 往返

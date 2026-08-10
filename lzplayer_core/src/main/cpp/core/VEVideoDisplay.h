@@ -141,6 +141,8 @@ namespace VE {
         /// 启播里程碑，由 VEPlayer 注入。只在本 looper 上访问
         std::shared_ptr<VEStartupTrace> mStartupTrace;
         std::shared_ptr<VEPerfStats> mPerfStats;
+        /// 上一帧上屏时刻，用于算上屏间隔(0=还没上屏过)
+        int64_t mLastPresentUs = 0;
         /// 本地帧队列(帧 + 它的消费回执)。只在本 looper 上访问，无需加锁。
         /// 队列空 ⟺ 渲染链停摆，帧到达即重新拉起。
         std::deque<std::pair<std::shared_ptr<VEFrame>,

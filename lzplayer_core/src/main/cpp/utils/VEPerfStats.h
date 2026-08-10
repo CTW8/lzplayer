@@ -74,6 +74,23 @@ namespace VE {
         ///   overflow    credit 记账失守 → 查回执链路，属异常
         ///   stale       flush/seek 后的在途旧帧 → 正常，只是别当成问题
         ///   seekCatchup 精准 seek 追帧丢的 → seek 性能的一部分，不是缺陷
+        /// credit 用尽(park)次数。**判断上下游谁是瓶颈的关键判据**：
+        /// 频繁 park 说明渲染端消费慢(解码有余力)，从不 park 说明解码是瓶颈。
+        /// 这个判断此前只能靠猜。
+        std::atomic<int64_t> videoCreditPark{0};
+        std::atomic<int64_t> audioCreditPark{0};
+
+        /// 上游饥饿次数与每次持续时长。次数多但时长短=供给抖动；
+        /// 时长长=源确实供不上(网络源的核心指标)
+        std::atomic<int64_t> videoStarve{0};
+        std::atomic<int64_t> audioStarve{0};
+        VEPerfHistogram starveUs{0, 1000, 512};          // 0~512ms，桶宽 1ms
+
+        /// 连续两帧实际上屏时刻的间隔。**比帧率更接近主观体验**——帧率均值
+        /// 正常而间隔抖动大完全可能发生，而抖动才是用户看到的卡顿感。
+        /// 30fps 应稳定在 33.3ms，p95 与 p50 的差就是抖动幅度。
+        VEPerfHistogram presentIntervalUs{0, 500, 512};  // 0~256ms，桶宽 0.5ms
+
         std::atomic<int64_t> dropLate{0};
         std::atomic<int64_t> dropOverflow{0};
         std::atomic<int64_t> dropStale{0};
@@ -91,6 +108,12 @@ namespace VE {
             audioQueuePeak.store(0, std::memory_order_relaxed);
             videoQueuePeak.store(0, std::memory_order_relaxed);
             frameQueuePeak.store(0, std::memory_order_relaxed);
+            videoCreditPark.store(0, std::memory_order_relaxed);
+            audioCreditPark.store(0, std::memory_order_relaxed);
+            videoStarve.store(0, std::memory_order_relaxed);
+            audioStarve.store(0, std::memory_order_relaxed);
+            starveUs.reset();
+            presentIntervalUs.reset();
             dropLate.store(0, std::memory_order_relaxed);
             dropOverflow.store(0, std::memory_order_relaxed);
             dropStale.store(0, std::memory_order_relaxed);
@@ -125,19 +148,30 @@ namespace VE {
             swapUs.appendJson(out, "swapMs");
             out += ",";
             syncMarginUs.appendJson(out, "syncMarginMs");
-            char buf[128];
-            snprintf(buf, sizeof(buf),
-                     ",\"audioQueuePeak\":%d,\"videoQueuePeak\":%d,\"frameQueuePeak\":%d"
-                     ",\"dropLate\":%lld,\"dropOverflow\":%lld"
-                     ",\"dropStale\":%lld,\"dropSeekCatchup\":%lld",
-                     audioQueuePeak.load(std::memory_order_relaxed),
-                     videoQueuePeak.load(std::memory_order_relaxed),
-                     frameQueuePeak.load(std::memory_order_relaxed),
-                     (long long) dropLate.load(std::memory_order_relaxed),
-                     (long long) dropOverflow.load(std::memory_order_relaxed),
-                     (long long) dropStale.load(std::memory_order_relaxed),
-                     (long long) dropSeekCatchup.load(std::memory_order_relaxed));
-            out += buf;
+            out += ",";
+            starveUs.appendJson(out, "starveMs");
+            out += ",";
+            presentIntervalUs.appendJson(out, "presentIntervalMs");
+            // 定长 buf 已经咬过三次(getStatsJson 的 768、这里的 128)：每次加
+            // 字段都要重新估长度，而 snprintf 是**静默截断**，产出的残缺 JSON
+            // 在上层表现为"面板忽然全空"，极难定位。
+            // 改成逐字段追加到 std::string，长度不再是隐患。
+            char buf[64];
+            auto appendI64 = [&out, &buf](const char *key, long long v) {
+                snprintf(buf, sizeof(buf), ",\"%s\":%lld", key, v);
+                out += buf;
+            };
+            appendI64("audioQueuePeak", audioQueuePeak.load(std::memory_order_relaxed));
+            appendI64("videoQueuePeak", videoQueuePeak.load(std::memory_order_relaxed));
+            appendI64("frameQueuePeak", frameQueuePeak.load(std::memory_order_relaxed));
+            appendI64("dropLate", dropLate.load(std::memory_order_relaxed));
+            appendI64("dropOverflow", dropOverflow.load(std::memory_order_relaxed));
+            appendI64("dropStale", dropStale.load(std::memory_order_relaxed));
+            appendI64("dropSeekCatchup", dropSeekCatchup.load(std::memory_order_relaxed));
+            appendI64("videoCreditPark", videoCreditPark.load(std::memory_order_relaxed));
+            appendI64("audioCreditPark", audioCreditPark.load(std::memory_order_relaxed));
+            appendI64("videoStarve", videoStarve.load(std::memory_order_relaxed));
+            appendI64("audioStarve", audioStarve.load(std::memory_order_relaxed));
             return out;
         }
     };

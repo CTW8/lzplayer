@@ -117,6 +117,8 @@ namespace VE {
         std::shared_ptr<VEPerfStats> mPerfStats;
         /// 已送包但还没结算到某一帧上的解码耗时(微秒)。同 VEVideoDecoder
         int64_t mDecodeAccumUs = 0;
+        /// 本次饥饿的起点(微秒)，0=当前不处于饥饿。用于算饥饿持续时长
+        int64_t mStarveBeginUs = 0;
 
         bool mIsStarted = false;
 

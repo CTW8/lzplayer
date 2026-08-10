@@ -378,7 +378,12 @@ namespace VE {
         const int64_t presentBeginUs = mPerfStats ? nowUs() : 0;
         m_pVideoRender->renderFrame(frame);
         if (mPerfStats) {
-            mPerfStats->presentUs.add(nowUs() - presentBeginUs);
+            const int64_t nowU = nowUs();
+            mPerfStats->presentUs.add(nowU - presentBeginUs);
+            if (mLastPresentUs != 0) {
+                mPerfStats->presentIntervalUs.add(nowU - mLastPresentUs);
+            }
+            mLastPresentUs = nowU;
         }
         ++mRenderedFrames;
         // T7：软解路径的"首帧上屏"。**不能复用 FIRST_FRAME 事件**——
