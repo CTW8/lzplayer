@@ -265,6 +265,25 @@ namespace VE {
             return VE_UNKNOWN_ERROR;
         }
 
+        // 解码线程：此前一处都没设，跑在 FFmpeg 默认(单线程)上。
+        //
+        // 说清它能与不能：**不降低总 CPU**——多线程是把同样的工作摊到多核，
+        // 总量基本不变甚至因调度略增；但它大幅降低单帧 wall time，决定软解
+        // 扛不扛得住更高规格的素材(实测 1080p30 时 vdec_thread 已占单核
+        // 79.5%，只剩两成余量)。
+        //
+        // 0 = 按 CPU 核数自动。FF_THREAD_FRAME 会让输出延迟约 thread_count
+        // 帧——这与刚做完的首帧优化直接冲突，所以下面必须同时实测首帧耗时，
+        // 不能只看 CPU 和解码耗时。
+        // 只开 slice 线程，**刻意不开 FF_THREAD_FRAME**。
+        // 帧级线程要等流水线填满才吐第一帧(实测首帧解码 50→111.6ms、
+        // 启播总耗时 139~162→252ms)，把"软解扛得住多高规格"和"启播多快"
+        // 两个目标对立起来了。而当前默认路径是硬解、软解只在被迫时才走，
+        // 那种场景下启播慢 90ms 比能扛 4K 更容易被感知。
+        // slice 线程没有输出延迟，代价是收益依赖码流是否真的分了 slice。
+        mVideoCtx->thread_count = 0;
+        mVideoCtx->thread_type = FF_THREAD_SLICE;
+
         if (avcodec_open2(mVideoCtx, video_codec, nullptr) < 0) {
             ALOGE("VEVideoDecoder::onPrepare Could not open video codec");
             avcodec_free_context(&mVideoCtx);
