@@ -99,6 +99,15 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
     private var player: VEPlayer? = null
     private var surfaceReady = false
     private var prepared = false
+    /**
+     * 已 stop，需要重新打开片源才能再播。
+     *
+     * 按 MediaPlayer 语义 stop() 之后必须重新 prepare()——native 侧
+     * VEPlayerDriver::start() 的白名单里就没有 MEDIA_PLAYER_STOPPED，会直接
+     * 返回 -1。此前这个 -1 被 Java 层丢弃、UI 又照常让按钮可点，用户按下去
+     * 完全没反应也没有任何提示。这个标志把那条非法路径在 UI 上显式化。
+     */
+    private var stoppedNeedsReopen = false
     private var playing = false
     private var looping = false
     private var durationMs = 0L
@@ -372,6 +381,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         p.setForceSoftwareDecoder(forceSoftware)
         p.setForceSlesAudio(forceSles)
         p.setPreferVulkanRender(preferVulkan)
+        stoppedNeedsReopen = false
         startupTraceDumped = false
         if (p.init(source) != 0) {
             eventLog.crit("INIT_FAILED", source)
@@ -415,13 +425,28 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
 
     private fun togglePlay() {
         val p = player ?: return toast("还没打开片源")
+        // 区分两种"不能播"：从没 prepare 过 vs 已 stop 需要重开。
+        // 合用一句"还没 prepare 完"会把后者说成前者，误导排查方向
+        if (stoppedNeedsReopen) {
+            eventLog.warn("START_REJECTED", "已 stop，需重新打开片源")
+            return toast("已停止。stop 后需重新打开片源才能播放")
+        }
         if (!prepared) return toast("还没 prepare 完")
         if (playing) {
             p.pause()
             playing = false
             eventLog.info("PAUSE", "")
         } else {
-            p.start()
+            // **必须检查返回值**：VEPlayerDriver 的 start/stop/pause 全都返回
+            // 状态码，而 Java 侧此前一律忽略——这次的"按了没反应"正是这么来的。
+            // 静默失败会以同样方式在别的状态组合上再次出现
+            val ret = p.start()
+            if (ret != 0) {
+                eventLog.crit("START_FAILED", "native 拒绝, ret=$ret")
+                toast("播放失败（native 返回 $ret）")
+                updateHud()
+                return
+            }
             playing = true
             eventLog.info("START", "")
             Log.d(TAG, "START dispatched, waiting for first progress to dump trace")
@@ -435,6 +460,9 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         val p = player ?: return
         p.stop()
         playing = false
+        // stop 后 native 拒绝 start，这里必须同步失效，不能让按钮继续邀请点击
+        prepared = false
+        stoppedNeedsReopen = true
         btnPlayPause.text = "播放"
         subtitleView.clear()
         eventLog.info("STOP", "")
