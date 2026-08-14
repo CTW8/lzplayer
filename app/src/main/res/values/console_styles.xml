@@ -85,4 +85,14 @@
         <item name="android:textColor">@color/con_ink</item>
         <item name="android:textStyle">bold</item>
     </style>
+    <!-- 第三层次要控件：纯文字，无框无底色。降级靠位置和字色 -->
+    <style name="ConsoleMinorText">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/con_ink_dim</item>
+        <item name="android:paddingVertical">6dp</item>
+        <item name="android:paddingHorizontal">4dp</item>
+    </style>
 </resources>

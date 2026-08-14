@@ -93,6 +93,22 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
     private lateinit var speedRow: LinearLayout
     private lateinit var controls: View
     private lateinit var stage: FrameLayout
+    /// 常驻仪表带：两行八格。选取标准是"异常时会先动的量"——
+    /// 分位数/直方图/线程分布这些需要对照阅读的留在面板里。
+    /// 主屏放太多等于什么都没突出，它的唯一任务是让人一秒内决定要不要打开面板
+    private lateinit var gaugeStrip: LinearLayout
+    /// 源栏折叠态：打开后路径就不再需要，却一直占着顶部一整行(输入框+两个按钮)。
+    /// 收成一行摘要，省下的高度给仪表带；点它展开回完整输入
+    private lateinit var srcCollapsed: LinearLayout
+    private lateinit var srcCollapsedName: TextView
+    /// 横屏沉浸态的紧凑 HUD。横屏要满画面核对画幅/色彩/旋转，八格仪表带会
+    /// 吃掉画面，所以换成三行叠在左下角——但**读数不能跟着控件一起消失**，
+    /// 回归时最需要的就是一边看画面一边看数
+    private lateinit var landHud: TextView
+    /// 主屏 CPU 采样(两次求差)。面板另有自己的节拍，两边互不干扰
+    private var lastCpuJiffies = -1L
+    private var lastCpuWallMs = 0L
+    private val gaugeValues = LinkedHashMap<String, TextView>()
     private lateinit var sourceBar: View
     private lateinit var topBars: View
 
@@ -137,6 +153,9 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         buildSpeedRow()
         wireControls()
 
+        buildGaugeStrip()
+        buildCollapsedSourceBar()
+        buildLandscapeHud()
         surfaceView.holder.addCallback(this)
         // 画幅跟着舞台尺寸走：转屏、控件显隐都会改变舞台大小，
         // 靠 post 猜时机会拿到旧尺寸，必须由布局回调驱动
@@ -222,6 +241,195 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         }
     }
 
+    /**
+     * 在画面区与控件区之间插入仪表带。
+     *
+     * 竖屏下 1080p 横向素材只占中间一条，上下两片黑边一直空着——那正是这些
+     * 读数该待的地方。每格可点，直接跳到解释它的那一页。
+     */
+    private fun buildGaugeStrip() {
+        val root = findViewById<LinearLayout>(R.id.root)
+        val controlsIdx = root.indexOfChild(findViewById(R.id.controls))
+        gaugeStrip = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        // 主行：帧率/丢帧/AV/CPU；次行：启播/同步余量/队列/缓冲
+        listOf(
+            listOf("fps" to "帧率", "drop" to "丢帧 迟到", "av" to "A/V", "cpu" to "CPU"),
+            listOf("startup" to "启播", "margin" to "同步余量", "queue" to "队列 音/视", "buffer" to "缓冲")
+        ).forEach { row ->
+            val rowView = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.forEach { (key, label) -> rowView.addView(gaugeCell(key, label)) }
+            gaugeStrip.addView(rowView)
+        }
+        root.addView(gaugeStrip, controlsIdx)
+    }
+
+    /** 仪表格子 → 解释它的那一页。八项分散在三个分页里，用户没理由知道这个映射 */
+    private fun buildCollapsedSourceBar() {
+        val root = findViewById<LinearLayout>(R.id.root)
+        val bar = findViewById<View>(R.id.sourceBar)
+        srcCollapsed = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpi(12), dpi(7), dpi(12), dpi(7))
+            visibility = View.GONE
+            setOnClickListener { setSourceBarCollapsed(false) }
+        }
+        srcCollapsed.addView(TextView(this).apply {
+            text = "▸"
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 10f)
+            setTextColor(ContextCompat.getColor(context, R.color.con_ink_faint))
+        })
+        srcCollapsedName = TextView(this).apply {
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 10f)
+            setTextColor(ContextCompat.getColor(context, R.color.con_ink))
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            layoutParams = LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                .also { it.marginStart = dpi(6) }
+        }
+        srcCollapsed.addView(srcCollapsedName)
+        srcCollapsed.addView(TextView(this).apply {
+            text = "换源"
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 10f)
+            setTextColor(ContextCompat.getColor(context, R.color.con_accent))
+        })
+        root.addView(srcCollapsed, root.indexOfChild(bar) + 1)
+    }
+
+    private fun buildLandscapeHud() {
+        landHud = TextView(this).apply {
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 9f)
+            setTextColor(ContextCompat.getColor(context, R.color.con_ink))
+            setBackgroundColor(0xD00E1217.toInt())
+            setPadding(dpi(6), dpi(4), dpi(8), dpi(4))
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).also {
+                it.gravity = Gravity.BOTTOM or Gravity.START
+                it.setMargins(dpi(8), 0, 0, dpi(8))
+            }
+        }
+        stage.addView(landHud)
+    }
+
+    /** 单核归一。首次调用只记基线返回 -1——"没采到"与"占用为 0"不是一回事 */
+    private fun sampleCpuPercent(): Double {
+        val j = runCatching {
+            val f = java.io.File("/proc/self/stat").readText()
+            val fields = f.substring(f.lastIndexOf(')') + 2).split(" ")
+            fields[11].toLong() + fields[12].toLong()
+        }.getOrNull() ?: return -1.0
+        val now = android.os.SystemClock.elapsedRealtime()
+        val prev = lastCpuJiffies
+        val prevWall = lastCpuWallMs
+        lastCpuJiffies = j
+        lastCpuWallMs = now
+        if (prev < 0 || now - prevWall < 200) return -1.0
+        return (j - prev) * 10.0 * 100.0 / (now - prevWall)   // USER_HZ=100
+    }
+
+    private fun setSourceBarCollapsed(collapsed: Boolean) {
+        findViewById<View>(R.id.sourceBar).visibility =
+            if (collapsed) View.GONE else View.VISIBLE
+        srcCollapsed.visibility = if (collapsed) View.VISIBLE else View.GONE
+    }
+
+    private fun pageOf(key: String) = when (key) {
+        "cpu" -> "资源"
+        "startup" -> "启播"
+        else -> "稳态"
+    }
+
+    private fun gaugeCell(key: String, label: String): View {
+        val cell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundResource(R.drawable.con_panel_bg)
+            setPadding(dpi(8), dpi(5), dpi(8), dpi(5))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                .also { it.setMargins(dpi(1), dpi(1), dpi(1), dpi(1)) }
+            setOnClickListener { showDiagnosticsSheet(pageOf(key)) }
+        }
+        cell.addView(TextView(this).apply {
+            text = label
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 8f)
+            setTextColor(ContextCompat.getColor(context, R.color.con_ink_faint))
+        })
+        val v = TextView(this).apply {
+            text = "--"
+            typeface = android.graphics.Typeface.create(
+                android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextColor(ContextCompat.getColor(context, R.color.con_ink))
+        }
+        cell.addView(v)
+        gaugeValues[key] = v
+        return cell
+    }
+
+    private fun refreshGauges() {
+        val s = latestStats
+        val posSec = s.positionMs / 1000.0
+        val fps = if (posSec > 1.0) s.renderedFrames / posSec else -1.0
+        setGauge("fps", if (fps >= 0) "%.1f".format(fps) else "--",
+            if (fps >= 0) R.color.con_ok else R.color.con_ink_faint)
+
+        val raw = runCatching { org.json.JSONObject(player?.statsJsonRaw ?: "{}") }.getOrNull()
+        // 只显示"迟到被丢"这一类。四类混成一个数既会把正常当缺陷，
+        // 也会把真丢帧藏起来——stale 与 seekCatchup 属正常
+        val late = raw?.optLong("dropLate", 0) ?: 0
+        setGauge("drop", "$late", if (late > 0) R.color.con_warn else R.color.con_ok)
+
+        setGauge("av", "${if (s.avOffsetMs >= 0) "+" else ""}${s.avOffsetMs}",
+            if (kotlin.math.abs(s.avOffsetMs) <= 40) R.color.con_ok else R.color.con_warn)
+        val cpu = sampleCpuPercent()
+        setGauge("cpu", if (cpu >= 0) "%.0f".format(cpu) else "--",
+            if (cpu < 0) R.color.con_ink_faint
+            else if (cpu < 150) R.color.con_ok else R.color.con_warn)
+
+        val t = runCatching { org.json.JSONObject(player?.startupTraceJson ?: "{}") }.getOrNull()
+        val total = t?.optDouble("startupTotalMs", -1.0) ?: -1.0
+        setGauge("startup", if (total >= 0) "%.0f".format(total) else "--",
+            if (total < 0) R.color.con_ink_faint
+            else if (total < 500) R.color.con_ok else R.color.con_warn)
+
+        val m = raw?.optJSONObject("syncMarginMs")
+        val n = m?.optLong("n", 0) ?: 0
+        // 样本不足显示 --，不给一个由三五个样本算出的数字
+        setGauge("margin", if (n >= 30) "%.0f".format(m!!.optDouble("p50")) else "--",
+            if (n >= 30) R.color.con_ok else R.color.con_ink_faint)
+        setGauge("queue", "${s.audioQueue}/${s.videoQueue}", R.color.con_ink)
+        setGauge("buffer", "${s.bufferedMs}", R.color.con_ink)
+
+        if (::landHud.isInitialized && landHud.visibility == View.VISIBLE) {
+            landHud.text = buildString {
+                append(if (fps >= 0) "%.1ffps".format(fps) else "--fps")
+                append("  drop ").append(late).append('\n')
+                append("A/V ").append(if (s.avOffsetMs >= 0) "+" else "").append(s.avOffsetMs)
+                append("ms  buf ").append(s.bufferedMs).append("ms\n")
+                append("cpu ").append(if (cpu >= 0) "%.0f%%".format(cpu) else "--")
+                append("  first ").append(if (total >= 0) "%.0fms".format(total) else "--")
+            }
+        }
+    }
+
+    private fun dpi(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    /** 颜色 + 数值双编码：灰度截图下靠数值本身仍可判读 */
+    private fun setGauge(key: String, text: String, colorRes: Int) {
+        gaugeValues[key]?.apply {
+            this.text = text
+            setTextColor(ContextCompat.getColor(context, colorRes))
+        }
+    }
+
     private fun bindViews() {
         etSource = findViewById(R.id.etSource)
         surfaceView = findViewById(R.id.surfaceView)
@@ -282,42 +490,42 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         })
     }
 
+    /**
+     * 速率收成一个下拉。
+     *
+     * 六档横排占满一整行，而它是低频操作——设置不该和主操作抢空间。
+     * 容器 speedRow 保留(XML 不动)，里面只放一个当前值。
+     */
     private fun buildSpeedRow() {
         speedRow.removeAllViews()
-        SPEEDS.forEachIndexed { i, speed ->
-            val tv = TextView(this).apply {
-                text = if (speed == 1.0f) "1.0" else speed.toString()
-                gravity = android.view.Gravity.CENTER
-                setPadding(0, dp(6), 0, dp(6))
-                setBackgroundResource(R.drawable.con_btn_bg)
-                typeface = android.graphics.Typeface.MONOSPACE
-                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11f)
-                setTextColor(ContextCompat.getColor(this@ConsoleActivity, R.color.con_ink_dim))
-                isSelected = i == speedIndex
-                setOnClickListener { applySpeed(i) }
-            }
-            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            if (i > 0) lp.marginStart = dp(4)
-            speedRow.addView(tv, lp)
-        }
+        speedRow.addView(TextView(this).apply {
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTextColor(ContextCompat.getColor(context, R.color.con_ink))
+            setPadding(dpi(6), dpi(6), dpi(6), dpi(6))
+            setOnClickListener { showSpeedPicker() }
+            speedLabel = this
+        })
         refreshSpeedRow()
     }
 
-    private fun refreshSpeedRow() {
-        for (i in 0 until speedRow.childCount) {
-            val tv = speedRow.getChildAt(i) as TextView
-            val on = i == speedIndex
-            tv.isSelected = on
-            tv.setTextColor(
-                ContextCompat.getColor(this, if (on) R.color.con_accent else R.color.con_ink_dim)
-            )
-            tv.typeface = if (on) android.graphics.Typeface.create(
-                android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD
-            ) else android.graphics.Typeface.MONOSPACE
-        }
+    private var speedLabel: TextView? = null
+
+    private fun showSpeedPicker() {
+        val names = SPEEDS.map { "%.2fx".format(it).replace(".00x", ".0x") }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("播放速率 · 音调不变")
+            .setSingleChoiceItems(names, speedIndex) { d, which ->
+                d.dismiss()
+                applySpeed(which)
+            }
+            .show()
     }
 
-    // ---------------------------------------------------------------- 源与播放
+    private fun refreshSpeedRow() {
+        val v = SPEEDS[speedIndex]
+        speedLabel?.text = "%.2fx".format(v).replace(".00x", ".0x") + " ▾"
+    }
 
     private fun pickLocalFile() {
         val intent = Intent(this, MediaSelectorActivity::class.java).apply {
@@ -357,7 +565,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         tracks = emptyArray()
         // 复位进度与按钮：上一轮的时间码和"暂停"字样留在屏上，
         // 会让人以为还在播——测试台的读数必须可信
-        btnPlayPause.text = "播放"
+        btnPlayPause.text = "▶"
         seekBar.progress = 0
         seekBar.secondaryProgress = 0
         tvPosition.text = formatTime(0)
@@ -383,6 +591,9 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         p.setPreferVulkanRender(preferVulkan)
         stoppedNeedsReopen = false
         startupTraceDumped = false
+        // 打开之后路径不再需要，收起来把高度让给仪表带
+        srcCollapsedName.text = source.substringAfterLast('/')
+        setSourceBarCollapsed(true)
         if (p.init(source) != 0) {
             eventLog.crit("INIT_FAILED", source)
             toast("打开失败：$source")
@@ -415,12 +626,10 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         // 日志有配额(LOG_FLOWCTRL "OVER PROC QUOTA")，本工程 native 层的
         // ALOGV 每秒就能打满，应用自己的日志会被静默丢弃——排查时会误以为
         // 代码没执行。落盘的这份是唯一可靠来源，也是后续跑分报告的雏形。
-        runCatching {
-            val dir = java.io.File(filesDir, "perf").apply { mkdirs() }
-            java.io.File(dir, "last-startup.json").writeText(json)
-            // 稳态读数原样落一份：步骤4 的解析类还没写，先靠原始 JSON 核对
-            java.io.File(dir, "last-stats.json").writeText(p.statsJsonRaw)
-        }.onFailure { Log.w(TAG, "write perf files failed: ${it.message}") }
+        // 曾经每个进度 tick 往 filesDir/perf/ 覆盖写两个 JSON，作为绕开本机
+        // logcat 配额的观测手段。现已删除：性能面板可以按需拉取，而那套脚手架
+        // 用的是 writeText(先截断再写)，被 adb 读到中间态就是空文件——排查
+        // stop→play 时已经因此误判过一次。留着弊大于利。
     }
 
     private fun togglePlay() {
@@ -451,7 +660,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             eventLog.info("START", "")
             Log.d(TAG, "START dispatched, waiting for first progress to dump trace")
         }
-        btnPlayPause.text = if (playing) "暂停" else "播放"
+        btnPlayPause.text = if (playing) "⏸" else "▶"
         updateHud()
         scheduleAutoHide()
     }
@@ -463,7 +672,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         // stop 后 native 拒绝 start，这里必须同步失效，不能让按钮继续邀请点击
         prepared = false
         stoppedNeedsReopen = true
-        btnPlayPause.text = "播放"
+        btnPlayPause.text = "▶"
         subtitleView.clear()
         eventLog.info("STOP", "")
         updateHud()
@@ -566,7 +775,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             .show()
     }
 
-    private fun showDiagnosticsSheet() {
+    private fun showDiagnosticsSheet(initialTab: String = "概览") {
         diagSheet = DiagnosticsSheet(
             context = this,
             eventLog = eventLog,
@@ -593,7 +802,8 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
                 preferVulkan = on
                 player?.setPreferVulkanRender(on)
                 eventLog.warn("POLICY", "Vulkan 渲染 ${if (on) "开" else "关"}（下次 prepare 生效，仅软解）")
-            }
+            },
+            initialTab = initialTab
         ).also { it.show() }
     }
 
@@ -722,6 +932,16 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         // "回退成软解"这类状态变化不能在沉浸模式里丢失。
         sourceBar.visibility = if (land) View.GONE else View.VISIBLE
         topBars.visibility = if (land) View.GONE else View.VISIBLE
+        // 横屏让画面占满：仪表带与折叠源栏收起，读数改由左下紧凑 HUD 承担
+        if (::gaugeStrip.isInitialized) {
+            gaugeStrip.visibility = if (land) View.GONE else View.VISIBLE
+        }
+        if (::srcCollapsed.isInitialized && land) {
+            srcCollapsed.visibility = View.GONE
+        }
+        if (::landHud.isInitialized) {
+            landHud.visibility = if (land) View.VISIBLE else View.GONE
+        }
         if (land) {
             hideSystemBars()
             scheduleAutoHide()
@@ -849,7 +1069,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             }
             IMediaPlayerListener.VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION -> {
                 playing = false
-                btnPlayPause.text = "播放"
+                btnPlayPause.text = "▶"
                 subtitleView.clear()
                 eventLog.ok("COMPLETION", "")
             }
@@ -870,7 +1090,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         ui.post {
             eventLog.crit("ERROR", "$msg1 ${msg3 ?: ""}")
             playing = false
-            btnPlayPause.text = "播放"
+            btnPlayPause.text = "▶"
             showBuffering(false, 0)
             refreshStats()
             toast("播放出错：${msg3 ?: msg1}")
@@ -885,13 +1105,13 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             tvPosition.text = formatTime(progressMs.toLong())
             // 借进度回调的节奏刷读数
             refreshStats()
+            refreshGauges()
             // 起播里程碑在首帧上屏后才齐全，而进度已经在推进说明那一刻早已过去。
             // 挂在这里而不是用 postDelayed：进度回调是确定会来的，延迟消息会被
             // 各种 removeCallbacks 之类的清理波及。
-            // 每个 tick 覆盖写一次：里程碑是逐步补齐的(T7/T8 可能晚于首个
-            // 进度回调)，只在首个 tick 写会得到一份"看着像漏采集"的残缺快照。
-            // 文件很小，一秒两次写可以忽略；步骤5 由面板按需拉取后去掉。
-            if (progressMs > 0) {
+            // 只在首个有效进度时记一次事件流。面板需要时自己拉最新的，
+            // 不必在进度回调里反复取
+            if (!startupTraceDumped && progressMs > 0) {
                 startupTraceDumped = true
                 dumpStartupTrace()
             }
@@ -905,7 +1125,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         if (playing) {
             player?.pause()
             playing = false
-            btnPlayPause.text = "播放"
+            btnPlayPause.text = "▶"
         }
     }
 

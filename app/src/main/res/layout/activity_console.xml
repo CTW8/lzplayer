@@ -136,64 +136,96 @@
         android:background="@color/con_panel"
         android:padding="@dimen/con_s3">
 
-        <SeekBar
-            android:id="@+id/seekBar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="1000"
-            android:progressDrawable="@drawable/con_seekbar"
-            android:thumb="@drawable/con_seek_thumb"
-            android:splitTrack="false"
-            android:paddingHorizontal="0dp"/>
-
+        <!-- 第一层：进度行，播放键内嵌于此。
+             先前那条全宽填充的暂停键是消费级播放器思路——测试台要密度不要
+             大按钮，缩成圆钮嵌进来直接省掉一整行，竖向空间还给画面与仪表带。 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-            <TextView android:id="@+id/tvPosition" style="@style/ConsoleReadoutSmall" android:text="00:00.000"/>
-            <TextView android:id="@+id/tvBuffered" style="@style/ConsoleReadoutSmall"
-                android:layout_width="0dp" android:layout_weight="1"
-                android:gravity="center" android:text=""/>
-            <TextView android:id="@+id/tvDuration" style="@style/ConsoleReadoutSmall" android:text="00:00.000"/>
+            <TextView
+                android:id="@+id/btnPlayPause"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:gravity="center"
+                android:background="@drawable/con_play_round"
+                android:textColor="#08191F"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:fontFamily="monospace"
+                android:text="▶"/>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/con_s3"
+                android:orientation="vertical">
+
+                <SeekBar
+                    android:id="@+id/seekBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="1000"
+                    android:progressDrawable="@drawable/con_seekbar"
+                    android:thumb="@drawable/con_seek_thumb"
+                    android:splitTrack="false"
+                    android:paddingHorizontal="0dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <TextView android:id="@+id/tvPosition" style="@style/ConsoleReadoutSmall" android:text="00:00.000"/>
+                    <TextView android:id="@+id/tvBuffered" style="@style/ConsoleReadoutSmall"
+                        android:layout_width="0dp" android:layout_weight="1"
+                        android:gravity="center" android:text=""/>
+                    <TextView android:id="@+id/tvDuration" style="@style/ConsoleReadoutSmall" android:text="00:00.000"/>
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
+        <!-- 第二层：面板入口，四等宽描边，样式完全一致。
+             优先级只靠顺序表达(性能排第一)，不用颜色和尺寸强调——那正是
+             上一版噪声的来源。 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:layout_marginTop="@dimen/con_s3">
 
-            <TextView android:id="@+id/btnPlayPause" style="@style/ConsolePrimaryButton" android:text="播放"/>
-            <TextView android:id="@+id/btnStop" style="@style/ConsoleButton"
-                android:layout_marginStart="@dimen/con_s2" android:text="停止"/>
-            <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
-            <TextView android:id="@+id/btnLoop" style="@style/ConsoleButton" android:text="循环 关"/>
-        </LinearLayout>
-
-        <TextView style="@style/ConsoleRowLabel"
-            android:layout_marginTop="@dimen/con_s3"
-            android:text="播放速率 · 音调不变"/>
-
-        <LinearLayout
-            android:id="@+id/speedRow"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="@dimen/con_s3">
-
-            <TextView android:id="@+id/btnTracks" style="@style/ConsoleQuadButton" android:text="轨道"/>
+            <TextView android:id="@+id/btnDiag" style="@style/ConsoleQuadButton" android:text="性能"/>
+            <TextView android:id="@+id/btnTracks" style="@style/ConsoleQuadButton"
+                android:layout_marginStart="@dimen/con_s2" android:text="轨道"/>
             <TextView android:id="@+id/btnSubtitle" style="@style/ConsoleQuadButton"
                 android:layout_marginStart="@dimen/con_s2" android:text="字幕"/>
             <TextView android:id="@+id/btnJump" style="@style/ConsoleQuadButton"
                 android:layout_marginStart="@dimen/con_s2" android:text="跳转"/>
-            <TextView android:id="@+id/btnDiag" style="@style/ConsoleQuadButton"
-                android:layout_marginStart="@dimen/con_s2" android:text="诊断"/>
+        </LinearLayout>
+
+        <!-- 第三层：次要控件，纯文字无框。
+             停止的语义是破坏性的(按下去必须重开片源)，靠位置和字色降级，
+             不给它专属样式——增加样式种类才是上一版乱的根源。 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="@dimen/con_s3"
+            android:paddingHorizontal="@dimen/con_s2">
+
+            <TextView android:id="@+id/btnLoop" style="@style/ConsoleMinorText" android:text="循环 关"/>
+            <LinearLayout
+                android:id="@+id/speedRow"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_horizontal"
+                android:orientation="horizontal"/>
+            <TextView android:id="@+id/btnStop" style="@style/ConsoleMinorText"
+                android:textColor="@color/con_crit" android:text="停止"/>
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>
