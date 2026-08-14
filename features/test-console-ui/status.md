@@ -1,6 +1,6 @@
 # test-console-ui 进度
 
-> 最后更新: 2026-08-08
+> 最后更新: 2026-08-14
 > 总体状态: Doing
 >
 > 口径说明：步骤 1~7 的代码实施已全部完成且 `./gradlew clean assembleDebug` 通过（app-debug.apk 36MB 已产出），但**均未做真机验证**（执行时 `adb devices` 为空，无连接设备），因此一律停留在 Doing 段（标注"代码完成，待真机验证"），不标 Done。步骤8 真机自测是唯一阻塞前七步一并转 Done 的事项。
@@ -58,6 +58,13 @@
     **步骤8 的 C 屏核对必须以当前六分页形态为准**，不能按本 feature 原设计的八项读数单页去对。
     perf-metrics 已在其步骤5 做过逐页真机截图核对，可作参考。另：`ConsoleActivity` 缺
     `launchMode="singleTop"` 的缺陷（`onNewIntent` 从未被调用）已由 perf-metrics 顺修，无需重复排查。
+  - **2026-08-14 前置变更（console-ui-v2 将重构本 feature 的主界面）**：新登记的
+    **console-ui-v2** 会重写 `activity_console.xml` 与 `ConsoleActivity.kt` 的布局
+    —— 源栏折叠、常驻两行八格仪表带、播放键缩为 26px 内嵌进度行、面板入口四等宽同样式、
+    次要控件改纯文字、横屏沉浸时 chip 与 HUD 常驻。
+    **因此步骤8 的 A 屏（主控台）与 D 屏（横屏沉浸）核对标准即将作废**，
+    按当前布局先做一遍是白做。**建议步骤8 与 console-ui-v2 步骤6（真机截图核对）
+    合并成一轮真机工作**，A/D 两屏按新布局重写核对项，B/C 两屏核对项不受影响。
 - [ ] 代码提交（CLAUDE.md 要求提交前需用户明确同意；当前全部改动未提交）。
 
 ## 待记录的决策（已回填）
