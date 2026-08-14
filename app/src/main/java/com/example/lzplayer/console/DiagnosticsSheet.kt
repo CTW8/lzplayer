@@ -7,6 +7,7 @@ import android.graphics.Typeface
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -14,6 +15,7 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.example.lzplayer.R
 import com.example.lzplayer_core.PlayerStats
+import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 
 /**
@@ -35,7 +37,10 @@ class DiagnosticsSheet(
     preferVulkan: Boolean,
     private val onForceSoftware: (Boolean) -> Unit,
     private val onForceSles: (Boolean) -> Unit,
-    private val onPreferVulkan: (Boolean) -> Unit
+    private val onPreferVulkan: (Boolean) -> Unit,
+    /// 打开时直接落到哪一页。仪表带的格子点进来时用——"发现异常→定位细节"
+    /// 必须是一次点击，而不是"打开面板 + 猜哪一页 + 翻"
+    private val initialTab: String = "概览"
 ) : BottomSheetDialog(context, R.style.Theme_LZConsole_BottomSheet) {
 
     /** 读数格子：标题建好就不动，只更新值与颜色 */
@@ -48,7 +53,7 @@ class DiagnosticsSheet(
     /// 六个分页的内容容器，切页只改可见性，不重建视图
     private val pages = LinkedHashMap<String, LinearLayout>()
     private val tabViews = LinkedHashMap<String, TextView>()
-    private var currentTab = "概览"
+    private var currentTab = initialTab
     /// 大字读数
     private val bigReadouts = LinkedHashMap<String, TextView>()
     private val bigJudges = LinkedHashMap<String, TextView>()
@@ -82,7 +87,24 @@ class DiagnosticsSheet(
             eventLog.setListener(null)
             tickHandler.removeCallbacks(ticker)
         }
-        setOnShowListener { tickHandler.post(ticker) }
+        setOnShowListener {
+            // 允许拖到全屏高度。默认 BottomSheet 的 expanded 态受内容高度限制
+            // (isFitToContents)，六个分页里稳态/资源页内容很长，不放开就只能
+            // 在一条窄缝里滚动，读数根本没法一眼扫完。
+            val sheet = findViewById<View>(
+                com.google.android.material.R.id.design_bottom_sheet)
+            sheet?.let { s ->
+                s.layoutParams = s.layoutParams.apply {
+                    height = ViewGroup.LayoutParams.MATCH_PARENT
+                }
+                BottomSheetBehavior.from(s).apply {
+                    isFitToContents = false      // 放开"最多只到内容高度"的限制
+                    expandedOffset = 0           // 展开态顶到屏幕顶部
+                    peekHeight = (context.resources.displayMetrics.heightPixels * 0.5f).toInt()
+                }
+            }
+            tickHandler.post(ticker)
+        }
     }
 
     private fun buildContent(ctx: Context): View {
