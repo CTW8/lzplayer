@@ -228,6 +228,73 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
      * 跑分是无人值守跑的，静默忽略会让报告建立在错误前提上——比如把
      * "seekPercents 写错导致一次 seek 都没做"的那次，当成"seek 全部通过"。
      */
+    /**
+     * 跑分序列收尾：把一次性快照原子落盘。
+     *
+     * **必须临时文件 + rename。** 直接 writeText 是"先截断再写"，harness 用
+     * adb 拉取时极易读到中间态的空文件——步骤5 的每 tick 写文件脚手架就因此
+     * 误导过一次结论。rename 在同一文件系统内是原子的，任意时刻读到的要么是
+     * 完整文件、要么没有文件。
+     *
+     * complete 标志区分"正常收尾"与"中途被打断"：没有它，一份被截断的数据
+     * 看起来和正常数据一模一样，而跑分报告最不能容忍的就是这个。
+     */
+    /**
+     * playSeconds 到点后收尾。用 postDelayed 而不是等 EOS：跑分要的是**固定
+     * 时长**的稳态样本，等 EOS 会让不同片长的素材采样窗口不一致，跨素材数字
+     * 就不可比了。素材比 playSeconds 短时 EOS 先到，那次的 complete 仍为 true
+     * ——播完了也是一种正常收尾。
+     */
+    private fun armBenchmarkFinish() {
+        if (playSeconds < 0) return
+        val token = ++benchGen
+        etSource.postDelayed({
+            // 代次校验：期间若换源/重开，旧的收尾不许覆盖新一轮的快照
+            if (token == benchGen) {
+                dumpBenchmarkSnapshot(true)
+            }
+        }, playSeconds * 1000L)
+        Log.w(TAG, "VEBENCH armed finish in ${playSeconds}s")
+    }
+
+    private fun dumpBenchmarkSnapshot(complete: Boolean) {
+        val p = player ?: return
+        val dir = getExternalFilesDir(null) ?: filesDir
+        val name = if (caseName.isNotEmpty()) caseName else "bench"
+        val target = java.io.File(dir, "$name-snapshot.json")
+        val tmp = java.io.File(dir, "$name-snapshot.json.tmp")
+        try {
+            val json = buildString {
+                append("{\"caseName\":\"").append(name).append("\",")
+                append("\"complete\":").append(complete).append(',')
+                append("\"forceSoftware\":").append(forceSoftware).append(',')
+                append("\"preferVulkan\":").append(preferVulkan).append(',')
+                append("\"playSeconds\":").append(playSeconds).append(',')
+                append("\"seekPercents\":\"").append(seekPercents.joinToString(",")).append("\",")
+                append("\"startup\":").append(orNull(p.startupTraceJson)).append(',')
+                append("\"stats\":").append(orNull(p.statsJsonRaw)).append(',')
+                append("\"seekTrace\":").append(orNull(p.seekTraceJson))
+                append('}')
+            }
+            tmp.writeText(json)
+            if (!tmp.renameTo(target)) {
+                // rename 失败就不要留下半成品: 宁可没有文件, 也不要一份
+                // 无法判断新旧的文件被 harness 当成本次结果
+                tmp.delete()
+                Log.w(TAG, "VEBENCH REJECT snapshot rename failed")
+                return
+            }
+            Log.w(TAG, "VEBENCH snapshot=${target.absolutePath} complete=$complete")
+        } catch (e: Exception) {
+            tmp.delete()
+            Log.w(TAG, "VEBENCH REJECT snapshot write failed: ${e.message}")
+        }
+    }
+
+    /** native 侧取不到时补 null 字面量, 不要塞空串——JSON 会解析失败 */
+    private fun orNull(s: String?): String =
+        if (s.isNullOrBlank()) "null" else s
+
     private fun benchArg(ok: Boolean, kv: String) {
         // 同时进 app 事件日志与 logcat: 前者给人看, 后者给 harness 解析。
         // 跑分报告是从 logcat 组装的, 只写事件日志的话"参数被拒绝"这件事
@@ -285,6 +352,9 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         parseBenchmarkExtras(i)
         etSource.setText(path)
         eventLog.info("LAUNCH_INTENT", path)
+        // 换源即作废在途收尾, 再按新参数重新武装
+        benchGen++
+        armBenchmarkFinish()
         if (surfaceReady) {
             openSource(path)
         } else {
@@ -873,6 +943,8 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
     private var playSeconds: Int = -1
     /** 跑分序列: 报告里的用例名, 空=没给 */
     private var caseName: String = ""
+    /** 收尾代次：换源/重开时递增，作废在途的延时收尾 */
+    private var benchGen: Int = 0
     private var autoPlayWhenPrepared = false
     /** intent 带来的片源，等 surface 就绪后再打开(见 handleLaunchIntent) */
     private var pendingIntentSource: String? = null
