@@ -381,6 +381,12 @@ namespace VE {
             ALOGW("VEVideoDisplay::%s - queue drained before render", __FUNCTION__);
             return UNKNOWN_ERROR;
         }
+        // 与 onAVSync 走同一个哨兵入口。渲染消息不携带帧, 等待期间队首会变,
+        // 所以这里看到的未必是 onAVSync 检视过的那一帧
+        if (handleSentinelAtFront()) {
+            return UNKNOWN_ERROR;
+        }
+
         std::shared_ptr<VEFrame> frame = mFrames.front().first;
 
         if (frame == nullptr || frame->getFrame() == nullptr) {
@@ -466,16 +472,7 @@ namespace VE {
         ALOGF("VEVideoDisplay::onAVSync frame type: %d, pts: %" PRId64, frame->getFrameType(),
               frame->getPts());
 
-        if (frame->getFrameType() == E_FRAME_TYPE_EOF) {
-            ALOGD("VEVideoDisplay::onAVSync E_FRAME_TYPE_EOF");
-            if (m_NotifyFirstFrame) {
-                // seek 目标在最后一帧之后：精准丢帧把可上屏的帧全丢光了，
-                // 用 EOF 顶替首帧回执，否则 seek 只能干等 2s 超时兜底
-                m_NotifyFirstFrame = false;
-                postMessage(VE_NOTIFY_EVENT_FIRST_FRAME, 0, 0, 0, nullptr);
-            }
-            postMessage(VE_NOTIFY_EVENT_EOS,0,0,0, nullptr);
-            consumeFront();   // EOF 哨兵也要回执还 credit
+        if (handleSentinelAtFront()) {
             return UNKNOWN_ERROR;
         }
 
@@ -519,6 +516,26 @@ namespace VE {
         renderMsg->setInt32("epoch", m_Epoch);
         renderMsg->post(waitTime);
         return VE_OK;
+    }
+
+    bool VEVideoDisplay::handleSentinelAtFront() {
+        if (mFrames.empty()) {
+            return false;
+        }
+        const std::shared_ptr<VEFrame> &front = mFrames.front().first;
+        if (front == nullptr || front->getFrameType() != E_FRAME_TYPE_EOF) {
+            return false;
+        }
+        ALOGD("VEVideoDisplay::handleSentinelAtFront EOF");
+        if (m_NotifyFirstFrame) {
+            // seek 目标在最后一帧之后：精准丢帧把可上屏的帧全丢光了，
+            // 用 EOF 顶替首帧回执，否则 seek 只能干等 2s 超时兜底
+            m_NotifyFirstFrame = false;
+            postMessage(VE_NOTIFY_EVENT_FIRST_FRAME, 0, 0, 0, nullptr);
+        }
+        postMessage(VE_NOTIFY_EVENT_EOS, 0, 0, 0, nullptr);
+        consumeFront();   // EOF 哨兵也要回执还 credit
+        return true;
     }
 
     void VEVideoDisplay::consumeFront() {

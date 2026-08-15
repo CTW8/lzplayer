@@ -107,6 +107,19 @@ namespace VE {
         /// 消费队首帧：投递它的回执(归还解码器 credit)并出队
         void consumeFront();
 
+        /// 队首若是哨兵帧(当前只有 EOF), 就地处理并返回 true。
+        ///
+        /// 必须由**所有**会取队首的入口调用。此前 onAVSync 做类型分派、
+        /// onRender 只管渲染, 而渲染消息不携带帧("到点后渲染当前队首"),
+        /// 于是等待期间队首变化时, 哨兵会在 onRender 里被当普通帧渲染并弹掉
+        /// —— 它的 AVFrame 对象仍在(解码器复用同一个 VEFrame 只改 type),
+        /// 连空帧检查都躲过了。后果是播放结束永不上报、状态卡在 STARTED,
+        /// 实测 6/6 完全相关。
+        ///
+        /// 收敛成一个函数而不是在 onRender 里补一份判断: 抄第二处的话,
+        /// 将来加新哨兵类型还会漏掉其中一处。
+        bool handleSentinelAtFront();
+
         VEResult onFlush(std::shared_ptr<AMessage> msg);
 
         VEResult onPause(std::shared_ptr<AMessage> msg);
