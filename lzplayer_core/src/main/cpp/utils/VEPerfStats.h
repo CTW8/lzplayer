@@ -122,6 +122,18 @@ namespace VE {
             }
         }
 
+        /// 渲染线程自身的累计 CPU 时间(CLOCK_THREAD_CPUTIME_ID, 微秒)。
+        /// 由渲染线程每帧写入绝对值, Timeline 每秒取差值。
+        ///
+        /// 存在的意义是**自校验**: upload/draw/swap 三段之和若明显小于线程
+        /// 实际 CPU, 说明渲染线程还有开销落在插桩窗口之外。首次测出来差额是
+        /// 每帧 1.3ms(占 25%)——三段分解宣称覆盖了渲染成本, 实际漏掉四分之一,
+        /// 而在加这条校验之前没有任何办法发现这件事。
+        ///
+        /// 启播里程碑有"分段之和与总耗时差 < 5ms"的判据, 渲染这边一直没有
+        /// 对应的校验, 所以漏了 25% 无人察觉。
+        std::atomic<int64_t> renderThreadCpuUs{0};
+
         std::atomic<int64_t> dropLate{0};
         std::atomic<int64_t> dropOverflow{0};
         std::atomic<int64_t> dropStale{0};
@@ -137,6 +149,7 @@ namespace VE {
             swapUs.reset();
             syncMarginUs.reset();
             syncMarginWorstUs.store(kNoSyncSample, std::memory_order_relaxed);
+            renderThreadCpuUs.store(0, std::memory_order_relaxed);
             audioQueuePeak.store(0, std::memory_order_relaxed);
             videoQueuePeak.store(0, std::memory_order_relaxed);
             frameQueuePeak.store(0, std::memory_order_relaxed);
@@ -291,6 +304,42 @@ namespace VE {
                               ? kNoSampleMs
                               : static_cast<double>(avOffsetUs) / 1000.0,
                       sampleCpuPercent(elapsed));
+                // 渲染三段分解。单独一行而不是并进 VESTAT: 它只在软解路径
+                // 有样本(硬解走 releaseOutputBuffer, 不经 GLES 渲染器),
+                // 混在一起会让硬解那半行永远是哨兵。
+                //
+                // 存在的意义是判断 video_render 线程的 CPU 花在哪: upload 是
+                // 真实的 CPU 拷贝, swap 理论上阻塞等 vsync **不该吃 CPU**——
+                // 若线程 CPU 与 upload+draw 对不上, 差额就在 swap 的忙等里。
+                double u50 = 0, u95 = 0, umax = 0, d50 = 0, d95 = 0, dmax = 0,
+                       w50 = 0, w95 = 0, wmax = 0;
+                if (s.uploadUs.percentiles(&u50, &u95, &umax)) {
+                    s.drawUs.percentiles(&d50, &d95, &dmax);
+                    s.swapUs.percentiles(&w50, &w95, &wmax);
+                    // 每帧线程 CPU 与三段之和的差额。frames 用本秒上屏帧数,
+                    // 不用固定帧率——掉帧时固定帧率会把差额算小。
+                    //
+                    // **gapMs 是下界, 不是真实的窗口外开销**: threadCpuMs 是
+                    // CPU 时间(CLOCK_THREAD_CPUTIME_ID), 而 u/d/w 三段是墙钟。
+                    // swap 阻塞等 vsync 时墙钟远大于其 CPU, 于是被减掉的量偏大,
+                    // 真实窗口外开销只会比 gapMs 更多。
+                    //
+                    // 要得到准确值, 三段也得改用线程 CPU 时钟计时。在那之前
+                    // 这个数只能当"gap>0 即有未插桩开销"的警报用, 不能当量值。
+                    const int64_t cpuNow =
+                            s.renderThreadCpuUs.load(std::memory_order_relaxed);
+                    const int64_t frames = present - mPresent;
+                    double cpuMs = kNoSampleMs, gapMs = kNoSampleMs;
+                    if (mLastRenderCpuUs > 0 && frames > 0) {
+                        cpuMs = static_cast<double>(cpuNow - mLastRenderCpuUs)
+                                / 1000.0 / static_cast<double>(frames);
+                        gapMs = cpuMs - (u50 + d50 + w50);
+                    }
+                    mLastRenderCpuUs = cpuNow;
+                    ALOGI("VERENDER t=%d uploadMs=%.2f drawMs=%.2f swapMs=%.2f "
+                          "threadCpuMs=%.2f gapMs=%.2f",
+                          mSec, u50, d50, w50, cpuMs, gapMs);
+                }
                 mLastUs = now;
                 snapshot(s);
             }
@@ -312,6 +361,7 @@ namespace VE {
             int mSec = 0;
             /// -1 = 还没起基线
             long long mLastCpuTicks = -1;
+            int64_t mLastRenderCpuUs = 0;
             int64_t mPresent = 0, mDropLate = 0, mDropOvf = 0, mDropStale = 0,
                     mDropSeek = 0, mVPark = 0, mAPark = 0, mVStarve = 0, mAStarve = 0;
         };

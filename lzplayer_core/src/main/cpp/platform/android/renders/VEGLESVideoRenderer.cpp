@@ -236,6 +236,13 @@ void main() {
             mPerfStats->uploadUs.add(t1 - t0);
             mPerfStats->drawUs.add(t2 - t1);
             mPerfStats->swapUs.add(nowUs() - t2);
+            // 本线程累计 CPU。放在三段之后取, 与三段覆盖同一帧, 差额才有意义
+            timespec cpuTs{};
+            if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpuTs) == 0) {
+                mPerfStats->renderThreadCpuUs.store(
+                        static_cast<int64_t>(cpuTs.tv_sec) * 1000000
+                        + cpuTs.tv_nsec / 1000, std::memory_order_relaxed);
+            }
         }
 
         // 发送进度通知
