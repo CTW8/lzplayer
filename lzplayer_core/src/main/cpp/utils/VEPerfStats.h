@@ -93,6 +93,32 @@ namespace VE {
         /// 30fps 应稳定在 33.3ms，p95 与 p50 的差就是抖动幅度。
         VEPerfHistogram presentIntervalUs{0, 500, 512};  // 0~256ms，桶宽 0.5ms
 
+        /// 本秒最差(最小)同步余量，由 Timeline 每秒取走并复位。
+        ///
+        /// syncMarginUs 直方图是**整段累计**的, 取不出单秒分位数——第一版
+        /// 逐秒发它的 p50, 跑出来是 25.5→22.5 的缓慢漂移, 那是整段均值被新
+        /// 样本稀释, 不是这一秒的同步状况。
+        ///
+        /// 取最小值而不是均值: 余量的意义在于"离迟到还有多远", 一秒里有一帧
+        /// 险些迟到, 均值完全看不出来, 而它正是丢帧的前兆。
+        static constexpr int64_t kNoSyncSample = INT64_MAX;
+        /// 时间线里"没测到"的统一哨兵值。不用 0：余量 0 是"即将开始丢帧"、
+        /// 偏移 0 是"完美同步", 两者都是有意义的读数, 不能和"没测到"混同
+        static constexpr double kNoSampleMs = -9999.0;
+        std::atomic<int64_t> syncMarginWorstUs{kNoSyncSample};
+
+        /// 同步余量的唯一写入口。软解(VEVideoDisplay)与硬解
+        /// (VEMediaCodecVideoDecoder)两条路径各有一处上报, 收口在此是为了
+        /// 避免"直方图记了、逐秒最差忘了记"这种一边漏账
+        void noteSyncMargin(int64_t us) {
+            syncMarginUs.add(us);
+            int64_t prev = syncMarginWorstUs.load(std::memory_order_relaxed);
+            while (us < prev && !syncMarginWorstUs.compare_exchange_weak(
+                    prev, us, std::memory_order_relaxed)) {
+                // prev 已被更新为当前值，循环重试
+            }
+        }
+
         std::atomic<int64_t> dropLate{0};
         std::atomic<int64_t> dropOverflow{0};
         std::atomic<int64_t> dropStale{0};
@@ -107,6 +133,7 @@ namespace VE {
             drawUs.reset();
             swapUs.reset();
             syncMarginUs.reset();
+            syncMarginWorstUs.store(kNoSyncSample, std::memory_order_relaxed);
             audioQueuePeak.store(0, std::memory_order_relaxed);
             videoQueuePeak.store(0, std::memory_order_relaxed);
             frameQueuePeak.store(0, std::memory_order_relaxed);
@@ -145,7 +172,11 @@ namespace VE {
             /// aq/vq/fq 为**瞬时**深度，-1 表示该轨不存在或无从得知。
             /// 由调用方从组件采样后传入，而不是让本类去持有组件指针——
             /// VEPerfStats 是纯数据容器，反过来依赖播放器组件会成环
-            void maybeEmit(const VEPerfStats &s, int aq, int vq, int fq) {
+            /// avOffsetUs 为调用方采到的**瞬时** A/V 偏移；
+            /// 无视频轨时须传 kNoSyncSample——纯音频下 VEAVsync 的 lastDiff
+            /// 从未被更新过, 直接取会得到一个随时钟单调发散的数(实测每秒
+            /// 减 1000ms), 那不是 A/V 偏移, 是"没有 A/V 可比"
+            void maybeEmit(VEPerfStats &s, int aq, int vq, int fq, int64_t avOffsetUs) {
                 const int64_t now = nowUs();
                 if (mLastUs == 0) {          // 首次调用只起锚，不发不完整的一秒
                     mLastUs = now;
@@ -164,13 +195,20 @@ namespace VE {
                 // 这个项目已经在同一类错误上栽过四次(硬解解码耗时实为背压、
                 // 软解漏 send_packet、首帧上屏实为同步等待、丢帧只统计一类)。
                 //
-                // syncMargin 的分位数仍不发：直方图是整段累计的，取不出
-                // 单秒分位数，发出来同样是名实不符。
+                // 取走并复位本秒最差余量。exchange 而非 load+store：
+                // 两条解码路径都可能在写，读改写必须是原子的
+                const int64_t worst = s.syncMarginWorstUs.exchange(
+                        kNoSyncSample, std::memory_order_relaxed);
+                // 这一秒一帧都没上屏时发 -9999 而不是 0：0 是"余量刚好归零"
+                // (即将开始丢帧)，与"没测到"是相反的结论
+                const double worstMs = (worst == kNoSyncSample)
+                                       ? kNoSampleMs
+                                       : static_cast<double>(worst) / 1000.0;
                 ALOGI("VESTAT t=%d fps=%.1f dropLate=%" PRId64 " dropOvf=%" PRId64
                       " dropStale=%" PRId64 " dropSeek=%" PRId64
                       " vpark=%" PRId64 " apark=%" PRId64
                       " vstarve=%" PRId64 " astarve=%" PRId64
-                      " aq=%d vq=%d fq=%d",
+                      " aq=%d vq=%d fq=%d syncWorstMs=%.1f avOffMs=%.1f",
                       ++mSec,
                       static_cast<double>(present - mPresent) / elapsed,
                       s.dropLate.load(std::memory_order_relaxed) - mDropLate,
@@ -181,7 +219,10 @@ namespace VE {
                       s.audioCreditPark.load(std::memory_order_relaxed) - mAPark,
                       s.videoStarve.load(std::memory_order_relaxed) - mVStarve,
                       s.audioStarve.load(std::memory_order_relaxed) - mAStarve,
-                      aq, vq, fq);
+                      aq, vq, fq, worstMs,
+                      avOffsetUs == kNoSyncSample
+                              ? kNoSampleMs
+                              : static_cast<double>(avOffsetUs) / 1000.0);
                 mLastUs = now;
                 snapshot(s);
             }

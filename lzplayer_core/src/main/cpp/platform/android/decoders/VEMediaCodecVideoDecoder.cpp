@@ -622,7 +622,7 @@ namespace VE {
         // 零拷贝上屏：直接把 buffer 交还给 codec 并要求它渲染到绑定的
         // Surface。全程不经 CPU，也没有 GL 纹理上传。
         if (mPerfStats && mAVSync) {
-            mPerfStats->syncMarginUs.add(mAVSync->getLastDiffUs());
+            mPerfStats->noteSyncMargin(mAVSync->getLastDiffUs());
         }
         const int64_t presentBeginUs = mPerfStats ? nowUs() : 0;
         AMediaCodec_releaseOutputBuffer(mCodec, out.index, true);

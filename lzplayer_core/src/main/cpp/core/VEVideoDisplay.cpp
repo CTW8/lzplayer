@@ -361,7 +361,7 @@ namespace VE {
         // 用 AVSync 现成的 getLastDiffUs()，不再自己重算一遍 pts−clock
         // (getWaitTime/getLastDiffUs/shouldDropFrame 已经各算过一次了)
         if (mPerfStats && m_pAvSync) {
-            mPerfStats->syncMarginUs.add(m_pAvSync->getLastDiffUs());
+            mPerfStats->noteSyncMargin(m_pAvSync->getLastDiffUs());
         }
         const int64_t presentBeginUs = mPerfStats ? nowUs() : 0;
         m_pVideoRender->renderFrame(frame);
