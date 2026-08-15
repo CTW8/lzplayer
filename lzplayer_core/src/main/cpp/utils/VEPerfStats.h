@@ -133,6 +133,9 @@ namespace VE {
         /// 启播里程碑有"分段之和与总耗时差 < 5ms"的判据, 渲染这边一直没有
         /// 对应的校验, 所以漏了 25% 无人察觉。
         std::atomic<int64_t> renderThreadCpuUs{0};
+        /// 插桩区间(upload+draw+swap 所覆盖的那段)自身消耗的累计 CPU。
+        /// 与 renderThreadCpuUs 同为 CPU 时间, 相减才是真实的窗口外开销
+        std::atomic<int64_t> renderInstrumentedCpuUs{0};
 
         std::atomic<int64_t> dropLate{0};
         std::atomic<int64_t> dropOverflow{0};
@@ -150,6 +153,7 @@ namespace VE {
             syncMarginUs.reset();
             syncMarginWorstUs.store(kNoSyncSample, std::memory_order_relaxed);
             renderThreadCpuUs.store(0, std::memory_order_relaxed);
+            renderInstrumentedCpuUs.store(0, std::memory_order_relaxed);
             audioQueuePeak.store(0, std::memory_order_relaxed);
             videoQueuePeak.store(0, std::memory_order_relaxed);
             frameQueuePeak.store(0, std::memory_order_relaxed);
@@ -319,26 +323,31 @@ namespace VE {
                     // 每帧线程 CPU 与三段之和的差额。frames 用本秒上屏帧数,
                     // 不用固定帧率——掉帧时固定帧率会把差额算小。
                     //
-                    // **gapMs 是下界, 不是真实的窗口外开销**: threadCpuMs 是
-                    // CPU 时间(CLOCK_THREAD_CPUTIME_ID), 而 u/d/w 三段是墙钟。
-                    // swap 阻塞等 vsync 时墙钟远大于其 CPU, 于是被减掉的量偏大,
-                    // 真实窗口外开销只会比 gapMs 更多。
+                    // gapMs 两边都是 CPU 时间: 线程总 CPU 减去插桩区间自身的
+                    // CPU。此前拿线程 CPU 直接减 u/d/w 三段墙钟, 单位就不对——
+                    // swap 阻塞等 vsync 时墙钟远大于其 CPU, 减多了, 那个 gapMs
+                    // 只是下界。现在它是量值, 可以直接读成"每帧有多少 CPU 花在
+                    // 插桩窗口之外"。
                     //
-                    // 要得到准确值, 三段也得改用线程 CPU 时钟计时。在那之前
-                    // 这个数只能当"gap>0 即有未插桩开销"的警报用, 不能当量值。
+                    // 三段仍保持墙钟: swap 的墙钟正是等 vsync 的时长, 换成 CPU
+                    // 就把这个信息毁掉了。两套量各有各的问题域。
                     const int64_t cpuNow =
                             s.renderThreadCpuUs.load(std::memory_order_relaxed);
                     const int64_t frames = present - mPresent;
-                    double cpuMs = kNoSampleMs, gapMs = kNoSampleMs;
+                    const int64_t instNow =
+                            s.renderInstrumentedCpuUs.load(std::memory_order_relaxed);
+                    double cpuMs = kNoSampleMs, inMs = kNoSampleMs, gapMs = kNoSampleMs;
                     if (mLastRenderCpuUs > 0 && frames > 0) {
-                        cpuMs = static_cast<double>(cpuNow - mLastRenderCpuUs)
-                                / 1000.0 / static_cast<double>(frames);
-                        gapMs = cpuMs - (u50 + d50 + w50);
+                        const double f = static_cast<double>(frames);
+                        cpuMs = static_cast<double>(cpuNow - mLastRenderCpuUs) / 1000.0 / f;
+                        inMs = static_cast<double>(instNow - mLastInstCpuUs) / 1000.0 / f;
+                        gapMs = cpuMs - inMs;
                     }
                     mLastRenderCpuUs = cpuNow;
+                    mLastInstCpuUs = instNow;
                     ALOGI("VERENDER t=%d uploadMs=%.2f drawMs=%.2f swapMs=%.2f "
-                          "threadCpuMs=%.2f gapMs=%.2f",
-                          mSec, u50, d50, w50, cpuMs, gapMs);
+                          "threadCpuMs=%.2f inCpuMs=%.2f gapMs=%.2f",
+                          mSec, u50, d50, w50, cpuMs, inMs, gapMs);
                 }
                 mLastUs = now;
                 snapshot(s);
@@ -362,6 +371,7 @@ namespace VE {
             /// -1 = 还没起基线
             long long mLastCpuTicks = -1;
             int64_t mLastRenderCpuUs = 0;
+            int64_t mLastInstCpuUs = 0;
             int64_t mPresent = 0, mDropLate = 0, mDropOvf = 0, mDropStale = 0,
                     mDropSeek = 0, mVPark = 0, mAPark = 0, mVStarve = 0, mAStarve = 0;
         };

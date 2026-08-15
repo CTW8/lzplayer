@@ -4,6 +4,19 @@
 
 namespace VE {
 
+    namespace {
+        /// 本线程已消耗的 CPU 时间(微秒)。失败返回 0——调用方以差值使用,
+        /// 0 只会让那一帧的差值失真, 不会累积
+        inline int64_t threadCpuUs() {
+            timespec ts{};
+            if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) {
+                return 0;
+            }
+            return static_cast<int64_t>(ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
+        }
+    }
+
+
     const char *VEGLESVideoRenderer::VERTEX_SHADER_SOURCE = R"(
 #version 300 es
 layout(location = 0) in vec4 aPosition;
@@ -197,6 +210,10 @@ void main() {
         // 三段分开计时：上传是 CPU 侧拷贝(零拷贝可省)，swap 是等 vsync 的
         // 阻塞(零拷贝省不下来)。合成一个数字会把优化引向错误的方向
         const int64_t t0 = mPerfStats ? nowUs() : 0;
+        // 插桩区间自身的 CPU 起点。三段仍用墙钟(swap 的墙钟正是等 vsync 的
+        // 时长, 换成 CPU 就把这个信息毁掉了), 另外单独累计区间 CPU, 这样
+        // "窗口外开销 = 线程总 CPU − 区间 CPU" 两边都是 CPU, 单位才对得上
+        const int64_t cpu0 = mPerfStats ? threadCpuUs() : 0;
         // 更新纹理数据
         updateTextures(frame);
         const int64_t t1 = mPerfStats ? nowUs() : 0;
@@ -236,13 +253,12 @@ void main() {
             mPerfStats->uploadUs.add(t1 - t0);
             mPerfStats->drawUs.add(t2 - t1);
             mPerfStats->swapUs.add(nowUs() - t2);
-            // 本线程累计 CPU。放在三段之后取, 与三段覆盖同一帧, 差额才有意义
-            timespec cpuTs{};
-            if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpuTs) == 0) {
-                mPerfStats->renderThreadCpuUs.store(
-                        static_cast<int64_t>(cpuTs.tv_sec) * 1000000
-                        + cpuTs.tv_nsec / 1000, std::memory_order_relaxed);
-            }
+            // 线程累计 CPU(绝对值)与插桩区间累计 CPU(增量累加)。
+            // Timeline 对两者各取每秒差值, 相减即真实的窗口外 CPU
+            const int64_t cpu1 = threadCpuUs();
+            mPerfStats->renderThreadCpuUs.store(cpu1, std::memory_order_relaxed);
+            mPerfStats->renderInstrumentedCpuUs.fetch_add(
+                    cpu1 - cpu0, std::memory_order_relaxed);
         }
 
         // 发送进度通知
