@@ -55,6 +55,20 @@ namespace VE {
             (void) trace;
         }
 
+        /// 当前缓冲深度(包数)，供逐秒时间线采样。**瞬时值，不是峰值**——
+        /// 峰值只涨不落，回答不了"这一秒队列多深"。
+        ///
+        /// 可从任意线程调用，实现须自行保证线程安全(VEDemux 侧读的是
+        /// VEPacketQueue::getDataSize()，本身带锁)。
+        /// 返回 -1 表示"该轨不存在或无从得知"，调用方不得当成 0——
+        /// 无音轨的片子如果报 0，看起来就是"音频缓冲空了"。
+        ///
+        /// 默认实现返回 -1：不关心缓冲深度的源无需覆写。
+        virtual int getQueueDepth(ETrackType type) const {
+            (void) type;
+            return -1;
+        }
+
         // —— 数据面：read / getFileInfo 已继承自 IMediaSource(纯虚) ——
 
     protected:

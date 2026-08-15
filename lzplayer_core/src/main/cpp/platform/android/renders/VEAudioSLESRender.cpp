@@ -41,7 +41,6 @@ namespace VE {
     }
 
     VEResult VEAudioSLESRender::configure(const AudioConfig &config) {
-        ALOGV("VEAudioSLESRender::%s enter", __FUNCTION__);
 
         if (m_IsConfigured) {
             ALOGI("VEAudioSLESRender Already configured, release first");
@@ -175,7 +174,6 @@ namespace VE {
     }
 
     VEResult VEAudioSLESRender::start() {
-        ALOGV("VEAudioSLESRender::%s enter", __FUNCTION__);
 
         if (!m_IsConfigured) {
             ALOGE("VEAudioSLESRender Not configured yet");
@@ -204,7 +202,6 @@ namespace VE {
     }
 
     VEResult VEAudioSLESRender::pause() {
-        ALOGV("VEAudioSLESRender::%s enter", __FUNCTION__);
 
         std::lock_guard<std::mutex> lock(m_Mutex);
 
@@ -227,7 +224,6 @@ namespace VE {
     }
 
     VEResult VEAudioSLESRender::flush() {
-        ALOGV("VEAudioSLESRender::%s enter", __FUNCTION__);
 
         std::lock_guard<std::mutex> lock(m_Mutex);
 
@@ -255,7 +251,6 @@ namespace VE {
     }
 
     VEResult VEAudioSLESRender::stop() {
-        ALOGV("VEAudioSLESRender::%s enter", __FUNCTION__);
 
         std::lock_guard<std::mutex> lock(m_Mutex);
 
@@ -324,7 +319,6 @@ namespace VE {
     }
 
     VEResult VEAudioSLESRender::release() {
-        ALOGV("VEAudioSLESRender::%s enter", __FUNCTION__);
 
         // 停止播放
         if (m_IsPlaying) {

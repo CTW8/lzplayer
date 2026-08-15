@@ -342,7 +342,7 @@ namespace VE {
                 postMessage(VE_NOTIFY_EVENT_ERROR, result, 0, 0, nullptr);
                 return VE_UNKNOWN_ERROR;
             }
-            ALOGV("VEAudioRender::%s - PTS: %" PRId64, __FUNCTION__, frame->getPts());
+            ALOGF("VEAudioRender::%s - PTS: %" PRId64, __FUNCTION__, frame->getPts());
             // 时钟按"正在被听到"的位置打点：入队 pts 减去设备队列里
             // 还没播完的数据时长和器件输出延迟
             anchorClock(static_cast<double>(frame->getPts()));

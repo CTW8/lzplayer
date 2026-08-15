@@ -21,6 +21,11 @@ namespace VE {
 
     class VEVideoDisplay :public AHandler, public IFrameSink, public IVEComponent{
     public:
+        /// 帧队列瞬时深度。可从任意线程调用(读原子镜像，见 mFrameDepth)
+        int getFrameQueueDepth() const {
+            return mFrameDepth.load(std::memory_order_relaxed);
+        }
+
         VEVideoDisplay(const std::shared_ptr<AMessage> &notify,
                        const std::shared_ptr<VEAVsync> &avSync);
         ~VEVideoDisplay() override;
@@ -147,6 +152,14 @@ namespace VE {
         /// 队列空 ⟺ 渲染链停摆，帧到达即重新拉起。
         std::deque<std::pair<std::shared_ptr<VEFrame>,
                              std::shared_ptr<AMessage>>> mFrames;
+        /// mFrames 的瞬时深度镜像。mFrames 本身无锁(只在本 looper 访问)，
+        /// 逐秒时间线跑在 player looper 上，直接读 deque 就是数据竞争。
+        ///
+        /// 在 onMessageReceived 末尾统一同步，而不是逐个 mutation 点插桩：
+        /// mFrames 有 7 处增删(1 push / 2 pop / 4 clear)，逐点维护漏一处就
+        /// 静默漂移，而所有增删必然发生在消息处理内部——收口在出口只需一行，
+        /// 且误差上界是"一条消息"，不会累积。
+        std::atomic<int> mFrameDepth{0};
         /// 队列代次：解码器线程投递时盖章(atomic 读)，flush/seek/stop 递增，
         /// 在途的旧帧到达时被丢弃
         std::atomic<int32_t> mQueueGen{0};

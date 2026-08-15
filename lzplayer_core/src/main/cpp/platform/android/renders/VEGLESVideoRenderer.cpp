@@ -160,7 +160,7 @@ void main() {
     }
 
     VEResult VEGLESVideoRenderer::renderFrame(const std::shared_ptr<VEFrame> &frame) {
-        ALOGV("VEGLESVideoRenderer::renderFrame");
+        ALOGF("VEGLESVideoRenderer::renderFrame");
 
         if (!mEGLInitialized || !mGLESInitialized) {
             ALOGE("VEGLESVideoRenderer::renderFrame - Renderer not properly initialized");
@@ -247,7 +247,7 @@ void main() {
 //            fwrite(frame->getFrame()->data[2], frame->getFrame()->linesize[2]*frame->getFrame()->height,1,fp);
 //        }
 
-        ALOGV("VEGLESVideoRenderer::renderFrame - Frame rendered successfully, pts: %" PRId64, frame->getPts());
+        ALOGF("VEGLESVideoRenderer::renderFrame - Frame rendered successfully, pts: %" PRId64, frame->getPts());
         return VE_OK;
     }
 

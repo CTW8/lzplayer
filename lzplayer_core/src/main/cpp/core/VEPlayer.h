@@ -444,6 +444,8 @@ namespace VE {
         /// 稳态指标。与 mStartupTrace 同样在 doPrepare 时建好并分发，
         /// 之后只 reset 内容不换对象
         std::shared_ptr<VEPerfStats> mPerfStats;
+        /// 逐秒时间线状态(上一秒的累计快照)。只在 player looper 上访问
+        VEPerfStats::Timeline mTimeline;
         /// seek 三阶段耗时与精度，环形缓冲留最近 10 次
         std::shared_ptr<VESeekTrace> mSeekTrace;
 

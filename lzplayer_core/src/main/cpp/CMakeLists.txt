@@ -8,6 +8,12 @@ set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 # 日志开销对照实验开关：ON 时即使 Debug 构建也编译期剔除 V/D/I 日志。
 # 用法: -DVE_QUIET_LOG=ON。native ALOGV 在解码/解封装路径上每帧数条，
 # 30fps 下每秒上千次 __android_log_print(格式化 + 写 socket)，本身就在吃 CPU。
+option(VE_TRACE_FRAME "Enable per-frame/per-packet ALOGF logs" OFF)
+if (VE_TRACE_FRAME)
+    add_compile_definitions(VE_TRACE_FRAME)
+    message(STATUS "VE_TRACE_FRAME=ON: per-frame logs enabled")
+endif ()
+
 option(VE_QUIET_LOG "Compile out V/D/I logs even in debug builds" OFF)
 if (VE_QUIET_LOG)
     add_compile_definitions(VE_QUIET_LOG)

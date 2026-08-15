@@ -24,7 +24,6 @@ namespace VE {
 
     VEResult VEVideoDisplay::prepare(ANativeWindow *win, int width, int height, int fps,
                                      int rotationDegrees, int frameWidth, int frameHeight) {
-        ALOGV("VEVideoDisplay::%s enter",__FUNCTION__ );
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPrepare, shared_from_this());
         msg->setPointer("win", win);
         msg->setInt32("width", width);
@@ -49,7 +48,6 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::start() {
-        ALOGV("VEVideoDisplay::%s enter",__FUNCTION__ );
         try {
             std::make_shared<AMessage>(kWhatStart, shared_from_this())->post();
             return 0;
@@ -61,7 +59,6 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::stop() {
-        ALOGV("VEVideoDisplay::%s enter",__FUNCTION__ );
         try {
             std::make_shared<AMessage>(kWhatStop, shared_from_this())->post();
         } catch (const std::bad_weak_ptr &e) {
@@ -72,7 +69,6 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::seekTo(double timestampMs) {
-        ALOGV("VEVideoDisplay::%s enter",__FUNCTION__ );
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
         msg->setDouble("timestamp", timestampMs);
         msg->post();
@@ -80,7 +76,6 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::flush() {
-        ALOGV("VEVideoDisplay::%s enter",__FUNCTION__ );
         try {
             std::make_shared<AMessage>(kWhatFlush, shared_from_this())->post();
             return 0;
@@ -92,7 +87,6 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::pause() {
-        ALOGV("VEVideoDisplay::%s enter",__FUNCTION__ );
         try {
             std::make_shared<AMessage>(kWhatPause, shared_from_this())->post();
             return 0;
@@ -104,7 +98,6 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::release() {
-        ALOGV("VEVideoDisplay::%s enter",__FUNCTION__ );
         try {
             std::make_shared<AMessage>(kWhatRelease, shared_from_this())->post();
             return 0;
@@ -224,10 +217,11 @@ namespace VE {
                 break;
             }
         }
+        // 单一收口：本 looper 上的任何增删都会在这里被反映出去
+        mFrameDepth.store(static_cast<int>(mFrames.size()), std::memory_order_relaxed);
     }
 
     VEResult VEVideoDisplay::onPrepare(std::shared_ptr<AMessage> msg) {
-        ALOGV("VEVideoDisplay::onPrepare enter");
         msg->findPointer("win", (void **) &mWin);
         msg->findInt32("width", &mViewWidth);
         msg->findInt32("height", &mViewHeight);
@@ -256,7 +250,6 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::onStart(std::shared_ptr<AMessage> msg) {
-        ALOGV("VEVideoDisplay::onStart enter");
         if (m_IsStarted) {
             return VE_OK;
         }
@@ -273,7 +266,6 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::onSeekTo(double timestampMs) {
-        ALOGV("VEVideoDisplay::onSeekTo enter timestampMs:%f", timestampMs);
         // seek 后的首帧是用户在等的预览画面，最该立刻出——重新武装豁免
         m_AwaitingFirstFrame = true;
         // 作废在途的渲染/同步消息，避免 seek 后把旧帧画上去
@@ -289,7 +281,6 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::onFlush(std::shared_ptr<AMessage> msg) {
-        ALOGV("VEVideoDisplay::onFlush enter");
         // 重新武装首帧豁免：flush 之后的第一帧同样应立刻上屏
         m_AwaitingFirstFrame = true;
         ++m_Epoch;
@@ -316,13 +307,11 @@ namespace VE {
     }
 
     VEResult VEVideoDisplay::onPause(std::shared_ptr<AMessage> msg) {
-        ALOGV("VEVideoDisplay::onPause enter");
         m_IsStarted = false;
         return 0;
     }
 
     VEResult VEVideoDisplay::onRelease(std::shared_ptr<AMessage> msg) {
-        ALOGV("VEVideoDisplay::onRelease enter");
         m_IsStarted = false;
         ++m_Epoch;
         if (m_pVideoRender) {
@@ -341,7 +330,6 @@ namespace VE {
             mStartupTrace->markIfArmed(VEStartupTrace::T6B_FRAME_QUEUED,
                                        VEStartupTrace::T6D_RENDER_ENTER);
         }
-        ALOGV("VEVideoDisplay::%s enter", __FUNCTION__);
         if (!m_IsStarted) {
             ALOGW("VEVideoDisplay::%s - render not started", __FUNCTION__);
             return UNKNOWN_ERROR;
@@ -414,7 +402,6 @@ namespace VE {
                                        VEStartupTrace::T6C_SYNC_ENTER);
         }
 
-        ALOGV("VEVideoDisplay::%s enter", __FUNCTION__);
         if (!m_IsStarted) {
             ALOGE("VEVideoDisplay::%s render not started, mIsStarted=%d", __FUNCTION__, m_IsStarted);
             return UNKNOWN_ERROR;
@@ -428,7 +415,7 @@ namespace VE {
         }
 
         const std::shared_ptr<VEFrame> &frame = mFrames.front().first;
-        ALOGV("VEVideoDisplay::onAVSync frame type: %d, pts: %" PRId64, frame->getFrameType(),
+        ALOGF("VEVideoDisplay::onAVSync frame type: %d, pts: %" PRId64, frame->getFrameType(),
               frame->getPts());
 
         if (frame->getFrameType() == E_FRAME_TYPE_EOF) {
@@ -477,7 +464,7 @@ namespace VE {
             // 首帧被要求等多久——判断"是不是在等时钟"的直接证据
             mStartupTrace->setFirstFrameWaitUs(waitTime);
         }
-        ALOGV("VEVideoDisplay::%s waitTime:%" PRId64, __FUNCTION__, waitTime);
+        ALOGF("VEVideoDisplay::%s waitTime:%" PRId64, __FUNCTION__, waitTime);
         // 渲染消息不携带帧：到点后渲染当前队首(队列只在本 looper 上变化)
         std::shared_ptr<AMessage> renderMsg = std::make_shared<AMessage>(kWhatRender,
                                                                          shared_from_this());
@@ -547,7 +534,6 @@ namespace VE {
 
     VEResult VEVideoDisplay::setSurface(ANativeWindow *win, int width, int height) {
         // 检查对象是否已经被shared_ptr管理
-        ALOGV("VEVideoDisplay::setSurface enter");
         try {
             std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSurfaceChanged,
                                                                        shared_from_this());

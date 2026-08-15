@@ -35,20 +35,15 @@ namespace VE {
         constexpr int kSubtitleQueuePackets = 256;
     }
     VEDemux::VEDemux(std::shared_ptr<AMessage> &notify) : VESource(notify){
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         mFormatContext = nullptr;
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
     }
 
     VEDemux::~VEDemux() {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         // 析构期间不能用 shared_from_this() 投递消息，直接同步清理
         onRelease();
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
     }
 
     VEResult VEDemux::prepareAsync(const std::string &path){
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         // 纯异步：完成后回 PREPARE_DONE 事件。原同步版会把 player looper
         // 挂在 avformat_open_input 上，坏文件/网络源可卡死整条命令通道。
         mAbortRequest = false;
@@ -72,38 +67,30 @@ namespace VE {
 
 
     VEResult VEDemux::start() {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
         msg->post();
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     VEResult VEDemux::stop() {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         // 先置中断标志再投消息：若线程正卡在 open/read 的阻塞 IO 里，
         // 它会立即以 AVERROR_EXIT 返回，stop 消息才能尽快被处理
         mAbortRequest = true;
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStop, shared_from_this());
         msg->post();
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     VEResult VEDemux::pause() {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatPause, shared_from_this());
         msg->post();
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     VEResult VEDemux::seekTo(double posMs) {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
         msg->setDouble("posMs", posMs);
         msg->post();
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
@@ -117,7 +104,6 @@ namespace VE {
     }
 
     VEResult VEDemux::read(ETrackType type, std::shared_ptr<VEPacket> &packet) {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         // 队列尚未建立(prepare 未完成)：与 scheduleContinueReadIfNeeded 一致的判空
         std::shared_ptr<VEPacketQueue> queue = queueFor(type);
         if (queue == nullptr) {
@@ -131,13 +117,29 @@ namespace VE {
         // 拉取触发补货(仿 GenericSource::dequeueAccessUnit)：不再用 kWhatStart
         // 命令消息复活 demux——数据面事件不允许触碰命令通道
         scheduleContinueReadIfNeeded();
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     int VEDemux::getQueueDepth(ETrackType type) const {
+        // 复用 queueFor 而不是自己判轨：轨道选择逻辑只此一份，
+        // 抄一遍就意味着 selectTrack 之后两处会不一致
         std::shared_ptr<VEPacketQueue> queue = queueFor(type);
-        return queue ? queue->getDataSize() : 0;
+        // 轨道不存在返回 -1 而不是 0：无音轨的片子报 0，读的人会得出
+        // "音频缓冲空了"——与"根本没有音频"是完全不同的结论。
+        // 负值=未测到，与面板既有的三态约定一致。
+        //
+        // 存在性判据必须是**轨道索引**，不能拿 queueFor 是否非空来判：
+        // 三条队列在 prepare 时无条件建好，纯音频文件的视频队列同样非空，
+        // 只是永远没人往里放东西——用它判存在会得到 vq=0(实测过)，
+        // 与 getBufferedDurationUs 的判法保持一致。
+        // getDataSize 自带锁，跨线程读安全
+        if (queue == nullptr) {
+            return -1;
+        }
+        const int index = (type == ETrackType::AUDIO) ? mAudio_index
+                        : (type == ETrackType::VIDEO) ? mVideo_index
+                                                      : mSubtitle_index;
+        return index != -1 ? queue->getDataSize() : -1;
     }
 
     int64_t VEDemux::getBufferedDurationUs() const {
@@ -274,17 +276,14 @@ namespace VE {
     }
 
     VEResult VEDemux::release(){
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         mAbortRequest = true;   // 同 stop：先解除阻塞 IO
         std::make_shared<AMessage>(kWhatRelease,shared_from_this())->post();
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
         return 0;
     }
 
 
     VEResult VEDemux::flush() {
         std::make_shared<AMessage>(kWhatFlush,shared_from_this())->post();
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         return VE_OK;
     }
 
@@ -294,7 +293,6 @@ namespace VE {
     }
 
     void VEDemux::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         switch (msg->what()) {
             case kWhatPrepare: {
                 std::string path;
@@ -336,7 +334,7 @@ namespace VE {
                     ALOGD("VEDemux::%s kWhatRead !mIsStart not run!!!", __FUNCTION__);
                     break;
                 }
-                ALOGV("VEDemux::%s kWhatRead run", __FUNCTION__);
+                ALOGF("VEDemux::%s kWhatRead run", __FUNCTION__);
                 VEResult ret = onRead();
                 if (ret == VE_OK) {
                     std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead,
@@ -378,11 +376,9 @@ namespace VE {
                 break;
             }
         }
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
     }
 
     VEResult VEDemux::onPrepare(std::string path){
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         ///打开文件
         if (path.empty()) {
             ALOGE("VEDemux::%s open file failed: empty path", __FUNCTION__);
@@ -467,7 +463,6 @@ namespace VE {
         mVideoPacketQueue = std::make_shared<VEPacketQueue>(kQueueBackstopPackets);
         mSubtitlePacketQueue = std::make_shared<VEPacketQueue>(kSubtitleQueuePackets);
 
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
@@ -611,16 +606,13 @@ namespace VE {
     }
 
     VEResult VEDemux::onStart() {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         mIsEOS = false;
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatRead, shared_from_this());
         msg->post();
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEDemux::onRead() {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
 
         if (mReleased || mFormatContext == nullptr) {
             // 终态防护：teardown 超时强推后可能有迟到的读消息
@@ -632,15 +624,13 @@ namespace VE {
         // 由 start/stop 管理；读循环的恢复由消费端拉取触发(kWhatContinueRead)。
         // 判据是"两路都够 或 总字节超限"，不按单路满停——避免一路满拖死另一路。
         if (shouldParkRead()) {
-            ALOGD("VEDemux::onRead buffered enough, parking read loop.");
-            ALOGV("VEDemux::%s exit", __FUNCTION__);
+            ALOGF("VEDemux::onRead buffered enough, parking read loop.");
             return VE_NO_MEMORY;
         }
 
         std::shared_ptr<VEPacket> packet = std::make_shared<VEPacket>();
         if (!packet) {
             ALOGD("VEDemux::onRead Could not allocate AVPacket");
-            ALOGV("VEDemux::%s exit", __FUNCTION__);
             return NO_ERROR;
         }
 
@@ -655,7 +645,6 @@ namespace VE {
             videoPacket->setPacketType(E_PACKET_TYPE_EOF);
             putPacket(videoPacket, ETrackType::VIDEO);
             mIsEOS = true;
-            ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_EOS;
         } else if (ret == AVERROR(EAGAIN)) {
             // 瞬时无数据(部分 demuxer/IO 会出现)：延时重试，读循环不能就此死掉
@@ -704,7 +693,7 @@ namespace VE {
             packet->setDts(dts);
             packet->getPacket()->pts = pts;
             packet->getPacket()->dts = dts;
-            ALOGV("VEDemux::onRead Audio packet pts:%" PRId64 " dts:%" PRId64, pts, dts);
+            ALOGF("VEDemux::onRead Audio packet pts:%" PRId64 " dts:%" PRId64, pts, dts);
             putPacket(packet, ETrackType::AUDIO);
         } else if (streamIndex == mVideo_index) {
             packet->setPacketType(E_PACKET_TYPE_VIDEO);
@@ -712,7 +701,7 @@ namespace VE {
             packet->setDts(dts);
             packet->getPacket()->pts = pts;
             packet->getPacket()->dts = dts;
-            ALOGV("VEDemux::onRead Video packet pts:%" PRId64 " dts:%" PRId64, pts, dts);
+            ALOGF("VEDemux::onRead Video packet pts:%" PRId64 " dts:%" PRId64, pts, dts);
             putPacket(packet, ETrackType::VIDEO);
         } else if (streamIndex == mSubtitle_index) {
             packet->setPacketType(E_PACKET_TYPE_SUBTITLE);
@@ -725,15 +714,12 @@ namespace VE {
             // 非活跃轨道的包(未选中的音轨/字幕轨等)：直接丢弃
             ALOGV("VEDemux::onRead drop packet from inactive stream %d", streamIndex);
         }
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
         return 0;
     }
 
     VEResult VEDemux::onSeek(double posMs) {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         if (!mFormatContext) {
             ALOGE("VEDemux::onSeek Error: File not opened.\n");
-            ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_INVALID_PARAMS;
         }
 
@@ -756,7 +742,6 @@ namespace VE {
                                      INT64_MAX, AVSEEK_FLAG_BACKWARD);
         if (ret < 0) {
             ALOGE("VEDemux::onSeek Error: Couldn't seek using avformat_seek_file.\n");
-            ALOGV("VEDemux::%s exit", __FUNCTION__);
             return VE_UNKNOWN_ERROR;
         }
 
@@ -767,12 +752,10 @@ namespace VE {
         mIsEOS = false;
 
         ALOGD("VEDemux::onSeek Successful to posMs: %f", posMs);
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
         return VE_OK;
     }
 
     void VEDemux::putPacket(std::shared_ptr<VEPacket> packet, ETrackType type) {
-        ALOGV("VEDemux::%s enter", __FUNCTION__);
         // 只在 demux 自己的 looper 线程上执行，无需加锁。
         // 消费者饥饿时按 10ms 轮询重试(NuPlayer DecoderBase 的做法)，
         // 不再需要"有数据就通知"的登记机制。
@@ -804,7 +787,6 @@ namespace VE {
         if (notify) {
             notify->post();
         }
-        ALOGV("VEDemux::%s exit", __FUNCTION__);
     }
 
 

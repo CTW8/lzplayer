@@ -25,12 +25,10 @@ namespace VE {
             : mVideoCtx(nullptr),
               mMediaInfo(nullptr),
               mIsStarted(false) {
-        ALOGV("VEVideoDecoder::VEVideoDecoder enter");
         mNofityEvent = notify;
     }
 
     VEVideoDecoder::~VEVideoDecoder() {
-        ALOGV("VEVideoDecoder::~VEVideoDecoder enter");
         // 不直接释放资源，统一在 release / onRelease 中处理
     }
 
@@ -38,7 +36,6 @@ namespace VE {
                                      std::shared_ptr<IFrameSink> sink,
                                      const VEBundle &params) {
         (void) params;   // 软解不需要额外参数
-        ALOGV("VEVideoDecoder::prepare enter");
         if (!demux || !sink) {
             ALOGE("VEVideoDecoder::prepare demux/sink is null");
             return VE_INVALID_PARAMS;
@@ -52,7 +49,6 @@ namespace VE {
 
 
     VEResult VEVideoDecoder::seekTo(double timestampMs) {
-        ALOGV("VEVideoDecoder::seekTo enter timestampMs:%f", timestampMs);
 
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatSeek, shared_from_this());
         msg->setDouble("timestamp", timestampMs);
@@ -61,35 +57,30 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::start() {
-        ALOGV("VEVideoDecoder::start enter");
         auto msg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
         msg->post();
         return 0;
     }
 
     VEResult VEVideoDecoder::pause() {
-        ALOGV("VEVideoDecoder::pause enter");
         auto msg = std::make_shared<AMessage>(kWhatPause, shared_from_this());
         msg->post();
         return 0;
     }
 
     VEResult VEVideoDecoder::stop() {
-        ALOGV("VEVideoDecoder::stop enter");
         auto msg = std::make_shared<AMessage>(kWhatStop, shared_from_this());
         msg->post();
         return 0;
     }
 
     VEResult VEVideoDecoder::flush() {
-        ALOGV("VEVideoDecoder::flush enter");
         auto msg = std::make_shared<AMessage>(kWhatFlush, shared_from_this());
         msg->post();
         return VE_OK;
     }
 
     VEResult VEVideoDecoder::release() {
-        ALOGV("VEVideoDecoder::release enter");
         auto msg = std::make_shared<AMessage>(kWhatUninit, shared_from_this());
         msg->post();
         return VE_OK;
@@ -97,11 +88,6 @@ namespace VE {
 
 // 消息处理函数
     void VEVideoDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
-        ALOGV("VEVideoDecoder::onMessageReceived enter, what=%c%c%c%c",
-              (msg->what() & 0xFF),
-              (msg->what() >> 8) & 0xFF,
-              (msg->what() >> 16) & 0xFF,
-              (msg->what() >> 24) & 0xFF);
 
         switch (msg->what()) {
             case kWhatInit: {
@@ -142,7 +128,6 @@ namespace VE {
                     break;
                 }
                 if (!mIsStarted) {
-                    ALOGV("VEVideoDecoder::onDecode is not started, exiting");
                     break;
                 }
                 int32_t starveGen = 0;
@@ -218,7 +203,6 @@ namespace VE {
         if (mStartupTrace != nullptr) {
             mStartupTrace->mark(VEStartupTrace::T4A_CONFIGURE_BEGIN);
         }
-        ALOGV("VEVideoDecoder::onPrepare enter");
         std::shared_ptr<void> tmp;
         if (!msg->findObject("demux", &tmp)) {
             ALOGE("VEVideoDecoder::onPrepare demux not found in message");
@@ -300,7 +284,6 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onStart() {
-        ALOGV("VEVideoDecoder::onStart enter");
         if (mIsStarted) {
             ALOGI("VEVideoDecoder::onStart already started");
             return VE_OK;
@@ -312,13 +295,11 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onPause() {
-        ALOGV("VEVideoDecoder::onPause enter");
         mIsStarted = false;
         return VE_OK;
     }
 
     VEResult VEVideoDecoder::onStop() {
-        ALOGV("VEVideoDecoder::onStop enter");
         mIsStarted = false;
         // 残留的精准 seek 目标会让下次重播把 0~target 的帧全部丢掉
         mSeekTargetUs = kNoSeekTarget;
@@ -332,7 +313,6 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onFlush() {
-        ALOGV("VEVideoDecoder::onFlush enter");
         // 已送包但没结算的耗时随 flush 作废，否则会挂到 flush 后的第一帧上
         mDecodeAccumUs = 0;
         // 递增 epoch，使 flush 之前投递的解码消息与旧帧的消费回执全部失效
@@ -353,7 +333,6 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onSeek(double timestampMs) {
-        ALOGV("VEVideoDecoder::onSeek enter timestampMs:%f", timestampMs);
         // seek 必须真正清空 codec 内部参考帧和已解出的帧，
         // 否则 seek 后会渲染出目标位置之前的残留画面
         onFlush();
@@ -404,13 +383,12 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onDecode() {
-        ALOGV("VEVideoDecoder::onDecode enter");
 
         if (mInFlightFrames >= FRAME_QUEUE_MAX_SIZE) {
             // credit 用尽：park。渲染器每消费一帧就回执还 credit，
             // kWhatFrameConsumed 处理时会复活解码循环
             if (mPerfStats) { ++mPerfStats->videoCreditPark; }
-            ALOGV("VEVideoDecoder::onDecode out of credit, parking");
+            ALOGF("VEVideoDecoder::onDecode out of credit, parking");
             return VE_NO_MEMORY;
         }
 
@@ -443,7 +421,7 @@ namespace VE {
                 if (mSeekTargetUs != kNoSeekTarget) {
                     int64_t pts = frame->getFrame()->pts;
                     if (pts != AV_NOPTS_VALUE && pts < mSeekTargetUs) {
-                        ALOGD("VEVideoDecoder::onDecode drop frame pts=%" PRId64
+                        ALOGF("VEVideoDecoder::onDecode drop frame pts=%" PRId64
                                       " until %" PRId64, pts, mSeekTargetUs);
                         // 精准 seek 的追帧丢弃：属 seek 成本，不是渲染缺陷
                         if (mPerfStats) { ++mPerfStats->dropSeekCatchup; }
@@ -463,7 +441,7 @@ namespace VE {
                     frame->setFrameType(E_FRAME_TYPE_VIDEO);
                     frame->setPts(decoded->pts);
                     frame->setDts(decoded->pkt_dts);
-                    ALOGV("VEVideoDecoder::onDecode got a frame: pts=%" PRId64, decoded->pts);
+                    ALOGF("VEVideoDecoder::onDecode got a frame: pts=%" PRId64, decoded->pts);
                     if (mPerfStats) {
                         mPerfStats->videoDecodeUs.add(mDecodeAccumUs + nowUs() - decodeBeginUs);
                     mDecodeAccumUs = 0;
@@ -529,7 +507,7 @@ namespace VE {
             ALOGI("VEVideoDecoder::onDecode got EOF packet");
             ret = avcodec_send_packet(mVideoCtx, nullptr);
         } else {
-            ALOGV("VEVideoDecoder::onDecode got normal packet, size=%d", packet->getPacket()->size);
+            ALOGF("VEVideoDecoder::onDecode got normal packet, size=%d", packet->getPacket()->size);
             const int64_t sendBeginUs = mPerfStats ? nowUs() : 0;
             ret = avcodec_send_packet(mVideoCtx, packet->getPacket());
             if (mPerfStats) {
@@ -558,7 +536,6 @@ namespace VE {
     }
 
     VEResult VEVideoDecoder::onRelease() {
-        ALOGV("VEVideoDecoder::onRelease enter");
         mIsStarted = false;
         if (mSwsCtx) {
             sws_freeContext(mSwsCtx);
@@ -578,7 +555,6 @@ namespace VE {
 
 
     void VEVideoDecoder::queueFrame(std::shared_ptr<VEFrame> frame) {
-        ALOGV("VEVideoDecoder::queueFrame enter");
         // T6：首帧解出。三条产出路径都汇到这个函数，打在这里不会漏；
         // mark() 自带首次生效语义，不必自己判断是不是第一帧
         if (mStartupTrace != nullptr) {

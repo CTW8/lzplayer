@@ -5,6 +5,18 @@
 #include "VEPlayerDriver.h"
 #include "VEDef.h"
 namespace VE {
+
+    namespace {
+        /// 状态迁移留痕。22 处 mState/currentState 赋值此前绝大多数不打日志，
+        /// 于是状态机出问题时没有任何时序可查。级别用 W：它不是错误，但它是
+        /// 排查一切状态机问题的唯一线索，不能被日志配额或 Release 剔除掉。
+        inline void logTransit(const char *fn, int from, int to) {
+            if (from != to) {
+                ALOGW("VEPlayerDriver::%s state %d -> %d", fn, from, to);
+            }
+        }
+    }
+
     namespace {
         // 同步 prepare() 的最长等待时间，超时视为底层异常
         const std::chrono::seconds kPrepareTimeout(10);
@@ -34,6 +46,7 @@ namespace VE {
             // 遇到错误直接切换到 MEDIA_PLAYER_STATE_ERROR
             {
                 std::lock_guard<std::mutex> lk(mMutex);
+                logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_STATE_ERROR);
                 currentState = MEDIA_PLAYER_STATE_ERROR;
             }
             // prepare() 可能正阻塞等待，错误态也要唤醒它，否则调用线程永久挂起
@@ -49,6 +62,7 @@ namespace VE {
             ALOGD("VEPlayerDriver --> VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION enter!!!");
             {
                 std::lock_guard<std::mutex> lk(mMutex);
+                logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_PLAYBACK_COMPLETE);
                 currentState = MEDIA_PLAYER_PLAYBACK_COMPLETE;
             }
             notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_COMPLETION, 0, 0, nullptr);
@@ -63,6 +77,7 @@ namespace VE {
                     ALOGW("VEPlayerDriver late onPrepared in state %d, ignored", currentState);
                     return;
                 }
+                logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_PREPARED);
                 currentState = MEDIA_PLAYER_PREPARED;
             }
             mCond.notify_all();
@@ -114,12 +129,18 @@ namespace VE {
     VEResult VEPlayerDriver::setDataSource(std::string path) {
         std::lock_guard<std::mutex> lk(mMutex);
         if (currentState != MEDIA_PLAYER_IDLE) {
+            // 命令被状态机拒绝。此前这里一行日志都没有——stop→play 的静默失败
+            // 就是这么来的：driver 直接 return -1，Java 侧丢弃返回值，无痕可查
+            ALOGW("VEPlayerDriver::%s rejected, currentState=%d", __FUNCTION__,
+                  (int) currentState);
             return -1;
         }
         if (mPlayer->setDataSource(path) == 0) {
+            logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_INITIALIZED);
             currentState = MEDIA_PLAYER_INITIALIZED;
             return 0;
         }
+        logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_STATE_ERROR);
         currentState = MEDIA_PLAYER_STATE_ERROR;
         return -1;
     }
@@ -139,6 +160,8 @@ namespace VE {
             return VE_UNKNOWN_ERROR;
         }
 
+        logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_PREPARING);
+
         currentState = MEDIA_PLAYER_PREPARING;
         mPlayer->prepare();
 
@@ -151,6 +174,7 @@ namespace VE {
 
         if (!done) {
             ALOGE("VEPlayerDriver::%s prepare timed out", __FUNCTION__);
+            logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_STATE_ERROR);
             currentState = MEDIA_PLAYER_STATE_ERROR;
             return VE_TIMED_OUT;
         }
@@ -165,9 +189,11 @@ namespace VE {
             return -1;
         }
         if (mPlayer->prepareAsync() == 0) {
+            logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_PREPARING);
             currentState = MEDIA_PLAYER_PREPARING;
             return 0;
         }
+        logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_STATE_ERROR);
         currentState = MEDIA_PLAYER_STATE_ERROR;
         return -1;
     }
@@ -176,12 +202,18 @@ namespace VE {
         std::lock_guard<std::mutex> lk(mMutex);
         if (currentState != MEDIA_PLAYER_PREPARED && currentState != MEDIA_PLAYER_PAUSED &&
             currentState != MEDIA_PLAYER_PLAYBACK_COMPLETE) {
+            // 命令被状态机拒绝。此前这里一行日志都没有——stop→play 的静默失败
+            // 就是这么来的：driver 直接 return -1，Java 侧丢弃返回值，无痕可查
+            ALOGW("VEPlayerDriver::%s rejected, currentState=%d", __FUNCTION__,
+                  (int) currentState);
             return -1;
         }
         if (mPlayer->start() == 0) {
+            logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_STARTED);
             currentState = MEDIA_PLAYER_STARTED;
             return 0;
         }
+        logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_STATE_ERROR);
         currentState = MEDIA_PLAYER_STATE_ERROR;
         return -1;
     }
@@ -190,12 +222,18 @@ namespace VE {
         std::lock_guard<std::mutex> lk(mMutex);
         if (currentState != MEDIA_PLAYER_PREPARED && currentState != MEDIA_PLAYER_STARTED &&
             currentState != MEDIA_PLAYER_PAUSED && currentState != MEDIA_PLAYER_PLAYBACK_COMPLETE) {
+            // 命令被状态机拒绝。此前这里一行日志都没有——stop→play 的静默失败
+            // 就是这么来的：driver 直接 return -1，Java 侧丢弃返回值，无痕可查
+            ALOGW("VEPlayerDriver::%s rejected, currentState=%d", __FUNCTION__,
+                  (int) currentState);
             return -1;
         }
         if (mPlayer->stop() == 0) {
+            logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_STOPPED);
             currentState = MEDIA_PLAYER_STOPPED;
             return 0;
         }
+        logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_STATE_ERROR);
         currentState = MEDIA_PLAYER_STATE_ERROR;
         return -1;
     }
@@ -203,12 +241,18 @@ namespace VE {
     VEResult VEPlayerDriver::pause() {
         std::lock_guard<std::mutex> lk(mMutex);
         if (currentState != MEDIA_PLAYER_STARTED) {
+            // 命令被状态机拒绝。此前这里一行日志都没有——stop→play 的静默失败
+            // 就是这么来的：driver 直接 return -1，Java 侧丢弃返回值，无痕可查
+            ALOGW("VEPlayerDriver::%s rejected, currentState=%d", __FUNCTION__,
+                  (int) currentState);
             return -1;
         }
         if (mPlayer->pause() == 0) {
+            logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_PAUSED);
             currentState = MEDIA_PLAYER_PAUSED;
             return 0;
         }
+        logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_STATE_ERROR);
         currentState = MEDIA_PLAYER_STATE_ERROR;
         return -1;
     }
@@ -216,9 +260,11 @@ namespace VE {
     VEResult VEPlayerDriver::reset() {
         std::lock_guard<std::mutex> lk(mMutex);
         if (mPlayer->reset() == 0) {
+            logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_IDLE);
             currentState = MEDIA_PLAYER_IDLE;
             return 0;
         }
+        logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_STATE_ERROR);
         currentState = MEDIA_PLAYER_STATE_ERROR;
         return -1;
     }
@@ -273,6 +319,7 @@ namespace VE {
         ALOGI("VEPlayerDriver::%s timestampMs:%f exe seek", __FUNCTION__, timestampMs);
         VEResult result = mPlayer->seek(timestampMs);
         if (result != VE_OK) {
+            logTransit(__FUNCTION__, (int) currentState, (int) MEDIA_PLAYER_STATE_ERROR);
             currentState = MEDIA_PLAYER_STATE_ERROR;
         }
         return result;

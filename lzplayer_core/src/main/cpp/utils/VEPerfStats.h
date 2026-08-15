@@ -6,8 +6,10 @@
 #include <string>
 
 #include <chrono>
+#include <cinttypes>
 
 #include "VEPerfHistogram.h"
+#include "Log.h"
 
 namespace VE {
 
@@ -119,6 +121,89 @@ namespace VE {
             dropStale.store(0, std::memory_order_relaxed);
             dropSeekCatchup.store(0, std::memory_order_relaxed);
         }
+
+        /// 逐秒时间线发射器。每秒往 logcat 打一条固定格式的 key=value 行。
+        ///
+        /// 为什么需要它：面板上的 p50/p95/累计计数是**整段播放的聚合值**，
+        /// 看不出"某一秒全塌了"。而回退、抢占、热节流恰恰都是瞬时事件——
+        /// 聚合之后它们被平均掉，正好是最该看见的那一类问题最看不见。
+        ///
+        /// 为什么打日志而不是走 JNI 上报：跑分报告需要的是离线可复算的原始
+        /// 序列，日志天然带时间戳、能跨进程抓、崩溃后也还在。面板是给人看的
+        /// 实时视图，两者不是一回事。
+        ///
+        /// 格式纪律(改动会破坏报告解析，等同改接口)：
+        ///   - 固定前缀 VESTAT，一行一秒，字段一律 key=value 空格分隔
+        ///   - **累计量一律发差值**(本秒新增)，绝对值靠外部累加即可还原；
+        ///     反过来从绝对值求差要求采样无丢失，而日志恰恰会被配额丢
+        ///   - 样本不足的分位数发 -1 而不是 0："没测到"和"零延迟"不能混
+        ///   - 用 ALOGI：它是每秒 1 行的事件日志，不是每帧噪声，不该被
+        ///     VE_TRACE_FRAME 那一档带走
+        struct Timeline {
+            void reset() { *this = Timeline(); }
+
+            /// aq/vq/fq 为**瞬时**深度，-1 表示该轨不存在或无从得知。
+            /// 由调用方从组件采样后传入，而不是让本类去持有组件指针——
+            /// VEPerfStats 是纯数据容器，反过来依赖播放器组件会成环
+            void maybeEmit(const VEPerfStats &s, int aq, int vq, int fq) {
+                const int64_t now = nowUs();
+                if (mLastUs == 0) {          // 首次调用只起锚，不发不完整的一秒
+                    mLastUs = now;
+                    snapshot(s);
+                    return;
+                }
+                if (now - mLastUs < 1000000) {
+                    return;
+                }
+                const double elapsed = static_cast<double>(now - mLastUs) / 1000000.0;
+                const int64_t present = s.presentIntervalUs.count();
+                // aq/vq/fq 发的是**瞬时深度**，不是 audioQueuePeak 那组
+                // "只涨不落"的整段峰值。第一版误用了峰值，实测 vq 从 37 单调
+                // 爬到 67，看起来像队列在这一秒涨了，其实只是历史最大值被刷新
+                // 过——字段名承诺"这一秒"、实际给的是"到目前为止"。
+                // 这个项目已经在同一类错误上栽过四次(硬解解码耗时实为背压、
+                // 软解漏 send_packet、首帧上屏实为同步等待、丢帧只统计一类)。
+                //
+                // syncMargin 的分位数仍不发：直方图是整段累计的，取不出
+                // 单秒分位数，发出来同样是名实不符。
+                ALOGI("VESTAT t=%d fps=%.1f dropLate=%" PRId64 " dropOvf=%" PRId64
+                      " dropStale=%" PRId64 " dropSeek=%" PRId64
+                      " vpark=%" PRId64 " apark=%" PRId64
+                      " vstarve=%" PRId64 " astarve=%" PRId64
+                      " aq=%d vq=%d fq=%d",
+                      ++mSec,
+                      static_cast<double>(present - mPresent) / elapsed,
+                      s.dropLate.load(std::memory_order_relaxed) - mDropLate,
+                      s.dropOverflow.load(std::memory_order_relaxed) - mDropOvf,
+                      s.dropStale.load(std::memory_order_relaxed) - mDropStale,
+                      s.dropSeekCatchup.load(std::memory_order_relaxed) - mDropSeek,
+                      s.videoCreditPark.load(std::memory_order_relaxed) - mVPark,
+                      s.audioCreditPark.load(std::memory_order_relaxed) - mAPark,
+                      s.videoStarve.load(std::memory_order_relaxed) - mVStarve,
+                      s.audioStarve.load(std::memory_order_relaxed) - mAStarve,
+                      aq, vq, fq);
+                mLastUs = now;
+                snapshot(s);
+            }
+
+        private:
+            void snapshot(const VEPerfStats &s) {
+                mPresent = s.presentIntervalUs.count();
+                mDropLate = s.dropLate.load(std::memory_order_relaxed);
+                mDropOvf = s.dropOverflow.load(std::memory_order_relaxed);
+                mDropStale = s.dropStale.load(std::memory_order_relaxed);
+                mDropSeek = s.dropSeekCatchup.load(std::memory_order_relaxed);
+                mVPark = s.videoCreditPark.load(std::memory_order_relaxed);
+                mAPark = s.audioCreditPark.load(std::memory_order_relaxed);
+                mVStarve = s.videoStarve.load(std::memory_order_relaxed);
+                mAStarve = s.audioStarve.load(std::memory_order_relaxed);
+            }
+
+            int64_t mLastUs = 0;
+            int mSec = 0;
+            int64_t mPresent = 0, mDropLate = 0, mDropOvf = 0, mDropStale = 0,
+                    mDropSeek = 0, mVPark = 0, mAPark = 0, mVStarve = 0, mAStarve = 0;
+        };
 
         /// 只涨不落地更新峰值
         static void bumpPeak(std::atomic<int> &peak, int value) {

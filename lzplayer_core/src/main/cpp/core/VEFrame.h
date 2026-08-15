@@ -40,7 +40,7 @@ namespace VE {
             mFrame->format = format;
 
             // 热路径：每个重采样音频帧都会走到，只在 verbose 级别留痕
-            ALOGV("VEFrame sample_rate:%d ch_layout:%d nb_samples:%d format:%d",
+            ALOGF("VEFrame sample_rate:%d ch_layout:%d nb_samples:%d format:%d",
                   mFrame->sample_rate, mFrame->ch_layout.nb_channels, mFrame->nb_samples,
                   mFrame->format);
 
@@ -61,7 +61,7 @@ namespace VE {
         ~VEFrame() {
             if (mFrame) {
                 // 热路径：每帧析构一次(30fps 视频 + 音频帧 ≈ 每秒上百条)
-                ALOGV("AVFrame is release  pts:%" PRId64, mFrame->pts);
+                ALOGF("AVFrame is release  pts:%" PRId64, mFrame->pts);
                 av_frame_unref(mFrame);
                 av_frame_free(&mFrame);
             }

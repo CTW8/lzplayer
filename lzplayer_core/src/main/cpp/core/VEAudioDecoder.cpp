@@ -62,7 +62,6 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::flush() {
-        ALOGV("VEAudioDecoder::flush enter");
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatFlush, shared_from_this());
         msg->post();
         return 0;
@@ -87,11 +86,6 @@ namespace VE {
     }
 
     void VEAudioDecoder::onMessageReceived(const std::shared_ptr<AMessage> &msg) {
-        ALOGV("VEAudioDecoder::onMessageReceived enter, what=%c%c%c%c",
-              (msg->what() & 0xFF),
-              (msg->what() >> 8) & 0xFF,
-              (msg->what() >> 16) & 0xFF,
-              (msg->what() >> 24) & 0xFF);
 
         switch (msg->what()) {
             case kWhatInit: {
@@ -129,7 +123,6 @@ namespace VE {
                     break;
                 }
                 if (!mIsStarted) {
-                    ALOGV("VEAudioDecoder::onDecode is not started, exiting");
                     break;
                 }
                 int32_t starveGen = 0;
@@ -202,7 +195,6 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onPrepare(std::shared_ptr<AMessage> msg) {
-        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         std::shared_ptr<void> tmp;
         msg->findObject("demux", &tmp);
 
@@ -261,7 +253,6 @@ namespace VE {
 
     VEResult VEAudioDecoder::onFlush() {
         mDecodeAccumUs = 0;
-        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         // 递增 epoch，使 flush 之前投递的解码消息与旧帧的消费回执全部失效
         ++mEpoch;
         mIsStarted = false;
@@ -278,7 +269,6 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onSeek(double timestampMs) {
-        ALOGV("VEAudioDecoder::%s enter timestampMs:%f", __FUNCTION__, timestampMs);
         onFlush();
         mSeekTargetUs = static_cast<int64_t>(timestampMs * 1000);
         return VE_OK;
@@ -291,13 +281,12 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onDecode() {
-        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         VEResult ret = VE_OK;
         if (mInFlightFrames >= AUDIO_FRAME_QUEUE_SIZE) {
             // credit 用尽：park。渲染器每消费一帧就回执还 credit，
             // kWhatFrameConsumed 处理时会复活解码循环
             if (mPerfStats) { ++mPerfStats->audioCreditPark; }
-            ALOGV("VEAudioDecoder::onDecode out of credit, parking");
+            ALOGF("VEAudioDecoder::onDecode out of credit, parking");
             return VE_NO_MEMORY;
         }
 
@@ -314,7 +303,7 @@ namespace VE {
             }
 
             if (ret >= 0) {
-                ALOGV("###VEAudioDecoder Audio frame: pts:%" PRId64 ", dts:%" PRId64,
+                ALOGF("###VEAudioDecoder Audio frame: pts:%" PRId64 ", dts:%" PRId64,
                       frame->getFrame()->pts, frame->getFrame()->pkt_dts);
 
                 // 精准 seek：丢弃目标位置之前的音频帧，避免 seek 后回放旧内容
@@ -391,7 +380,7 @@ namespace VE {
                         ALOGE("VEAudioDecoder swr_convert failed");
                         return VE_UNKNOWN_ERROR;
                     }
-                    ALOGV("VEAudioDecoder out_samples_per_channel:%d (cap %d)",
+                    ALOGF("VEAudioDecoder out_samples_per_channel:%d (cap %d)",
                           out_samples_per_channel, out_nb_samples);
 
                     audioFrame->getFrame()->pts = frame->getFrame()->pts;
@@ -424,7 +413,7 @@ namespace VE {
                     }
                     queueFrame(frame);
                 }
-                ALOGV("VEAudioDecoder Audio frame: pts=%s, nb_samples=%d, channels=%d samplerate:%d format:%d\n",
+                ALOGF("VEAudioDecoder Audio frame: pts=%s, nb_samples=%d, channels=%d samplerate:%d format:%d\n",
                       av_ts2str(frame->getFrame()->pts),
                       frame->getFrame()->nb_samples,
                       frame->getFrame()->ch_layout.nb_channels,
@@ -480,7 +469,7 @@ namespace VE {
                 // 只量 receive 会把每帧成本报低一个数量级
                 mDecodeAccumUs += nowUs() - sendBeginUs;
             }
-            ALOGV("VEAudioDecoder::onDecode send packet pts:%" PRId64 ", dts:%" PRId64,
+            ALOGF("VEAudioDecoder::onDecode send packet pts:%" PRId64 ", dts:%" PRId64,
                   packet->getPacket()->pts, packet->getPacket()->dts);
         } else if (packet->getPacketType() == E_PACKET_TYPE_EOF) {
             ret = avcodec_send_packet(mAudioCtx, nullptr);
@@ -504,7 +493,6 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onRelease() {
-        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         mIsStarted = false;
         if (mAudioCtx) {
             avcodec_free_context(&mAudioCtx);
@@ -522,7 +510,6 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onStart() {
-        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         if (mIsStarted) {
             ALOGI("VEAudioDecoder::onStart already started");
             return VE_OK;
@@ -534,7 +521,6 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onStop() {
-        ALOGV("VEAudioDecoder::%s enter", __FUNCTION__);
         mIsStarted = false;
         // 残留的精准 seek 目标会让下次重播把 0~target 的帧全部丢掉
         mSeekTargetUs = kNoSeekTarget;
@@ -549,7 +535,6 @@ namespace VE {
     }
 
     void VEAudioDecoder::queueFrame(std::shared_ptr<VEFrame> frame) {
-        ALOGV("VEAudioDecoder::queueFrame enter");
         if (!mSink) {
             return;
         }

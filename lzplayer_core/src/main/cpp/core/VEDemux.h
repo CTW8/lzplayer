@@ -72,8 +72,8 @@ namespace VE {
                                const std::shared_ptr<AMessage> &notify) override;
 
         // —— 诊断读数：跨线程调用，底层队列自带锁 ——
-        /// 指定轨道的待消费包数
-        int getQueueDepth(ETrackType type) const;
+        /// 指定轨道的待消费包数；轨道不存在返回 -1(见 VESource::getQueueDepth)
+        int getQueueDepth(ETrackType type) const override;
         /// 两路里较小的缓冲时长(微秒)——短板决定还能撑多久
         int64_t getBufferedDurationUs() const;
 

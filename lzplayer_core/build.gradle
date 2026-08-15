@@ -16,6 +16,10 @@ android {
                 cppFlags ""
                 // 日志开销对照实验：./gradlew ... -PveQuietLog=true
                 // 会在 Debug 包上也编译期剔除 V/D/I 日志（见 utils/Log.h）
+                // 每帧日志: ./gradlew ... -PveTraceFrame=true (默认关，见 utils/Log.h)
+                if (project.hasProperty("veTraceFrame") && project.veTraceFrame == "true") {
+                    arguments "-DVE_TRACE_FRAME=ON"
+                }
                 if (project.hasProperty("veQuietLog") && project.veQuietLog == "true") {
                     arguments "-DVE_QUIET_LOG=ON"
                 }
