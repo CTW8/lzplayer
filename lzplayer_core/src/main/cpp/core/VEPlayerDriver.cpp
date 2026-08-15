@@ -37,7 +37,7 @@ namespace VE {
         });
 
         mPlayer->setOnProgressListener([this](double progress) {
-            ALOGD("setOnProgressListener progress:%f", progress);
+            ALOGF("setOnProgressListener progress:%f", progress);
             notifyListener(VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS, 0, progress, nullptr);
         });
 

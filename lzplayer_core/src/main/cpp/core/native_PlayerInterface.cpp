@@ -93,7 +93,7 @@ namespace VE {
                 break;
             }
             case VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS: {
-                ALOGD("VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS ext2:%f", ext2);
+                ALOGF("VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS ext2:%f", ext2);
                 env->CallStaticVoidMethod(mClass, jNativeCallback, mObject, msg, ext1, ext2, NULL);
                 break;
             }

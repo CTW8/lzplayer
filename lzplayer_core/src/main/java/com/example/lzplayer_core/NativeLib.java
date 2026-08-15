@@ -249,7 +249,13 @@ public class NativeLib {
         final NativeLib mp = (NativeLib)((WeakReference)player_ref).get();
         // 播放器已被回收/释放时，native 侧仍可能有在途回调
         if (mp != null && mp.mEventHandler != null) {
-            Log.d(TAG,"postEventFromNative what:" + what + " arg1:" + arg1 + " arg2:" + arg2 + " obj:" + obj);
+            // progress 每秒两次, 且同一事件在 VEPlayerDriver 与
+            // native_PlayerInterface 已各打过一遍(现已转 ALOGF)。这条日志对
+            // 状态变化、错误这类稀有事件很有价值, 只有 progress 会把它淹掉,
+            // 所以单独跳过它而不是整条删掉
+            if (what != VE_PLAYER_NOTIFY_EVENT_ON_PROGRESS) {
+                Log.d(TAG,"postEventFromNative what:" + what + " arg1:" + arg1 + " arg2:" + arg2 + " obj:" + obj);
+            }
             Message m = Message.obtain();
             m.what = what;
             m.arg1 = arg1;
