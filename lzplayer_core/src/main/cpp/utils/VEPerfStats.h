@@ -7,6 +7,9 @@
 
 #include <chrono>
 #include <cinttypes>
+#include <cstdio>
+#include <cstring>
+#include <unistd.h>
 
 #include "VEPerfHistogram.h"
 #include "Log.h"
@@ -169,6 +172,70 @@ namespace VE {
         struct Timeline {
             void reset() { *this = Timeline(); }
 
+        private:
+            /// 进程 CPU 占用(单核归一, 100 = 吃满一个核)。读 /proc/self/stat 的
+            /// utime+stime, 与 Kotlin 侧 sampleCpuPercent() 同一套读法。
+            ///
+            /// native 自己读而不是让 Java 把采样值喂下来: 跑分场景(intent 驱动、
+            /// 无人看 UI)下时间线必须能独立成立, 依赖 UI 线程就意味着 UI 一卡
+            /// 这一列就断。
+            ///
+            /// 首次调用只起基线返回 kNoSampleMs —— "没采到"与"占用为 0"不是
+            /// 一回事, 而播放器占用 0 恰恰是个值得警觉的读数。
+            double sampleCpuPercent(double elapsedSec) {
+                FILE *fp = fopen("/proc/self/stat", "r");
+                if (fp == nullptr) {
+                    return kNoSampleMs;
+                }
+                char buf[512];
+                const size_t n = fread(buf, 1, sizeof(buf) - 1, fp);
+                fclose(fp);
+                if (n == 0) {
+                    return kNoSampleMs;
+                }
+                buf[n] = '\0';
+                // 必须从最后一个 ')' 之后开始数字段: comm 字段是进程名, 允许
+                // 含空格和括号, 直接按空格切会错位
+                const char *p = strrchr(buf, ')');
+                if (p == nullptr) {
+                    return kNoSampleMs;
+                }
+                ++p;
+                // ') ' 之后是 state, utime 是其后第 11 个字段(stat 全表里第 14)
+                long long utime = 0, stime = 0;
+                int matched = 0;
+                {
+                    const char *q = p;
+                    int field = 0;   // 0=state
+                    while (*q != '\0') {
+                        while (*q == ' ') { ++q; }
+                        if (*q == '\0') { break; }
+                        if (field == 11) { matched += sscanf(q, "%lld", &utime); }
+                        if (field == 12) { matched += sscanf(q, "%lld", &stime); break; }
+                        while (*q != ' ' && *q != '\0') { ++q; }
+                        ++field;
+                    }
+                }
+                if (matched < 2) {
+                    return kNoSampleMs;
+                }
+                const long long total = utime + stime;
+                if (mLastCpuTicks < 0) {          // 首次: 只起基线
+                    mLastCpuTicks = total;
+                    return kNoSampleMs;
+                }
+                const long hz = sysconf(_SC_CLK_TCK);
+                const long long delta = total - mLastCpuTicks;
+                mLastCpuTicks = total;
+                if (hz <= 0 || elapsedSec <= 0) {
+                    return kNoSampleMs;
+                }
+                return static_cast<double>(delta) / static_cast<double>(hz)
+                       / elapsedSec * 100.0;
+            }
+
+        public:
+
             /// aq/vq/fq 为**瞬时**深度，-1 表示该轨不存在或无从得知。
             /// 由调用方从组件采样后传入，而不是让本类去持有组件指针——
             /// VEPerfStats 是纯数据容器，反过来依赖播放器组件会成环
@@ -208,7 +275,7 @@ namespace VE {
                       " dropStale=%" PRId64 " dropSeek=%" PRId64
                       " vpark=%" PRId64 " apark=%" PRId64
                       " vstarve=%" PRId64 " astarve=%" PRId64
-                      " aq=%d vq=%d fq=%d syncWorstMs=%.1f avOffMs=%.1f",
+                      " aq=%d vq=%d fq=%d syncWorstMs=%.1f avOffMs=%.1f cpu=%.1f",
                       ++mSec,
                       static_cast<double>(present - mPresent) / elapsed,
                       s.dropLate.load(std::memory_order_relaxed) - mDropLate,
@@ -222,7 +289,8 @@ namespace VE {
                       aq, vq, fq, worstMs,
                       avOffsetUs == kNoSyncSample
                               ? kNoSampleMs
-                              : static_cast<double>(avOffsetUs) / 1000.0);
+                              : static_cast<double>(avOffsetUs) / 1000.0,
+                      sampleCpuPercent(elapsed));
                 mLastUs = now;
                 snapshot(s);
             }
@@ -242,6 +310,8 @@ namespace VE {
 
             int64_t mLastUs = 0;
             int mSec = 0;
+            /// -1 = 还没起基线
+            long long mLastCpuTicks = -1;
             int64_t mPresent = 0, mDropLate = 0, mDropOvf = 0, mDropStale = 0,
                     mDropSeek = 0, mVPark = 0, mAPark = 0, mVStarve = 0, mAStarve = 0;
         };
