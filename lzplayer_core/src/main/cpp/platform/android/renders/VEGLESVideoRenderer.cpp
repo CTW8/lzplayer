@@ -4,17 +4,6 @@
 
 namespace VE {
 
-    namespace {
-        /// 本线程已消耗的 CPU 时间(微秒)。失败返回 0——调用方以差值使用,
-        /// 0 只会让那一帧的差值失真, 不会累积
-        inline int64_t threadCpuUs() {
-            timespec ts{};
-            if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) {
-                return 0;
-            }
-            return static_cast<int64_t>(ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
-        }
-    }
 
 
     const char *VEGLESVideoRenderer::VERTEX_SHADER_SOURCE = R"(

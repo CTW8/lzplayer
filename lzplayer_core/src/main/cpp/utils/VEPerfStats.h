@@ -9,6 +9,7 @@
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <unistd.h>
 
 #include "VEPerfHistogram.h"
@@ -23,6 +24,17 @@ namespace VE {
                 std::chrono::steady_clock::now().time_since_epoch()).count();
     }
 
+
+    /// 本线程已消耗的 CPU 时间(微秒)。与 nowUs() 的墙钟是两套量:
+    /// 墙钟回答"花了多久"(含阻塞), CPU 回答"烧了多少算力"。
+    /// 失败返回 0——调用方以差值使用, 0 只会让那一次失真, 不会累积
+    inline int64_t threadCpuUs() {
+        timespec ts{};
+        if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) {
+            return 0;
+        }
+        return static_cast<int64_t>(ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
+    }
 
     /// 稳态性能指标的共享容器：由 VEPlayer 建好后注入各组件，
     /// 组件只管往自己那一项里 add()，VEPlayer 统一序列化。
@@ -122,6 +134,41 @@ namespace VE {
             }
         }
 
+        /// 一条线程的"分段之和 vs 线程总量"自校验。
+        ///
+        /// 这一轮里指标出错七次, 全部是跑数据跑出来的、没有一次是审代码审出来
+        /// 的。唯一能自动抓住这类问题的手段就是拿插桩区间之和跟一个独立测得的
+        /// 总量对账 —— 启播里程碑一直有这条判据, 渲染刚补上, 其余环节还没有。
+        ///
+        /// threadUs 是线程累计 CPU(绝对值, 每次采样覆盖写),
+        /// instrumentedUs 是插桩区间自身消耗的 CPU(增量累加)。
+        /// 两者都是 CPU 时间, 每秒各取差值后相减 = 窗口外开销。
+        ///
+        /// 未插桩的环节(如 demux)instrumentedUs 恒为 0, 于是 gap 等于线程全部
+        /// CPU —— 如实报出"这一环完全没有插桩", 而不是假装覆盖了。
+        struct CpuGauge {
+            std::atomic<int64_t> threadUs{0};
+            std::atomic<int64_t> instrumentedUs{0};
+
+            void reset() {
+                threadUs.store(0, std::memory_order_relaxed);
+                instrumentedUs.store(0, std::memory_order_relaxed);
+            }
+            /// 由所属线程调用: 刷新线程总量, 并累加本次区间消耗
+            void note(int64_t nowCpuUs, int64_t spentUs) {
+                threadUs.store(nowCpuUs, std::memory_order_relaxed);
+                instrumentedUs.fetch_add(spentUs, std::memory_order_relaxed);
+            }
+            /// 仅刷新线程总量(用于无插桩区间的环节)
+            void touch(int64_t nowCpuUs) {
+                threadUs.store(nowCpuUs, std::memory_order_relaxed);
+            }
+        };
+
+        CpuGauge vdecCpu;    ///< 视频解码线程
+        CpuGauge adecCpu;    ///< 音频解码线程
+        CpuGauge demuxCpu;   ///< 解封装线程(当前无插桩区间, gap 即全部)
+
         /// 渲染线程自身的累计 CPU 时间(CLOCK_THREAD_CPUTIME_ID, 微秒)。
         /// 由渲染线程每帧写入绝对值, Timeline 每秒取差值。
         ///
@@ -154,6 +201,9 @@ namespace VE {
             syncMarginWorstUs.store(kNoSyncSample, std::memory_order_relaxed);
             renderThreadCpuUs.store(0, std::memory_order_relaxed);
             renderInstrumentedCpuUs.store(0, std::memory_order_relaxed);
+            vdecCpu.reset();
+            adecCpu.reset();
+            demuxCpu.reset();
             audioQueuePeak.store(0, std::memory_order_relaxed);
             videoQueuePeak.store(0, std::memory_order_relaxed);
             frameQueuePeak.store(0, std::memory_order_relaxed);
@@ -352,11 +402,41 @@ namespace VE {
                           "threadCpuMs=%.2f inCpuMs=%.2f gapMs=%.2f",
                           mSec, u50, d50, w50, cpuMs, inMs, gapMs);
                 }
+                // 三条线程的自校验。单独一行, 与 VERENDER 同构。
+                // gap 大 = 该环节的开销大部分没被任何指标覆盖, 出问题时
+                // 现有指标不会有任何反应 —— 这正是最该先补插桩的地方
+                emitGauge("vdec", s.vdecCpu, mVdec, elapsed);
+                emitGauge("adec", s.adecCpu, mAdec, elapsed);
+                emitGauge("demux", s.demuxCpu, mDemux, elapsed);
+
                 mLastUs = now;
                 snapshot(s);
             }
 
         private:
+            struct GaugePrev { int64_t thread = 0, inst = 0; bool armed = false; };
+
+            /// 单位一律 %(单核归一), 不用 ms/帧: demux 与解码的"每帧"含义
+            /// 不同(一次读可能出多个包), 换算成占用率才能横向比较
+            void emitGauge(const char *name, const CpuGauge &g,
+                           GaugePrev &prev, double elapsedSec) {
+                const int64_t t = g.threadUs.load(std::memory_order_relaxed);
+                const int64_t i = g.instrumentedUs.load(std::memory_order_relaxed);
+                if (!prev.armed) {          // 首次只起基线
+                    prev.thread = t; prev.inst = i; prev.armed = true;
+                    return;
+                }
+                if (t == prev.thread) {     // 该线程这一秒没跑过, 不发空行
+                    return;
+                }
+                const double us = elapsedSec * 10000.0;   // 1% = elapsed*10000us
+                const double cpu = static_cast<double>(t - prev.thread) / us;
+                const double inst = static_cast<double>(i - prev.inst) / us;
+                prev.thread = t; prev.inst = i;
+                ALOGI("VEGAUGE t=%d who=%s cpu=%.1f instrumented=%.1f gap=%.1f",
+                      mSec, name, cpu, inst, cpu - inst);
+            }
+
             void snapshot(const VEPerfStats &s) {
                 mPresent = s.presentIntervalUs.count();
                 mDropLate = s.dropLate.load(std::memory_order_relaxed);
@@ -375,6 +455,7 @@ namespace VE {
             long long mLastCpuTicks = -1;
             int64_t mLastRenderCpuUs = 0;
             int64_t mLastInstCpuUs = 0;
+            GaugePrev mVdec, mAdec, mDemux;
             int64_t mPresent = 0, mDropLate = 0, mDropOvf = 0, mDropStale = 0,
                     mDropSeek = 0, mVPark = 0, mAPark = 0, mVStarve = 0, mAStarve = 0;
         };

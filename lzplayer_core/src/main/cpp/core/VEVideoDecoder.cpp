@@ -403,6 +403,9 @@ namespace VE {
         // 这与硬解那次是同源错误：**指标名与它实际度量的东西不一致**。
         // 已经犯过两次，下次打点前先自问：这个数字的名字和它量到的是同一件事吗。
         const int64_t decodeBeginUs = nowUs();
+        // 与墙钟起点并取: 墙钟含等待, CPU 只算真正烧掉的算力。
+        // 自校验要的是后者(见 VEPerfStats::CpuGauge)
+        const int64_t decodeCpuBeginUs = mPerfStats ? threadCpuUs() : 0;
 
         VEResult ret = VE_OK;
         do {
@@ -444,6 +447,9 @@ namespace VE {
                     ALOGF("VEVideoDecoder::onDecode got a frame: pts=%" PRId64, decoded->pts);
                     if (mPerfStats) {
                         mPerfStats->videoDecodeUs.add(mDecodeAccumUs + nowUs() - decodeBeginUs);
+                        const int64_t cpuNow = threadCpuUs();
+                        mPerfStats->vdecCpu.note(cpuNow, mDecodeAccumCpuUs + cpuNow - decodeCpuBeginUs);
+                        mDecodeAccumCpuUs = 0;
                     mDecodeAccumUs = 0;
                     }
                     queueFrame(frame);
@@ -457,6 +463,9 @@ namespace VE {
                 }
                 if (mPerfStats) {
                     mPerfStats->videoDecodeUs.add(mDecodeAccumUs + nowUs() - decodeBeginUs);
+                    const int64_t cpuNow = threadCpuUs();
+                    mPerfStats->vdecCpu.note(cpuNow, mDecodeAccumCpuUs + cpuNow - decodeCpuBeginUs);
+                        mDecodeAccumCpuUs = 0;
                         mDecodeAccumUs = 0;
                 }
                 queueFrame(videoFrame);
@@ -509,9 +518,16 @@ namespace VE {
         } else {
             ALOGF("VEVideoDecoder::onDecode got normal packet, size=%d", packet->getPacket()->size);
             const int64_t sendBeginUs = mPerfStats ? nowUs() : 0;
+            const int64_t sendCpuBeginUs = mPerfStats ? threadCpuUs() : 0;
             ret = avcodec_send_packet(mVideoCtx, packet->getPacket());
             if (mPerfStats) {
                 mDecodeAccumUs += nowUs() - sendBeginUs;
+                // send_packet 与 receive_frame 分属两段, 只测后者正是
+                // 这个项目修过的老 bug(0.1ms vs 实际 14ms), CPU 侧同样
+                // 要把两段都算进去, 否则自校验里 instrumented 恒为 0
+                if (mPerfStats) {
+                    mDecodeAccumCpuUs += threadCpuUs() - sendCpuBeginUs;
+                }
             }
         }
 

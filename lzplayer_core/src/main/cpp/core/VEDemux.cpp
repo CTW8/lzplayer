@@ -613,6 +613,11 @@ namespace VE {
     }
 
     VEResult VEDemux::onRead() {
+        // demux 至今没有任何分段计时, 所以只刷线程总量 —— 自校验会如实报出
+        // "这一环 100% 未插桩", 而不是假装覆盖了。这正是自校验该有的行为
+        if (mPerfStats) {
+            mPerfStats->demuxCpu.touch(threadCpuUs());
+        }
 
         if (mReleased || mFormatContext == nullptr) {
             // 终态防护：teardown 超时强推后可能有迟到的读消息
