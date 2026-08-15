@@ -613,11 +613,8 @@ namespace VE {
     }
 
     VEResult VEDemux::onRead() {
-        // demux 至今没有任何分段计时, 所以只刷线程总量 —— 自校验会如实报出
-        // "这一环 100% 未插桩", 而不是假装覆盖了。这正是自校验该有的行为
-        if (mPerfStats) {
-            mPerfStats->demuxCpu.touch(threadCpuUs());
-        }
+        // 覆盖所有返回路径, 见 VEPerfStats::CpuScope
+        VEPerfStats::CpuScope cpuScope(mPerfStats ? &mPerfStats->demuxCpu : nullptr);
 
         if (mReleased || mFormatContext == nullptr) {
             // 终态防护：teardown 超时强推后可能有迟到的读消息
@@ -639,7 +636,13 @@ namespace VE {
             return NO_ERROR;
         }
 
+        // demux 此前一条计时都没有, 自校验里 instrumented 恒为 0。
+        // av_read_frame 是这一环的主成本(IO + 解析), 先把它测起来
+        const int64_t readBeginUs = mPerfStats ? nowUs() : 0;
         int ret = av_read_frame(mFormatContext, packet->getPacket());
+        if (mPerfStats) {
+            mPerfStats->demuxReadUs.add(nowUs() - readBeginUs);
+        }
         if (ret == AVERROR_EOF) {
             // 已经到达文件末尾
             ALOGI("VEDemux::onRead End of Stream (EOS) reached.");

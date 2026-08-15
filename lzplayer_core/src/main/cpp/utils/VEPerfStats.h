@@ -165,6 +165,30 @@ namespace VE {
             }
         };
 
+        /// 把"本作用域烧掉的 CPU"记进 gauge, 覆盖**所有**返回路径。
+        ///
+        /// 手工在若干个出口各写一次 note() 是不行的: adec 首次接自校验时
+        /// instrumented 只有 cpu 的 40%, 缺口正是 receive_frame 返回 EAGAIN
+        /// 之类的提前返回 —— 那些迭代照样烧 CPU, 却从不走到记账点。
+        /// 这与丢帧计数当初只统计四条路径中的一条是同一类错误。
+        struct CpuScope {
+            CpuGauge *g;
+            int64_t begin;
+            explicit CpuScope(CpuGauge *gauge)
+                    : g(gauge), begin(gauge ? threadCpuUs() : 0) {}
+            ~CpuScope() {
+                if (g != nullptr) {
+                    const int64_t now = threadCpuUs();
+                    g->note(now, now - begin);
+                }
+            }
+            CpuScope(const CpuScope &) = delete;
+            CpuScope &operator=(const CpuScope &) = delete;
+        };
+
+        /// 解封装的主成本: av_read_frame(IO + 解析)。此前 demux 一条计时都没有
+        VEPerfHistogram demuxReadUs{0, 200, 256};   // 0~51.2ms, 桶宽 0.2ms
+
         CpuGauge vdecCpu;    ///< 视频解码线程
         CpuGauge adecCpu;    ///< 音频解码线程
         CpuGauge demuxCpu;   ///< 解封装线程(当前无插桩区间, gap 即全部)
@@ -201,6 +225,7 @@ namespace VE {
             syncMarginWorstUs.store(kNoSyncSample, std::memory_order_relaxed);
             renderThreadCpuUs.store(0, std::memory_order_relaxed);
             renderInstrumentedCpuUs.store(0, std::memory_order_relaxed);
+            demuxReadUs.reset();
             vdecCpu.reset();
             adecCpu.reset();
             demuxCpu.reset();

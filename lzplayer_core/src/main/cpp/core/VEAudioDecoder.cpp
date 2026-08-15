@@ -281,6 +281,8 @@ namespace VE {
     }
 
     VEResult VEAudioDecoder::onDecode() {
+        // 覆盖所有返回路径, 见 VEPerfStats::CpuScope
+        VEPerfStats::CpuScope cpuScope(mPerfStats ? &mPerfStats->adecCpu : nullptr);
         VEResult ret = VE_OK;
         if (mInFlightFrames >= AUDIO_FRAME_QUEUE_SIZE) {
             // credit 用尽：park。渲染器每消费一帧就回执还 credit，
@@ -293,9 +295,6 @@ namespace VE {
         do {
             std::shared_ptr<VEFrame> frame = std::make_shared<VEFrame>();
             const int64_t decodeBeginUs = mPerfStats ? nowUs() : 0;
-            // 与墙钟起点并取: 墙钟含等待, CPU 只算真正烧掉的算力。
-            // 自校验要的是后者(见 VEPerfStats::CpuGauge)
-            const int64_t decodeCpuBeginUs = mPerfStats ? threadCpuUs() : 0;
             ret = avcodec_receive_frame(mAudioCtx, frame->getFrame());
             if (ret == AVERROR_EOF) {
                 ALOGI("VEAudioDecoder::onDecode AVERROR_EOF");
@@ -399,9 +398,6 @@ namespace VE {
                     audioFrame->setFrameType(E_FRAME_TYPE_AUDIO);
                     if (mPerfStats) {
                         mPerfStats->audioDecodeUs.add(mDecodeAccumUs + nowUs() - decodeBeginUs);
-                        const int64_t cpuNow = threadCpuUs();
-                        mPerfStats->adecCpu.note(cpuNow, mDecodeAccumCpuUs + cpuNow - decodeCpuBeginUs);
-                        mDecodeAccumCpuUs = 0;
                         mDecodeAccumUs = 0;
                     }
                     queueFrame(audioFrame);
@@ -415,9 +411,6 @@ namespace VE {
                     frame->setFrameType(E_FRAME_TYPE_AUDIO);
                     if (mPerfStats) {
                         mPerfStats->audioDecodeUs.add(mDecodeAccumUs + nowUs() - decodeBeginUs);
-                        const int64_t cpuNow = threadCpuUs();
-                        mPerfStats->adecCpu.note(cpuNow, mDecodeAccumCpuUs + cpuNow - decodeCpuBeginUs);
-                        mDecodeAccumCpuUs = 0;
                         mDecodeAccumUs = 0;
                     }
                     queueFrame(frame);
@@ -472,18 +465,11 @@ namespace VE {
 
         if (packet->getPacketType() == E_PACKET_TYPE_AUDIO) {
             const int64_t sendBeginUs = mPerfStats ? nowUs() : 0;
-            const int64_t sendCpuBeginUs = mPerfStats ? threadCpuUs() : 0;
             ret = avcodec_send_packet(mAudioCtx, packet->getPacket());
             if (mPerfStats) {
                 // 与视频同理：真正的解码工作在 send_packet 里，
                 // 只量 receive 会把每帧成本报低一个数量级
                 mDecodeAccumUs += nowUs() - sendBeginUs;
-                // send_packet 与 receive_frame 分属两段, 只测后者正是
-                // 这个项目修过的老 bug(0.1ms vs 实际 14ms), CPU 侧同样
-                // 要把两段都算进去, 否则自校验里 instrumented 恒为 0
-                if (mPerfStats) {
-                    mDecodeAccumCpuUs += threadCpuUs() - sendCpuBeginUs;
-                }
             }
             ALOGF("VEAudioDecoder::onDecode send packet pts:%" PRId64 ", dts:%" PRId64,
                   packet->getPacket()->pts, packet->getPacket()->dts);
