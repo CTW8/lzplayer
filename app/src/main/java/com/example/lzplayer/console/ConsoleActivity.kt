@@ -75,6 +75,15 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
          */
         const val EXTRA_FORCE_SOFTWARE = "software"
         const val EXTRA_PREFER_VULKAN = "vulkan"
+
+        /// 跑分序列参数(perf-metrics 步骤7)。三个都是可选的, 不带时行为与
+        /// 手工操作完全一致 —— 自动化不能改变被测对象的默认行为
+        /** --es seekPercents 10,50,90 : 起播稳定后按序 seek 到这些百分比 */
+        const val EXTRA_SEEK_PERCENTS = "seekPercents"
+        /** --ei playSeconds 15 : 稳态播多久后收尾 */
+        const val EXTRA_PLAY_SECONDS = "playSeconds"
+        /** --es caseName fallback-runtime : 报告里的用例名 */
+        const val EXTRA_CASE_NAME = "caseName"
     }
 
     private lateinit var etSource: EditText
@@ -214,6 +223,50 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         intent?.let { handleLaunchIntent(it) }
     }
 
+    /**
+     * 解析跑分序列参数。**非法值一律拒绝并记进事件日志，不静默忽略**：
+     * 跑分是无人值守跑的，静默忽略会让报告建立在错误前提上——比如把
+     * "seekPercents 写错导致一次 seek 都没做"的那次，当成"seek 全部通过"。
+     */
+    private fun benchArg(ok: Boolean, kv: String) {
+        // 同时进 app 事件日志与 logcat: 前者给人看, 后者给 harness 解析。
+        // 跑分报告是从 logcat 组装的, 只写事件日志的话"参数被拒绝"这件事
+        // 不会出现在报告里, 而那正是最需要被看见的一类
+        if (ok) eventLog.info("BENCH_ARG", kv) else eventLog.crit("BENCH_ARG", kv)
+        Log.w(TAG, "VEBENCH ${if (ok) "ok" else "REJECT"} $kv")
+    }
+
+    private fun parseBenchmarkExtras(i: Intent) {
+        seekPercents = emptyList()
+        if (i.hasExtra(EXTRA_SEEK_PERCENTS)) {
+            val raw = i.getStringExtra(EXTRA_SEEK_PERCENTS).orEmpty()
+            val parsed = raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            val bad = parsed.filter { it.toIntOrNull()?.let { v -> v in 0..100 } != true }
+            if (parsed.isEmpty() || bad.isNotEmpty()) {
+                benchArg(false, "seekPercents 非法: \"$raw\"" +
+                        (if (bad.isNotEmpty()) " 越界或非数字: ${bad.joinToString()}" else " 为空"))
+            } else {
+                seekPercents = parsed.map { it.toInt() }
+                benchArg(true, "seekPercents=${seekPercents.joinToString()}")
+            }
+        }
+        playSeconds = -1
+        if (i.hasExtra(EXTRA_PLAY_SECONDS)) {
+            // 缺省值取 -1 而不是 0: 0 是"立刻收尾"这个合法值, 与"没给"不同
+            val v = i.getIntExtra(EXTRA_PLAY_SECONDS, -1)
+            if (v < 0) {
+                benchArg(false, "playSeconds 非法: $v（须 >= 0）")
+            } else {
+                playSeconds = v
+                benchArg(true, "playSeconds=$v")
+            }
+        }
+        caseName = i.getStringExtra(EXTRA_CASE_NAME)?.trim().orEmpty()
+        if (caseName.isNotEmpty()) {
+            benchArg(true, "caseName=$caseName")
+        }
+    }
+
     /** adb 带 --es source 起播时走这里，见 [EXTRA_SOURCE] */
     private fun handleLaunchIntent(i: Intent) {
         val path = i.getStringExtra(EXTRA_SOURCE)?.trim()
@@ -229,6 +282,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             preferVulkan = i.getBooleanExtra(EXTRA_PREFER_VULKAN, false)
             eventLog.warn("POLICY", "Vulkan 渲染 ${if (preferVulkan) "开" else "关"}（intent）")
         }
+        parseBenchmarkExtras(i)
         etSource.setText(path)
         eventLog.info("LAUNCH_INTENT", path)
         if (surfaceReady) {
@@ -813,6 +867,12 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
     /** 每次换源只打印一次启播里程碑 */
     private var startupTraceDumped = false
     /** 由 intent 指定的自动起播，PREPARED 之后触发一次 */
+    /** 跑分序列: 待执行的 seek 百分比, 空=不做 seek。见 [EXTRA_SEEK_PERCENTS] */
+    private var seekPercents: List<Int> = emptyList()
+    /** 跑分序列: 稳态播放秒数, -1=没给(不自动收尾) */
+    private var playSeconds: Int = -1
+    /** 跑分序列: 报告里的用例名, 空=没给 */
+    private var caseName: String = ""
     private var autoPlayWhenPrepared = false
     /** intent 带来的片源，等 surface 就绪后再打开(见 handleLaunchIntent) */
     private var pendingIntentSource: String? = null
