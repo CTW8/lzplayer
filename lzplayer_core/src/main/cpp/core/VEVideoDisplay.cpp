@@ -190,6 +190,16 @@ namespace VE {
                     VEPerfStats::bumpPeak(mPerfStats->frameQueuePeak,
                                           static_cast<int>(mFrames.size()));
                 }
+                // EOF 帧是最后一帧, 它若没进队或进队后没能重新拉起渲染链,
+                // 播放结束就永远不会被上报(状态卡在 STARTED)。这一行专门
+                // 用来分开这两种情况, 级别 D 保证默认构建也能看到
+                // 只打非普通帧(哨兵), 不打每帧: 普通帧 30 条/秒会重新打爆
+                // logcat 配额, 把有用的日志挤掉
+                if (mFrames.back().first->getFrameType() != E_FRAME_TYPE_VIDEO) {
+                    ALOGD("VEVideoDisplay::onQueueFrame sentinel type=%d size=%zu started=%d",
+                          (int) mFrames.back().first->getFrameType(),
+                          mFrames.size(), (int) m_IsStarted);
+                }
                 if (m_IsStarted && mFrames.size() == 1) {
                     // 队列从空转非空：链条此前已停摆，帧到达即重新拉起。
                     // 链条活着时队列必然非空，不会重复踢
@@ -261,6 +271,14 @@ namespace VE {
     VEResult VEVideoDisplay::onStop(std::shared_ptr<AMessage> msg) {
         m_IsStarted = false;
         ++mQueueGen;
+        if (!mFrames.empty()) {
+            bool hadEof = false;
+            for (auto &it : mFrames) {
+                if (it.first && it.first->getFrameType() == E_FRAME_TYPE_EOF) { hadEof = true; }
+            }
+            ALOGW("VEVideoDisplay::%s clearing %zu frames, hadEOF=%d",
+                  __FUNCTION__, mFrames.size(), (int) hadEof);
+        }
         mFrames.clear();
         return 0;
     }
@@ -273,6 +291,14 @@ namespace VE {
         // 队列代次递增 + 清本地队列：在途的旧帧到达时被丢弃。
         // 不为被清帧发回执——解码器同轮 flush 会把 credit 清算归零
         ++mQueueGen;
+        if (!mFrames.empty()) {
+            bool hadEof = false;
+            for (auto &it : mFrames) {
+                if (it.first && it.first->getFrameType() == E_FRAME_TYPE_EOF) { hadEof = true; }
+            }
+            ALOGW("VEVideoDisplay::%s clearing %zu frames, hadEOF=%d",
+                  __FUNCTION__, mFrames.size(), (int) hadEof);
+        }
         mFrames.clear();
         m_IsStarted = false;
         // 标记：seek 后渲染出的第一帧要上报，作为 seek 真正完成的依据
@@ -285,6 +311,14 @@ namespace VE {
         m_AwaitingFirstFrame = true;
         ++m_Epoch;
         ++mQueueGen;
+        if (!mFrames.empty()) {
+            bool hadEof = false;
+            for (auto &it : mFrames) {
+                if (it.first && it.first->getFrameType() == E_FRAME_TYPE_EOF) { hadEof = true; }
+            }
+            ALOGW("VEVideoDisplay::%s clearing %zu frames, hadEOF=%d",
+                  __FUNCTION__, mFrames.size(), (int) hadEof);
+        }
         mFrames.clear();
         m_IsStarted = false;
         return VE_OK;
@@ -320,6 +354,14 @@ namespace VE {
             m_pVideoRender.reset();
         }
         ++mQueueGen;
+        if (!mFrames.empty()) {
+            bool hadEof = false;
+            for (auto &it : mFrames) {
+                if (it.first && it.first->getFrameType() == E_FRAME_TYPE_EOF) { hadEof = true; }
+            }
+            ALOGW("VEVideoDisplay::%s clearing %zu frames, hadEOF=%d",
+                  __FUNCTION__, mFrames.size(), (int) hadEof);
+        }
         mFrames.clear();
         mWin = nullptr;
         return VE_OK;
@@ -382,6 +424,12 @@ namespace VE {
             mStartupTrace->mark(VEStartupTrace::T7_FIRST_FRAME_PRESENTED);
         }
         m_AwaitingFirstFrame = false;
+        // 正常渲染路径把 EOF 哨兵当普通帧消费掉 —— 排除法只剩这一条。
+        // 哨兵的 AVFrame 对象仍在(解码器复用了它, 只改了 type), 所以它
+        // 通过了上面的空帧检查。只在命中时打印, 正常帧不打
+        if (frame && frame->getFrameType() == E_FRAME_TYPE_EOF) {
+            ALOGW("VEVideoDisplay::onRender ATE EOF sentinel as normal frame");
+        }
         consumeFront();
 
         if (m_NotifyFirstFrame) {
