@@ -1938,16 +1938,7 @@ namespace VE {
             const int aq = mSource ? mSource->getQueueDepth(ETrackType::AUDIO) : -1;
             const int vq = mSource ? mSource->getQueueDepth(ETrackType::VIDEO) : -1;
             const int fq = mVideoRender ? mVideoRender->getFrameQueueDepth() : -1;
-            // A/V 偏移要求**两条轨都在**(aq/vq<0 即该轨不存在, 见
-            // VESource::getQueueDepth)。缺任一条时它都不是偏移:
-            //   无视频 → lastDiff 从未被更新, 随时钟单调发散(实测每秒 1000ms)
-            //   无音频 → 拿视频跟一个不存在的音频时钟比, 数字有但没有含义
-            // 两种情况都传哨兵
-            const bool avComparable = (aq >= 0 && vq >= 0);
-            const int64_t avOffUs = (mAVSync && avComparable)
-                                    ? mAVSync->getLastDiffUs()
-                                    : VEPerfStats::kNoSyncSample;
-            mTimeline.maybeEmit(*mPerfStats, aq, vq, fq, avOffUs);
+            mTimeline.maybeEmit(*mPerfStats, aq, vq, fq);
         }
 
         auto next = std::make_shared<AMessage>(kWhatProgressTick, shared_from_this());

@@ -256,11 +256,18 @@ namespace VE {
             /// aq/vq/fq 为**瞬时**深度，-1 表示该轨不存在或无从得知。
             /// 由调用方从组件采样后传入，而不是让本类去持有组件指针——
             /// VEPerfStats 是纯数据容器，反过来依赖播放器组件会成环
-            /// avOffsetUs 为调用方采到的**瞬时** A/V 偏移；
-            /// 无视频轨时须传 kNoSyncSample——纯音频下 VEAVsync 的 lastDiff
-            /// 从未被更新过, 直接取会得到一个随时钟单调发散的数(实测每秒
-            /// 减 1000ms), 那不是 A/V 偏移, 是"没有 A/V 可比"
-            void maybeEmit(VEPerfStats &s, int aq, int vq, int fq, int64_t avOffsetUs) {
+            /// 曾有一个 avOffsetUs 参数, 已删除。
+            ///
+            /// 它取自 VEAVsync::getLastDiffUs(), 但 m_VideoPts 是在一帧处理的
+            /// **开头**写入的(updateVideoPts → 判丢帧 → getWaitTime → 睡眠 →
+            /// 渲染), 而本类从 player looper 在任意时刻采样, 绝大多数时候正落
+            /// 在那段睡眠里。于是它量的是"距下一帧上屏还剩多久", 不是 A/V 偏移
+            /// ——恒为正, 且随流水线状态变化, 实测新旧素材上分别是 72~75ms 与
+            /// 20~26ms, 差异全来自流水线而非同步质量。
+            ///
+            /// syncWorstMs 没有这个问题: 它在 renderFrame 之前采样, 那时等待
+            /// 已结束, 量的是真实余量。同步维度有它一个就够了。
+            void maybeEmit(VEPerfStats &s, int aq, int vq, int fq) {
                 const int64_t now = nowUs();
                 if (mLastUs == 0) {          // 首次调用只起锚，不发不完整的一秒
                     mLastUs = now;
@@ -292,7 +299,7 @@ namespace VE {
                       " dropStale=%" PRId64 " dropSeek=%" PRId64
                       " vpark=%" PRId64 " apark=%" PRId64
                       " vstarve=%" PRId64 " astarve=%" PRId64
-                      " aq=%d vq=%d fq=%d syncWorstMs=%.1f avOffMs=%.1f cpu=%.1f",
+                      " aq=%d vq=%d fq=%d syncWorstMs=%.1f cpu=%.1f",
                       ++mSec,
                       static_cast<double>(present - mPresent) / elapsed,
                       s.dropLate.load(std::memory_order_relaxed) - mDropLate,
@@ -303,11 +310,7 @@ namespace VE {
                       s.audioCreditPark.load(std::memory_order_relaxed) - mAPark,
                       s.videoStarve.load(std::memory_order_relaxed) - mVStarve,
                       s.audioStarve.load(std::memory_order_relaxed) - mAStarve,
-                      aq, vq, fq, worstMs,
-                      avOffsetUs == kNoSyncSample
-                              ? kNoSampleMs
-                              : static_cast<double>(avOffsetUs) / 1000.0,
-                      sampleCpuPercent(elapsed));
+                      aq, vq, fq, worstMs, sampleCpuPercent(elapsed));
                 // 渲染三段分解。单独一行而不是并进 VESTAT: 它只在软解路径
                 // 有样本(硬解走 releaseOutputBuffer, 不经 GLES 渲染器),
                 // 混在一起会让硬解那半行永远是哨兵。
