@@ -6,6 +6,7 @@
 #include <string>
 
 #include "VEPerfStats.h"   // nowUs()
+#include "Log.h"
 
 namespace VE {
 
@@ -74,6 +75,11 @@ namespace VE {
             //
             // 精度 = 首帧实际位置 − 请求位置。**符号有意义**：
             // 负=落在请求点之前(demux 只能定位到关键帧时的常态)
+            // 精度对不上 ffprobe 关键帧, 且两条路径坏法不同。先把原值打出来:
+            // 单位(us/ms)、来源(真首帧 pts / 缺省 0)一次就能看清, 比读代码可靠
+            ALOGW("VESeekTrace::endPriming actualPtsUs=%lld requestedMs=%.1f hw=%d",
+                  (long long) actualPtsUs, mPending.requestedMs,
+                  (int) mPending.hardware);
             if (actualPtsUs >= 0) {
                 mPending.accuracyMs =
                         static_cast<double>(actualPtsUs) / 1000.0 - mPending.requestedMs;

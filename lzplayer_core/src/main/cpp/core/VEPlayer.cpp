@@ -1697,7 +1697,12 @@ namespace VE {
             case VE_NOTIFY_EVENT_FIRST_FRAME: {
                 // 首帧既是 seek 完成的依据，也顺带更新一次进度
                 int64_t pts = 0;
-                msg->findInt64("arg3", &pts);
+                const bool hasArg3 = msg->findInt64("arg3", &pts);
+                // 与 VESeekTrace::endPriming 里那行对照: 两处相同则问题在发送方,
+                // 不同则问题在中间。hasArg3 单独打出来 —— findInt64 取不到时
+                // 不修改出参, 那样 pts 会保持初值 0 而看不出是"没传"
+                ALOGW("VEPlayer::onFirstFrame arg3=%lld present=%d type=%d",
+                      (long long) pts, (int) hasArg3, (int) type);
                 notifyProgress(pts);
                 if (mSeekStage == SEEK_STAGE_PRIMING &&
                     type == EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER) {
