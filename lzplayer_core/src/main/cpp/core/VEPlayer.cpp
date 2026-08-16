@@ -2033,20 +2033,33 @@ namespace VE {
             mAVSync->reset(mSeekTargetMs * 1000.0);
         }
 
-        if (mVideoRender && mWindow != nullptr) {
+        // 判据是"有没有视频轨"，**不能拿 mVideoRender 是否为空代替**：
+        // 硬解路径下显示端就是解码器本身，mVideoRender 永远是 null，于是
+        // 所有硬解 seek 都会掉进下面那个标着"纯音频"的分支里立刻宣告完成 ——
+        // 实测 seekFinish() 与预热段同一毫秒执行、ON_SEEK_DONE 比真首帧早
+        // 178ms 上报，且 mSeekStage 被提前清空导致首帧到达时走
+        // "outside priming, ignore"，VESeekTrace 的唯一提交点 endPriming()
+        // 永不执行(硬解 seekTrace.count 恒为 0，软解为 1)。
+        //
+        // 这是同一个陷阱的第三例：EOS 判定、EOF 哨兵都栽在同一个变量上。
+        // 硬解虽然 mVideoRender 为 null，但它照样发首帧事件，等得到。
+        const bool seekWaitsForFrame =
+                (mMediaInfo != nullptr) && mMediaInfo->hasVideo();
+        if (seekWaitsForFrame && mWindow != nullptr) {
             // 有视频且 surface 就绪时以首帧上屏作为 seek 完成的判据；
             // 暂停态下也要出这一帧，否则 seek 后画面不会更新。
             // 无 surface 时永远等不到首帧，直接走完成分支(E2)。
             if (mSource)        mSource->start();
             if (mVideoDecoder) mVideoDecoder->start();
             if (mAudioDecoder) mAudioDecoder->start();
-            mVideoRender->start();
+            // 硬解下为 null(解码器自身即显示端)，不能无条件解引用
+            if (mVideoRender) mVideoRender->start();
             if (mStateBeforeSeek == STATE_STARTED && mAudioOutput) {
                 mAudioOutput->start();
             }
             postFlowTimeout(kAckTimeoutUs);
         } else {
-            // 纯音频：没有画面可等，恢复播放即视为完成
+            // 无视频轨(纯音频)或无 surface：没有画面可等，恢复播放即视为完成
             if (mStateBeforeSeek == STATE_STARTED) {
                 if (mAudioOutput)  mAudioOutput->start();
                 if (mAudioDecoder) mAudioDecoder->start();
