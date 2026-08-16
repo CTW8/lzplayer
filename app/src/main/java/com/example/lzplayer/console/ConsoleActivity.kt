@@ -246,15 +246,46 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
      * ——播完了也是一种正常收尾。
      */
     private fun armBenchmarkFinish() {
-        if (playSeconds < 0) return
+        if (playSeconds < 0 && seekPercents.isEmpty()) return
         val token = ++benchGen
+        // 稳态段：playSeconds 没给时用 0，即起播后立刻进 seek 序列
+        val steadyMs = (if (playSeconds >= 0) playSeconds else 0) * 1000L
         etSource.postDelayed({
-            // 代次校验：期间若换源/重开，旧的收尾不许覆盖新一轮的快照
-            if (token == benchGen) {
-                dumpBenchmarkSnapshot(true)
-            }
-        }, playSeconds * 1000L)
-        Log.w(TAG, "VEBENCH armed finish in ${playSeconds}s")
+            // 代次校验：期间若换源/重开，旧的序列不许接着跑
+            if (token == benchGen) runSeekStep(token, 0)
+        }, steadyMs)
+        Log.w(TAG, "VEBENCH armed steady=${steadyMs}ms seeks=${seekPercents.size}")
+    }
+
+    /**
+     * 按序执行 seek，一步一个固定间隔，最后收尾落盘。
+     *
+     * 固定间隔而不是等 seek 完成回调：耗时本来就由 VESeekTrace 三阶段记录，
+     * 不需要回调来测量；而挂回调会把序列推进与异步完成耦合起来——一次回调
+     * 丢失整个序列就卡死，正是本轮那个 EOS bug 的同类结构（多路径中断、
+     * 单一边沿唤醒）。固定间隔的代价只是采样窗口略保守，换来的是序列一定
+     * 会走完、一定会落盘。
+     *
+     * 间隔取 3s：实测 seek 总耗时 131~272ms，其中 86~99% 在预热段（解码器
+     * 追帧）。3s 留足追帧余量，也够采到 seek 后 2 秒那段独立统计窗口。
+     */
+    private fun runSeekStep(token: Int, index: Int) {
+        if (token != benchGen) return
+        if (index >= seekPercents.size) {
+            dumpBenchmarkSnapshot(true)
+            return
+        }
+        val pct = seekPercents[index]
+        if (prepared && durationMs > 0) {
+            val target = durationMs * pct / 100.0
+            player?.seekTo(target)
+            Log.w(TAG, "VEBENCH seek ${index + 1}/${seekPercents.size} pct=$pct target=${target.toInt()}ms")
+        } else {
+            // 没准备好就跳过这一步而不是中断序列，并留痕——跳过的 seek 不能
+            // 在报告里表现为"做了且很快"
+            Log.w(TAG, "VEBENCH REJECT seek pct=$pct skipped, prepared=$prepared duration=$durationMs")
+        }
+        etSource.postDelayed({ runSeekStep(token, index + 1) }, kSeekStepMs)
     }
 
     private fun dumpBenchmarkSnapshot(complete: Boolean) {
@@ -945,6 +976,8 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
     private var caseName: String = ""
     /** 收尾代次：换源/重开时递增，作废在途的延时收尾 */
     private var benchGen: Int = 0
+    /** seek 序列步距。见 runSeekStep 注释 */
+    private val kSeekStepMs = 3000L
     private var autoPlayWhenPrepared = false
     /** intent 带来的片源，等 surface 就绪后再打开(见 handleLaunchIntent) */
     private var pendingIntentSource: String? = null
