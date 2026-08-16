@@ -2065,6 +2065,14 @@ namespace VE {
                 if (mAudioDecoder) mAudioDecoder->start();
                 if (mSource)        mSource->start();
             }
+            // 这一路同样要结算 seek 追踪。endPriming(-1) 是 VESeekTrace 专为
+            // "没有首帧可比对"设计的入口：照常记三阶段耗时，但不产生精度值
+            // (造一个 0 出来会被当成"精度完美")。
+            //
+            // 漏掉它的话纯音频 seek 从不入环形缓冲、count 恒为 0，而这与
+            // "seek 很快"在报告里长得一模一样 —— 又是一次"没测到"被当成
+            // "测到了好结果"。
+            if (mSeekTrace) { mSeekTrace->endPriming(-1); }
             seekFinish();
         }
     }
