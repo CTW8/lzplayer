@@ -37,10 +37,16 @@ enc() {   # enc <输出> <编码器> <码率> <额外滤镜>
 }
 
 # —— 四个性能基线素材。所有跨轮次的性能对照只能用这四个 ——
-enc base-h264-1080p.mp4 "$(src 1920x1080 30 10)" libx264 20M
-enc base-hevc-1080p.mp4 "$(src 1920x1080 30 10)" libx265 20M
-enc high-4k.mp4         "$(src 3840x2160 30 10)" libx264 40M
-enc high-fps.mp4        "$(src 1920x1080 60 10)" libx264 25M
+#
+# 时长 60s 而不是 10s: 逐秒时间线的稳态段要凑够 30 个样本才给分位数
+# (同 VEPerfHistogram::kMinSamples)。10s 素材扣掉起播 2s 与每次 seek 后 2s,
+# 稳态只剩个位数, 分位数全是 "--"、判据只能给 INCONCLUSIVE —— 实测过,
+# 这不是保守设置而是硬门槛。行为素材不受影响, 它们只验行为不作性能基线。
+BASE_SEC=60
+enc base-h264-1080p.mp4 "$(src 1920x1080 30 $BASE_SEC)" libx264 20M
+enc base-hevc-1080p.mp4 "$(src 1920x1080 30 $BASE_SEC)" libx265 20M
+enc high-4k.mp4         "$(src 3840x2160 30 $BASE_SEC)" libx264 40M
+enc high-fps.mp4        "$(src 1920x1080 60 $BASE_SEC)" libx264 25M
 
 # —— 行为素材：只验行为，不得用于性能对照 ——
 enc tiny-360p.mp4       "$(src 640x360   25 10)" libx264 1M
