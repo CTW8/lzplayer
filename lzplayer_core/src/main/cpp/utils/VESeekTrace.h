@@ -62,6 +62,16 @@ namespace VE {
             const int64_t now = nowUs();
             mPending.primingMs = static_cast<double>(now - mPending.stageBeginUs) / 1000.0;
             mPending.totalMs = static_cast<double>(now - mPending.beginUs) / 1000.0;
+            // ⚠ 2026-08-16 实测: 这个值目前**不可信**, 两条路径各自坏在不同
+            // 地方, 修好前不要拿它下结论。
+            //   素材 base-h264-1080p 关键帧在 0/1.967/3.933/5.900s(ffprobe),
+            //   请求 2.000s→应为 -33.3, 请求 6.000s→应为 -100。
+            //   实测硬解两次都恰为 0.0 —— 落在关键帧上不可能为 0, 说明回传的
+            //     pts 就是请求值本身;
+            //   实测软解两次都恰为 +33.3 —— 符号为正, 而从关键帧起播只可能落在
+            //     请求位置之前(负值), 且第二次完全不匹配。
+            // 待查: endPriming(pts) 传进来的 pts 究竟取自哪一帧。
+            //
             // 精度 = 首帧实际位置 − 请求位置。**符号有意义**：
             // 负=落在请求点之前(demux 只能定位到关键帧时的常态)
             if (actualPtsUs >= 0) {
