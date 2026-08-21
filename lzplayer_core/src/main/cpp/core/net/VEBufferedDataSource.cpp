@@ -127,7 +127,10 @@ namespace VE {
         if (mPrefetchThread.joinable()) {
             mPrefetchThread.join();
         }
+        ALOGW("VEBufferedDataSource::reposition open BEGIN off=%lld tid=%d",
+              (long long) offset, (int) gettid());
         const VEResult ret = mUpstream->open(mUrl, offset);
+        ALOGW("VEBufferedDataSource::reposition open END ret=%d", (int) ret);
         lk.lock();
 
         if (ret != VE_OK) {
@@ -147,6 +150,12 @@ namespace VE {
               "(caller tid=%d)", (long long) offset, (int) gettid());
         mPrefetchThread = std::thread(&VEBufferedDataSource::prefetchLoop, this);
         return VE_OK;
+    }
+
+    namespace {
+        /// 左沿之后保留的回读窗口。mp4 交错读与 avformat 内部回退都在这个
+        /// 量级；给太小会重新触发 reposition 死循环，给太大则挤占前向缓冲
+        constexpr size_t kKeepBackBytes = 4 * 1024 * 1024;
     }
 
     ssize_t VEBufferedDataSource::readAt(int64_t offset, void *buf, size_t size) {
@@ -215,13 +224,37 @@ namespace VE {
             memcpy(static_cast<uint8_t *>(buf) + first, mCache.data(), toCopy - first);
         }
 
-        // 消费过的部分让出空间：窗口左沿前移到本次读取的末尾。
-        // demux 不会回头读已消费的数据(真要回头就是 seek，走重定位)。
-        const int64_t newStart = offset + static_cast<int64_t>(toCopy);
-        if (newStart > mCacheStart) {
-            mHead = (mHead + static_cast<size_t>(newStart - mCacheStart)) % mConfig.cacheBytes;
-            mCacheStart = newStart;
-            mSpaceAvailable.notify_all();
+        // 左沿**按需**前移，且保留一段回读窗口。
+        //
+        // 原实现每读一次就把左沿推到本次读取末尾，前提是"demux 不会回头读
+        // 已消费的数据(真要回头就是 seek，走重定位)"。**这个前提是错的**：
+        // mp4 解析天然要回头 —— 读完 moov 索引跳回数据区、交错读音视频轨时
+        // 在两个位置间来回、avformat 内部还有自己的缓冲回退。
+        //
+        // 实测(2026-08-21)：请求 off=5507278 落在 start=6052211 之前 545KB，
+        // 于是走 `offset < mCacheStart` → reposition → 丢缓存重开连接 →
+        // 新预取继续前跑 → 下次 readAt 依然落在左沿之前 → **死循环**。
+        // 表现为 onRead 空转 10.2% CPU(本地同位置 2.2%)、队列恒空、
+        // astarve 12~15/秒、网络播放完全出不了帧。
+        //
+        // 本地文件上这个前提永远不会暴露(直接 seek 文件，没有窗口概念) ——
+        // 又一个双路径下判据没跟上的例子。
+        //
+        // 新策略：只有缓存快满时才丢最旧数据，且左沿最多推进到
+        // (当前读位置 − kKeepBackBytes)，把回读窗口留出来。
+        // 触发阈值取容量的 3/4 而不是 `used + keepBack >= cacheBytes`。
+        // 后者等价于 used >= 28MB, 而实测素材只有 26.7MB —— 阈值**永远达不到**,
+        // 左沿从此再不推进, 等于把"每读必进"改成"永不推进", 两个极端都不对。
+        // 小文件整体装得下时本就不需要腾空间, 大文件到 3/4 才开始丢最旧数据。
+        const size_t used = static_cast<size_t>(mCacheEnd - mCacheStart);
+        if (used >= mConfig.cacheBytes / 4 * 3) {
+            const int64_t keepFrom = offset - static_cast<int64_t>(kKeepBackBytes);
+            if (keepFrom > mCacheStart) {
+                mHead = (mHead + static_cast<size_t>(keepFrom - mCacheStart)) %
+                        mConfig.cacheBytes;
+                mCacheStart = keepFrom;
+                mSpaceAvailable.notify_all();
+            }
         }
         return static_cast<ssize_t>(toCopy);
     }
