@@ -643,6 +643,19 @@ namespace VE {
         if (mPerfStats) {
             mPerfStats->demuxReadUs.add(nowUs() - readBeginUs);
         }
+        // 只打非成功返回, 且限流到每秒一条: 网络路径下 onRead 实测空转
+        // 10.2% CPU(本地仅 2.2%)却产不出包, 需要知道 av_read_frame 到底
+        // 在返回什么。每次都打会瞬间打爆 logcat 配额
+        if (ret < 0) {
+            static int64_t sLastLogUs = 0;
+            const int64_t nowU = nowUs();
+            if (nowU - sLastLogUs > 1000000) {
+                sLastLogUs = nowU;
+                char eb[64] = {0};
+                av_strerror(ret, eb, sizeof(eb));
+                ALOGW("VEDemux::onRead av_read_frame ret=%d (%s)", ret, eb);
+            }
+        }
         if (ret == AVERROR_EOF) {
             // 已经到达文件末尾
             ALOGI("VEDemux::onRead End of Stream (EOS) reached.");
