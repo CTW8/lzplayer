@@ -195,10 +195,17 @@ namespace VE {
             }
             if (!mBuffering) {
                 // 消费者要的数据还没到 = 卡顿。上报后上层会暂停数据面。
+                //
+                // **状态变更与投递必须原子**, 不能解锁后再投递:
+                // readAt 会被多个线程并发调用(FFmpeg 在 find_stream_info
+                // 期间也读)。解锁窗口里另一个线程可以看到 mBuffering=true、
+                // 判定水位已够、置 false 并投出 END —— END 就跑到 START
+                // 前面, 上层收到乱序事件后把数据面永久留在暂停态。
+                // 实测: END 在 01:44:34.103、START 在 .104, 各一次。
+                //
+                // 投递是 msg->post(), 非阻塞, 在锁内做是安全的。
                 mBuffering = true;
-                lk.unlock();
                 notifyBuffering(VE_NOTIFY_EVENT_BUFFERING_START, bufferedPercent());
-                lk.lock();
             }
             mDataAvailable.wait_for(lk, std::chrono::milliseconds(kWaitSliceMs));
         }
@@ -207,10 +214,10 @@ namespace VE {
         if (mBuffering) {
             const size_t avail = availableFromLocked(offset);
             if (avail >= mConfig.resumeWaterBytes || mUpstreamEof) {
+                // 同上: 状态变更与投递在同一临界区内完成, 保证 START/END
+                // 的投递顺序与状态变更顺序一致
                 mBuffering = false;
-                lk.unlock();
                 notifyBuffering(VE_NOTIFY_EVENT_BUFFERING_END, bufferedPercent());
-                lk.lock();
             }
         }
 
