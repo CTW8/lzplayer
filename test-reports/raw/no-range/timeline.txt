@@ -1,0 +1,4 @@
+08-22 04:21:37.365 20512 20512 W LZConsole: VEBENCH ok playSeconds=30
+08-22 04:21:37.366 20512 20512 W LZConsole: VEBENCH ok caseName=no-range
+08-22 04:21:37.367 20512 20512 W LZConsole: VEBENCH armed steady=30000ms seeks=0
+08-22 04:22:07.430 20512 20512 W LZConsole: VEBENCH snapshot=

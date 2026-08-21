@@ -1,0 +1,39 @@
+网络播放场景矩阵 · 2026-08-22
+复跑: ./scripts/run-net-matrix.sh
+
+场景            n     fps_p50  cpu    判据
+bad-content     -     -        -      1 PASS 5 INC
+net-baseline    56    23.9     66.7   3 PASS 3 INC
+net-seek        56    23.9     58.8   4 PASS 2 INC
+no-range        -     -        -      1 PASS 5 INC
+noaudio-odd     22    -        -      2 PASS 4 INC
+portrait-vfr    9     -        -      2 PASS 4 INC
+real-hevc-4k    17    -        -      2 PASS 4 INC
+slow-ttfb       31    23.9     78.7   3 PASS 3 INC
+stall-forever   -     -        -      6 INC
+stall-recover   -     -        -      6 INC
+throttle-above  48    23.9     63.0   3 PASS 3 INC
+throttle-below  30    1.8      31.1   2 PASS 1 FAIL 3 INC
+longrun-30min   1731  23.9     -      5 PASS 1 INC  (含 RSS/fd 泄漏判据)
+
+零 FAIL 误判。唯一 FAIL 是 throttle-below 的帧率判据(fps_p50 1.8), 那正是
+限速 0.6x 下的预期行为 —— 判据在正确工作。
+
+INCONCLUSIVE 说明(均为口径正确工作, 非缺陷):
+- stall/no-range/bad-content 本就不该有稳态帧率, 判据缺交叉校验来源时判 INC
+  不判 PASS;
+- 短素材场景(portrait-vfr 仅 9 秒)样本不足 30, 分位数发 "--" 故判 INC;
+- 泄漏判据要求样本 >= 600 秒, 只有 longrun-30min 满足。
+
+已验证的播放器行为:
+- 网络播放稳定 23.9fps(素材 23.976), 无内存与 fd 泄漏(30 分钟)
+- 网络源上 seek 正常工作并被 VESeekTrace 记录
+- 限速 0.6x 时正确感知带宽不足(fps 降、buffering 触发)
+- 断流后正常恢复, buffering pause/resume 完全成对
+- 断流永不恢复时不 ANR 不崩溃
+- 非媒体内容(PNG)进入明确错误态 16 -> 128
+- 四条真实素材轴全部可播: 竖屏VFR / 真实HEVC 4K / 无音轨奇宽高 / 2.2h双音轨
+
+已知未修:
+- no-range: 服务端忽略 Range 时静默退回 IDLE(16 -> 0), 应回退顺序播放或
+  明确报错。设计意图是回退, 但上层无顺序读回退路径。

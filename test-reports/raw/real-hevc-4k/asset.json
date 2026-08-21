@@ -1,0 +1,31 @@
+{
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "codec_name": "hevc",
+            "codec_type": "video",
+            "width": 3840,
+            "height": 2160,
+            "r_frame_rate": "90000/3001",
+            "duration": "12.771367",
+            "bit_rate": "48429651",
+            "side_data_list": [
+                {
+
+                }
+            ]
+        },
+        {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "r_frame_rate": "0/0",
+            "duration": "12.757333",
+            "bit_rate": "319999"
+        }
+    ]
+}
