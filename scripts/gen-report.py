@@ -43,6 +43,9 @@ COLUMN_NOTES = {
     "syncWorstMs": "本秒最差同步余量，在 renderFrame 之前采样。"
                    "负=已迟到；-9999 = 本秒无帧上屏（哨兵，非 0）",
     "cpu": "进程 CPU，单核归一（100 = 吃满一核）。-9999 = 未采到",
+    "rssMb": "进程驻留内存。**判泄漏看斜率不看绝对值**——绝对值受素材分辨率"
+             "与缓存配置影响很大（32MB 环形缓存 + 解码缓冲即占大头）",
+    "fd": "打开的文件描述符数。与 RSS 是两种独立故障，只看 RSS 会漏掉 fd 泄漏",
 }
 
 
@@ -222,6 +225,36 @@ def build(raw_dir):
         add("无 credit 记账失守", "PASS" if ovf.get("max") == 0 else "FAIL",
             "稳态 dropOvf max=%s" % ovf.get("max"),
             "vpark/apark 有增长即流控在工作")
+
+    # 泄漏判据: 稳态段 RSS/fd 的斜率。**样本不足 120 秒不下结论** ——
+    # 实测 5 分钟样本给出 +41.6 MB/小时, 而 269 秒内实际只涨 14MB 且落在
+    # 区间波动内, 短样本的斜率外推不可靠
+    def slope(seg, col):
+        pts = [(int(r["t"]), r[col]) for r in seg
+               if isinstance(r.get(col), float) and r[col] > -9000
+               and isinstance(r.get("t"), float)]
+        if len(pts) < 120:
+            return None
+        mx = sum(p[0] for p in pts) / len(pts)
+        my = sum(p[1] for p in pts) / len(pts)
+        d = sum((p[0] - mx) ** 2 for p in pts)
+        return (sum((p[0] - mx) * (p[1] - my) for p in pts) / d) if d else 0.0
+
+    steady_rows = segs.get("steady") or []
+    for col, unit, tol in (("rssMb", "MB/小时", 20.0), ("fd", "个/小时", 60.0)):
+        sl = slope(steady_rows, col)
+        if sl is None:
+            add("%s 无泄漏" % col, "INCONCLUSIVE",
+                "稳态样本 %d 秒 < 120，斜率不可靠" % len(steady_rows),
+                "需更长样本")
+        else:
+            per_h = sl * 3600
+            add("%s 无泄漏" % col,
+                "PASS" if abs(per_h) < tol else "FAIL",
+                "稳态斜率 %+.1f %s" % (per_h, unit),
+                "区间 %.1f~%.1f" % (
+                    min(r[col] for r in steady_rows if isinstance(r.get(col), float)),
+                    max(r[col] for r in steady_rows if isinstance(r.get(col), float))))
 
     if not seek.get("count"):
         add("seek 追踪有记录", "INCONCLUSIVE",
