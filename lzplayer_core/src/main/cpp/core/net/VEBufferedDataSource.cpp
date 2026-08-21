@@ -61,6 +61,18 @@ namespace VE {
                 // 缓存满就歇着，等消费者腾出空间
                 while (mRunning && !mAbort &&
                        (mCacheEnd - mCacheStart) >= static_cast<int64_t>(mConfig.cacheBytes)) {
+                    {
+                        // 验证"预取等空间 / 空间靠 readAt 释放 / readAt 等预取
+                        // 数据"是否成环。限流每秒一条
+                        static int64_t sLastUs = 0;
+                        const int64_t nowU = nowUs();
+                        if (nowU - sLastUs > 1000000) {
+                            sLastUs = nowU;
+                            ALOGW("prefetch WAIT space start=%lld end=%lld used=%lld cap=%zu",
+                                  (long long) mCacheStart, (long long) mCacheEnd,
+                                  (long long) (mCacheEnd - mCacheStart), mConfig.cacheBytes);
+                        }
+                    }
                     mSpaceAvailable.wait_for(lk, std::chrono::milliseconds(kWaitSliceMs));
                 }
                 if (!mRunning || mAbort || mUpstreamEof) {
