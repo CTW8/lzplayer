@@ -18,6 +18,15 @@ SP="${SCRATCH:-/tmp}"
 SHOT="$SP/visual-probe.png"
 PKG=com.example.lzplayer
 
+# 本脚本会 force-stop 播放器, **不能与长稳测试并行运行** ——
+# 实测它在 30 分钟长稳期间执行, 把被测播放放停了, 而 harness 主循环还在空等。
+# 另外它此前还有 `pkill -f 'logcat -f'` 会杀掉长稳的设备侧采集进程。
+# 这是本轮第四次"测量互相干扰": 前三次是 logcat 截断、USB 通道争抢、
+# 日志文件跨运行叠加。
+if pgrep -f "run-benchmark.sh" >/dev/null 2>&1; then
+    echo "ABORT 检测到 run-benchmark.sh 正在运行 —— 本脚本会停掉播放器, 拒绝执行"
+    exit 2
+fi
 adb shell am force-stop $PKG >/dev/null 2>&1
 adb shell "am start -n $PKG/.console.ConsoleActivity -e source '$SRC' --ez autoplay true" >/dev/null 2>&1
 # 等起播稳定：截太早会拍到黑屏或首帧未上屏，那不是画面错误
