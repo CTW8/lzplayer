@@ -85,6 +85,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         rng = self.headers.get("Range")
         start, end = 0, size - 1
         status = 200
+        if q_norange := ("norange" in (self.path.split("?", 1)[1] if "?" in self.path else "")):
+            # 强制走 200 全量, 忽略 Range —— 验证播放器在服务端不支持
+            # Range 时的降级行为(必须明确失败或回退, 不能挂死)
+            rng = None
         if rng and rng.startswith("bytes="):
             # Range 是 seek 的基础。**206 与 200 两条分支播放器都要能走**，
             # no-range 场景就是靠强制走 200 来验降级行为
