@@ -120,6 +120,19 @@ namespace VE {
                 }
                 mCacheEnd += got;
                 mDataAvailable.notify_all();
+                // **恢复信号必须由预取线程发, 不能只靠 readAt。**
+                //
+                // BUFFERING_START 会让上层暂停数据面, demux 随之停止调用
+                // readAt —— 而 BUFFERING_END 原本只在 readAt 内部发出, 于是
+                // 恢复信号来自被自己暂停掉的那条路径, 数据面永远等不到恢复。
+                // 本地文件不暴露: readAt 从不阻塞, START 根本不会触发。
+                //
+                // 水位是预取线程自己维护的, 它本来就知道什么时候够了。
+                if (mBuffering && (mCacheEnd - mCacheStart) >=
+                        static_cast<int64_t>(mConfig.resumeWaterBytes)) {
+                    mBuffering = false;
+                    notifyBuffering(VE_NOTIFY_EVENT_BUFFERING_END, bufferedPercent());
+                }
             } else if (got == 0) {
                 ALOGW("VEBufferedDataSource::%s upstream EOF at %lld "
                       "tid=%d start=%lld end=%lld", __FUNCTION__,
