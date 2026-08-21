@@ -22,6 +22,10 @@ import threading
 import time
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8188
+
+# —— 注入参数, 经 URL query 传入(?kbps=600&ttfb=2&stall=5@10) ——
+# 放 query 而不是全局控制接口: 用例与注入绑定在同一个 URL 上, 报告里
+# 环境指纹只要记 URL 就完整记录了注入状态, 不会出现"忘记关掉上一次注入"
 ROOT = sys.argv[2] if len(sys.argv) > 2 else "assets/serving"
 
 LOG_PATH = os.path.join("assets", "server-requests.log")
@@ -56,6 +60,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         self._serve(head_only=False)
+
+    def _params(self):
+        """从 query 取注入参数。kbps=限速 / ttfb=首字节延迟秒 /
+        stall=断流秒@触发秒"""
+        q = {}
+        if "?" in self.path:
+            for kv in self.path.split("?", 1)[1].split("&"):
+                if "=" in kv:
+                    k, v = kv.split("=", 1)
+                    q[k] = v
+        return q
 
     def _serve(self, head_only):
         p = self._safe_path()
@@ -103,13 +118,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(length))
         if status == 206:
             self.send_header("Content-Range", "bytes %d-%d/%d" % (start, end, size))
+        ttfb = float(self._params().get("ttfb", 0) or 0)
+        if ttfb > 0:
+            # 首字节延迟: 验证网络等待是否落在启播 T1/T2 段而非被算进解码
+            log("TTFB", "%s delay %.1fs" % (self.path, ttfb))
+            time.sleep(ttfb)
         self.end_headers()
         log("REQ", "%s %s range=%s -> %d bytes=%d-%d/%d"
             % (self.command, self.path, rng or "-", status, start, end, size))
         if head_only:
             return
 
+        q = self._params()
+        kbps = float(q.get("kbps", 0) or 0)
+        stall_spec = q.get("stall", "")
+        stall_sec, stall_at = 0.0, 0.0
+        if "@" in stall_spec:
+            try:
+                a, b = stall_spec.split("@", 1)
+                stall_sec, stall_at = float(a), float(b)
+            except ValueError:
+                pass
+
         sent = 0
+        t_start = time.time()
+        stalled = False
         try:
             with open(p, "rb") as f:
                 f.seek(start)
@@ -119,6 +152,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         break
                     self.wfile.write(chunk)
                     sent += len(chunk)
+                    elapsed = time.time() - t_start
+                    # 断流注入: 到点后停止供给 stall_sec 秒。
+                    # **必须配合限速**否则无效 —— 32MB 缓存在低码率素材上
+                    # 能撑 2~12 分钟(见 manifest 的 cache_drain_sec),
+                    # 不限速时断流 5 秒播放器根本察觉不到
+                    if stall_sec > 0 and not stalled and elapsed >= stall_at:
+                        stalled = True
+                        log("STALL", "%s begin %.1fs at sent=%d" % (self.path, stall_sec, sent))
+                        time.sleep(stall_sec)
+                        log("STALL", "%s end" % self.path)
+                        t_start += stall_sec
+                    # 限速: 按目标码率算出本该用掉的时间, 超前就睡
+                    if kbps > 0:
+                        want_t = sent * 8.0 / (kbps * 1000.0)
+                        if want_t > elapsed:
+                            time.sleep(want_t - elapsed)
         except (BrokenPipeError, ConnectionResetError):
             # 播放器 seek 或 stop 会直接断连，这是正常的，不是错误
             log("ABORT", "%s sent=%d/%d" % (self.path, sent, length))
