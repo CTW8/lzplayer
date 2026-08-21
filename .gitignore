@@ -15,3 +15,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# 网络播放测试素材（用户私人文件，绝不入库）——net-playback-harness 步骤1
+assets/serving/
+assets/manifest.json
