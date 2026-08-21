@@ -184,8 +184,18 @@ namespace VE {
 
         // 等预取把这一段填上来
         while (availableFromLocked(offset) == 0) {
-            if (mAbort) {
-                return -1;
+            // 左沿越过了自己要的位置 → 数据已被丢弃, **再等也等不来**:
+            // 预取只让 mCacheEnd 往前长, mCacheStart 从不后退, 循环条件
+            // 永远不会变真。函数入口那次 `offset < mCacheStart` 检查只在
+            // 进入时做一次, 而 readAt 是多线程并发的(buffering 乱序已经
+            // 证明这一点) —— 线程 A 等数据期间, 线程 B 推进左沿越过 A 的
+            // offset, A 就永久卡死。
+            // 实测表现: 停在 BUFFERING_START、END 再不出现、VESTAT 全无。
+            if (offset < mCacheStart) {
+                if (reposition(lk, offset) != VE_OK) {
+                    return -1;
+                }
+                continue;
             }
             if (mPrefetchError != VE_OK) {
                 return -1;
