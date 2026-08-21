@@ -332,8 +332,20 @@ namespace VE {
             return VE_PLAYER_ERROR_NETWORK_IO;
         }
         if (statusCode == 200 && offset > 0) {
-            // 服务端不支持 Range：无法定位，上层只能从头读
-            ALOGW("VEHttpDataSource::%s server ignored Range, got full body", __FUNCTION__);
+            // 服务端不支持 Range：无法定位，上层只能从头读。
+            //
+            // **但上层并没有"从头读并丢弃到目标位置"的回退路径** —— 设计意图
+            // (见上一行注释与 200 被列入可接受状态码)与实现在这里脱节。
+            // 后果: mp4 解析必然要 offset>0(跳文件尾读 moov), 第一次跳转就撞上
+            // 这条分支, 连接断开、返回 VE_INVALID_OPERATION, 上层静默把状态机
+            // 从 STARTED 退回 IDLE(实测 state 16 -> 0), 既不播放也不上报错误。
+            // 对照 bad-content 场景是明确的 16 -> 128(STATE_ERROR), 那是对的。
+            //
+            // 修法需在上层补顺序读回退(从 0 读并丢弃到目标偏移), 改动面大于
+            // 这一行, 未实施。至少当前应让失败可见而非静默复位。
+            ALOGW("VEHttpDataSource::%s server ignored Range, got full body "
+                  "(offset=%lld) —— 上层无顺序读回退, 将导致静默失败",
+                  __FUNCTION__, (long long) offset);
             disconnect();
             return VE_INVALID_OPERATION;
         }
