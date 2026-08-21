@@ -84,7 +84,10 @@ esac
 CMD="am start -n $ACT -e source $SRC_URI --ez autoplay true --ez software $SOFTWARE"
 CMD="$CMD --ei playSeconds $PLAY_SECONDS --es caseName $CASE"
 [ -n "$SEEK_PERCENTS" ] && CMD="$CMD --es seekPercents $SEEK_PERCENTS"
-adb shell $CMD >/dev/null 2>&1
+# 整条命令加引号在设备侧 shell 执行: URL query 里的 & 否则会被当成后台
+# 运行符吃掉, 注入参数静默丢失 —— 实测 ?kbps=2000&stall=6@0.25 只剩
+# kbps=2000, 断流场景连着三次"什么都没测到"却不报错
+adb shell "$CMD" >/dev/null 2>&1
 echo "$CMD" >> "$OUT/env.txt"
 
 # 等到快照出现或超时。收尾时刻 = 稳态 + 每个 seek 3s(见 runSeekStep) + 余量

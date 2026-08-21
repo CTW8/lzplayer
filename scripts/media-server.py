@@ -131,12 +131,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         q = self._params()
         kbps = float(q.get("kbps", 0) or 0)
+        # 断流触发点按**已送出字节数**而非秒数。
+        #
+        # 按秒不行: 与限速叠加时, 播放器可能在触发时刻之前就因等不到数据而
+        # 断开连接 —— 实测 stall=8@20 时服务器只送出 6MB 连接就 ABORT,
+        # 断流点根本没等到, 场景什么都没测到却不报错。
+        # 按字节则一定落在传输过程中。用 stall=秒@MB, 如 stall=8@4 表示
+        # 送出 4MB 后断流 8 秒。
         stall_spec = q.get("stall", "")
-        stall_sec, stall_at = 0.0, 0.0
+        stall_sec, stall_at_bytes = 0.0, 0
         if "@" in stall_spec:
             try:
                 a, b = stall_spec.split("@", 1)
-                stall_sec, stall_at = float(a), float(b)
+                stall_sec = float(a)
+                stall_at_bytes = int(float(b) * 1024 * 1024)
             except ValueError:
                 pass
 
@@ -157,7 +165,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     # **必须配合限速**否则无效 —— 32MB 缓存在低码率素材上
                     # 能撑 2~12 分钟(见 manifest 的 cache_drain_sec),
                     # 不限速时断流 5 秒播放器根本察觉不到
-                    if stall_sec > 0 and not stalled and elapsed >= stall_at:
+                    if stall_sec > 0 and not stalled and sent >= stall_at_bytes:
                         stalled = True
                         log("STALL", "%s begin %.1fs at sent=%d" % (self.path, stall_sec, sent))
                         time.sleep(stall_sec)
