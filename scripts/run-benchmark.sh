@@ -87,6 +87,25 @@ CMD="$CMD --ei playSeconds $PLAY_SECONDS --es caseName $CASE"
 # 整条命令加引号在设备侧 shell 执行: URL query 里的 & 否则会被当成后台
 # 运行符吃掉, 注入参数静默丢失 —— 实测 ?kbps=2000&stall=6@0.25 只剩
 # kbps=2000, 断流场景连着三次"什么都没测到"却不报错
+# 日志落**设备本地**再一次性拉取, 不用宿主机流式 adb logcat。
+#
+# 两个都要避开的坑:
+# 1. 跑完再 adb logcat -d 会被环形缓冲截断 —— 实测 5 分钟长稳只留最后
+#    103 秒, 前 195 秒全丢;
+# 2. 宿主机流式 `adb logcat > file &` 会与 adb reverse **抢同一条 USB
+#    通道**, 把网络带宽吃掉 —— 实测同素材同参数, 有流式采集时 fps 均值
+#    1.4(最低 0), 无流式时 23.9。**测量工具反过来污染了被测对象**,
+#    且伪装得很好: 数据完整、内存斜率也正常, 只有 fps 露馅。
+# 先杀残留采集进程并删旧文件, 否则多次运行的日志会叠在同一文件里 ——
+# 实测出现过"样本 415 条却只覆盖 297 秒"、fps 均值被上一轮数据拉偏
+# 每次运行用**独立文件名**, 而不是复用同一个再删。
+# 实测复用时 rm 不生效: 采集进程仍持有文件句柄, 新一轮日志追加在旧内容之后,
+# 于是"样本 712 条却只有 297 个唯一秒号"、三段长度 [118,297,297] ——
+# 第一段 118 正是上一轮的长度。据此算出的泄漏斜率与 fps 全部不可信。
+DEV_LOG="/sdcard/bench-$CASE.txt"
+adb shell "pkill -f 'logcat -f /sdcard/bench-'" >/dev/null 2>&1
+sleep 1
+adb shell "rm -f $DEV_LOG; logcat -c; nohup logcat -f $DEV_LOG > /dev/null 2>&1 &" >/dev/null 2>&1
 adb shell "$CMD" >/dev/null 2>&1
 echo "$CMD" >> "$OUT/env.txt"
 
@@ -102,7 +121,11 @@ done
 # 只取收尾快照之前的时间线: 序列收尾后 app 并未退出, 播放还在继续,
 # 那之后的 VESTAT 不属于本用例的采样窗口。混进来会让缺号检测误报 ——
 # 实测 net-53min 收尾于 t=25, 而 t=42 又冒出一条, 中间 17 秒被判缺号。
-adb logcat -d 2>/dev/null | grep -aE "VESTAT|VERENDER|VEGAUGE|VEBENCH" \
+adb shell "pkill -f 'logcat -f /sdcard/bench-'" >/dev/null 2>&1
+sleep 1
+adb pull "$DEV_LOG" "$OUT/logcat-stream.txt" >/dev/null 2>&1
+adb shell "rm -f $DEV_LOG" >/dev/null 2>&1
+cat "$OUT/logcat-stream.txt" 2>/dev/null | grep -aE "VESTAT|VERENDER|VEGAUGE|VEBENCH" \
   | awk -v n="$PLAY_SECONDS" '
       /VESTAT t=/ { if (match($0, /t=[0-9]+/)) {
                       t = substr($0, RSTART+2, RLENGTH-2) + 0
