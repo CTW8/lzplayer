@@ -1,4 +1,6 @@
 #include "VEBufferedDataSource.h"
+#include <unistd.h>
+#include "utils/VEPerfStats.h"   // nowUs()
 
 #include <algorithm>
 #include <cstring>
@@ -47,6 +49,7 @@ namespace VE {
     }
 
     void VEBufferedDataSource::prefetchLoop() {
+        ALOGW("VEBufferedDataSource::prefetchLoop ENTER tid=%d", (int) gettid());
         pthread_setname_np(pthread_self(), "ve_prefetch");
         std::vector<uint8_t> chunk(kFetchChunk);
 
@@ -85,8 +88,10 @@ namespace VE {
                 mCacheEnd += got;
                 mDataAvailable.notify_all();
             } else if (got == 0) {
-                ALOGI("VEBufferedDataSource::%s upstream EOF at %lld", __FUNCTION__,
-                      static_cast<long long>(fetchAt));
+                ALOGW("VEBufferedDataSource::%s upstream EOF at %lld "
+                      "tid=%d start=%lld end=%lld", __FUNCTION__,
+                      static_cast<long long>(fetchAt), (int) gettid(),
+                      (long long) mCacheStart, (long long) mCacheEnd);
                 mUpstreamEof = true;
                 mDataAvailable.notify_all();
                 break;
@@ -135,6 +140,11 @@ namespace VE {
         mUpstreamEof = false;
         mPrefetchError = VE_OK;
         mRunning = true;
+        // 一次运行就能看清有几个预取线程、各自什么状态。此前三次机制推断
+        // 全被实测推翻(readAt 混淆两种 0 / EOF 未复位 / 线程生命周期),
+        // 不再靠读代码猜
+        ALOGW("VEBufferedDataSource::reposition to %lld, spawning prefetch "
+              "(caller tid=%d)", (long long) offset, (int) gettid());
         mPrefetchThread = std::thread(&VEBufferedDataSource::prefetchLoop, this);
         return VE_OK;
     }
@@ -142,6 +152,19 @@ namespace VE {
     ssize_t VEBufferedDataSource::readAt(int64_t offset, void *buf, size_t size) {
         std::unique_lock<std::mutex> lk(mMutex);
 
+        {
+            // 缓存区间到底怎么走的。限流每秒一条, 否则打爆配额
+            static int64_t sLastUs = 0;
+            const int64_t nowU = nowUs();
+            if (nowU - sLastUs > 1000000) {
+                sLastUs = nowU;
+                ALOGW("VEBufferedDataSource::readAt off=%lld size=%zu "
+                      "start=%lld end=%lld avail=%zu eof=%d",
+                      (long long) offset, size, (long long) mCacheStart,
+                      (long long) mCacheEnd, availableFromLocked(offset),
+                      (int) mUpstreamEof);
+            }
+        }
         if (offset < mCacheStart ||
             offset > mCacheEnd + mConfig.forwardSkipMax) {
             // 后向 seek，或前向跨得太远等不起 → 重定位
