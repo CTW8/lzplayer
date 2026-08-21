@@ -233,7 +233,10 @@ def build(raw_dir):
         pts = [(int(r["t"]), r[col]) for r in seg
                if isinstance(r.get(col), float) and r[col] > -9000
                and isinstance(r.get("t"), float)]
-        if len(pts) < 120:
+        # 门槛 600 秒: 实证得来。5 分钟样本给出 RSS +41.6 MB/小时, 而 30 分钟
+        # 样本给出 +3.6, **相差 11 倍** —— 短样本的斜率会被区间内的正常波动
+        # 主导。原门槛 120 秒明显偏低。
+        if len(pts) < 600:
             return None
         mx = sum(p[0] for p in pts) / len(pts)
         my = sum(p[1] for p in pts) / len(pts)
@@ -245,7 +248,7 @@ def build(raw_dir):
         sl = slope(steady_rows, col)
         if sl is None:
             add("%s 无泄漏" % col, "INCONCLUSIVE",
-                "稳态样本 %d 秒 < 120，斜率不可靠" % len(steady_rows),
+                "稳态样本 %d 秒 < 600，斜率不可靠(实证: 5min 与 30min 相差 11 倍)" % len(steady_rows),
                 "需更长样本")
         else:
             per_h = sl * 3600
