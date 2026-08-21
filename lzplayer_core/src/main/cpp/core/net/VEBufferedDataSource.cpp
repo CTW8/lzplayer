@@ -80,10 +80,31 @@ namespace VE {
                 }
                 space = mConfig.cacheBytes - static_cast<size_t>(mCacheEnd - mCacheStart);
                 fetchAt = mCacheEnd;
+                {
+                    static int64_t sUs = 0;
+                    const int64_t n = nowUs();
+                    if (n - sUs > 1000000) {
+                        sUs = n;
+                        ALOGW("STATE prefetch tid=%d fetchAt=%lld space=%zu "
+                              "start=%lld end=%lld head=%zu running=%d eof=%d",
+                              (int) gettid(), (long long) fetchAt, space,
+                              (long long) mCacheStart, (long long) mCacheEnd,
+                              mHead, (int) mRunning, (int) mUpstreamEof);
+                    }
+                }
             }
 
             const size_t want = std::min(space, chunk.size());
             const ssize_t got = mUpstream->readAt(fetchAt, chunk.data(), want);
+            {
+                static int64_t sUs2 = 0;
+                const int64_t n2 = nowUs();
+                if (n2 - sUs2 > 1000000) {
+                    sUs2 = n2;
+                    ALOGW("STATE upstream tid=%d at=%lld want=%zu got=%zd",
+                          (int) gettid(), (long long) fetchAt, want, got);
+                }
+            }
 
             std::lock_guard<std::mutex> lk(mMutex);
             if (got > 0) {
@@ -228,6 +249,18 @@ namespace VE {
                 // 投递是 msg->post(), 非阻塞, 在锁内做是安全的。
                 mBuffering = true;
                 notifyBuffering(VE_NOTIFY_EVENT_BUFFERING_START, bufferedPercent());
+            }
+            {
+                static int64_t sUs3 = 0;
+                const int64_t n3 = nowUs();
+                if (n3 - sUs3 > 1000000) {
+                    sUs3 = n3;
+                    ALOGW("STATE readAt-wait tid=%d off=%lld start=%lld end=%lld "
+                          "head=%zu buffering=%d eof=%d err=%d",
+                          (int) gettid(), (long long) offset,
+                          (long long) mCacheStart, (long long) mCacheEnd, mHead,
+                          (int) mBuffering, (int) mUpstreamEof, (int) mPrefetchError);
+                }
             }
             mDataAvailable.wait_for(lk, std::chrono::milliseconds(kWaitSliceMs));
         }

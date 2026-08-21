@@ -363,6 +363,21 @@ namespace VE {
         if (mAbort) {
             return -1;
         }
+        // **EOF 判定必须排在重连之前。**
+        //
+        // 读到文件末尾时 offset == 文件大小。若此时连接已因读完而关闭, 就会
+        // 走进下面的重连分支, 向服务器请求一个**越界 Range** —— 规范服务器
+        // 回 416, connectAndRequest 判为失败返回 -1, 于是 EOF 被上报成 EIO。
+        // 而原来的 `if (mEof) return 0` 排在重连之后, **永远执行不到**,
+        // VEBufferedDataSource 的 `got == 0` 分支因此从未触发。
+        //
+        // 实测证据: STATE upstream at=26749019 want=65536 got=-1, 而文件正好
+        // 26749019 字节; 且全程无 upstream EOF 日志。
+        // 判据只看偏移与内容长度, **不依赖 mEof**: reposition/重连会复位 mEof,
+        // 依赖它会让守卫在恰恰需要它的时候失效(实测第一版就是这样)
+        if (mContentLength > 0 && offset >= mContentLength) {
+            return 0;
+        }
         if (!mConnected || offset != mStreamPos) {
             // 不是顺序读：只能重开连接下新的 Range。
             // 上层缓冲层会尽量避免走到这里(见 VEBufferedDataSource)。
