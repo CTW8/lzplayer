@@ -11,6 +11,7 @@
 #include <cstring>
 #include <ctime>
 #include <unistd.h>
+#include <dirent.h>
 
 #include "VEPerfHistogram.h"
 #include "Log.h"
@@ -274,6 +275,38 @@ namespace VE {
             ///
             /// 首次调用只起基线返回 kNoSampleMs —— "没采到"与"占用为 0"不是
             /// 一回事, 而播放器占用 0 恰恰是个值得警觉的读数。
+            /// 进程 RSS(MB)与打开的 fd 数。**内存维度此前完全为零** ——
+            /// 长稳测试要判泄漏, 靠的是这两列的斜率而非绝对值: 绝对值受
+            /// 素材分辨率与缓存配置影响很大, 而斜率只要不为正就说明没泄漏。
+            /// 读失败返回哨兵而不是 0 —— 0 是合法读数(fd 不可能为 0, 但
+            /// RSS 理论上可以很小), 混同会让"没采到"看起来像"很健康"
+            void sampleMemory(double *rssMb, int *fdCount) {
+                *rssMb = kNoSampleMs;
+                *fdCount = -1;
+                FILE *fp = fopen("/proc/self/statm", "r");
+                if (fp != nullptr) {
+                    long total = 0, resident = 0;
+                    if (fscanf(fp, "%ld %ld", &total, &resident) == 2) {
+                        // statm 第二列是驻留页数, 乘页大小得字节
+                        *rssMb = static_cast<double>(resident) *
+                                 static_cast<double>(sysconf(_SC_PAGESIZE)) /
+                                 (1024.0 * 1024.0);
+                    }
+                    fclose(fp);
+                }
+                // fd 数: 数 /proc/self/fd 下的条目。泄漏 fd 与泄漏内存是
+                // 两种独立故障, 只看 RSS 会漏掉前者
+                DIR *d = opendir("/proc/self/fd");
+                if (d != nullptr) {
+                    int n = 0;
+                    while (readdir(d) != nullptr) {
+                        ++n;
+                    }
+                    closedir(d);
+                    *fdCount = n - 2;   // 扣掉 . 与 ..
+                }
+            }
+
             double sampleCpuPercent(double elapsedSec) {
                 FILE *fp = fopen("/proc/self/stat", "r");
                 if (fp == nullptr) {
@@ -367,6 +400,9 @@ namespace VE {
                         kNoSyncSample, std::memory_order_relaxed);
                 // 这一秒一帧都没上屏时发 -9999 而不是 0：0 是"余量刚好归零"
                 // (即将开始丢帧)，与"没测到"是相反的结论
+                double rssMb = kNoSampleMs;
+                int fdCount = -1;
+                sampleMemory(&rssMb, &fdCount);
                 const double worstMs = (worst == kNoSyncSample)
                                        ? kNoSampleMs
                                        : static_cast<double>(worst) / 1000.0;
@@ -374,7 +410,8 @@ namespace VE {
                       " dropStale=%" PRId64 " dropSeek=%" PRId64
                       " vpark=%" PRId64 " apark=%" PRId64
                       " vstarve=%" PRId64 " astarve=%" PRId64
-                      " aq=%d vq=%d fq=%d syncWorstMs=%.1f cpu=%.1f",
+                      " aq=%d vq=%d fq=%d syncWorstMs=%.1f cpu=%.1f "
+                      "rssMb=%.1f fd=%d",
                       ++mSec,
                       static_cast<double>(present - mPresent) / elapsed,
                       s.dropLate.load(std::memory_order_relaxed) - mDropLate,
@@ -385,7 +422,8 @@ namespace VE {
                       s.audioCreditPark.load(std::memory_order_relaxed) - mAPark,
                       s.videoStarve.load(std::memory_order_relaxed) - mVStarve,
                       s.audioStarve.load(std::memory_order_relaxed) - mAStarve,
-                      aq, vq, fq, worstMs, sampleCpuPercent(elapsed));
+                      aq, vq, fq, worstMs, sampleCpuPercent(elapsed),
+                      rssMb, fdCount);
                 // 渲染三段分解。单独一行而不是并进 VESTAT: 它只在软解路径
                 // 有样本(硬解走 releaseOutputBuffer, 不经 GLES 渲染器),
                 // 混在一起会让硬解那半行永远是哨兵。
