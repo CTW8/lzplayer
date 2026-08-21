@@ -15,7 +15,10 @@
 #   verdict.txt    完整性校验结论
 set -uo pipefail
 
-ASSET="${1:?素材名，如 base-h264-1080p.mp4}"
+# 素材名以 http:// 开头即网络源(net-playback-harness 步骤4)。
+# 判定放在这里而不是加 --url 开关: 用例定义里只有一个"源"的概念,
+# 多一个开关就多一处可能与素材对不上的地方
+ASSET="${1:?素材名，或 http://127.0.0.1:8188/xxx.mp4}"
 SOFTWARE="${2:-true}"
 PLAY_SECONDS="${3:-15}"
 SEEK_PERCENTS="${4:-}"
@@ -31,6 +34,7 @@ mkdir -p "$OUT"
 # 本机素材路径（gen-test-assets.sh 的默认输出目录），用于 ffprobe 指纹。
 # 指纹取自本机副本而不是设备：ffprobe 在宿主机现成，且两者是同一份文件
 LOCAL_ASSET="/tmp/lzplayer-assets/$ASSET"
+[ "${ASSET#http}" != "$ASSET" ] && LOCAL_ASSET="assets/serving/$(basename "$ASSET")"
 
 echo "== 用例 $CASE =="
 echo "   素材=$ASSET 软解=$SOFTWARE 稳态=${PLAY_SECONDS}s seek=${SEEK_PERCENTS:-无}"
@@ -70,7 +74,14 @@ fi
 adb shell "rm -f $APP_FILES/$CASE-snapshot.json" >/dev/null 2>&1
 adb logcat -c
 adb shell am force-stop $PKG >/dev/null 2>&1
-CMD="am start -n $ACT -e source $DEV_DIR/$ASSET --ez autoplay true --ez software $SOFTWARE"
+case "$ASSET" in
+  http://*|https://*)
+      SRC_URI="$ASSET"
+      # 网络源: 服务器请求日志并入产物, 它是判据的独立交叉源
+      NET=1 ;;
+  *)  SRC_URI="$DEV_DIR/$ASSET"; NET=0 ;;
+esac
+CMD="am start -n $ACT -e source $SRC_URI --ez autoplay true --ez software $SOFTWARE"
 CMD="$CMD --ei playSeconds $PLAY_SECONDS --es caseName $CASE"
 [ -n "$SEEK_PERCENTS" ] && CMD="$CMD --es seekPercents $SEEK_PERCENTS"
 adb shell $CMD >/dev/null 2>&1
@@ -85,7 +96,15 @@ for _ in $(seq 1 "$DEADLINE"); do
   adb shell "test -f $APP_FILES/$CASE-snapshot.json" >/dev/null 2>&1 && break
 done
 
-adb logcat -d 2>/dev/null | grep -aE "VESTAT|VERENDER|VEGAUGE|VEBENCH" > "$OUT/timeline.txt" || true
+# 只取收尾快照之前的时间线: 序列收尾后 app 并未退出, 播放还在继续,
+# 那之后的 VESTAT 不属于本用例的采样窗口。混进来会让缺号检测误报 ——
+# 实测 net-53min 收尾于 t=25, 而 t=42 又冒出一条, 中间 17 秒被判缺号。
+adb logcat -d 2>/dev/null | grep -aE "VESTAT|VERENDER|VEGAUGE|VEBENCH" \
+  | awk -v n="$PLAY_SECONDS" '
+      /VESTAT t=/ { if (match($0, /t=[0-9]+/)) {
+                      t = substr($0, RSTART+2, RLENGTH-2) + 0
+                      if (t > n) next } }
+      { print }' > "$OUT/timeline.txt" || true
 adb shell "cat $APP_FILES/$CASE-snapshot.json" > "$OUT/snapshot.json" 2>/dev/null || true
 
 # —— 完整性校验。**这一步的结论比数字本身重要**：时间线缺号就不能用于对照，
@@ -135,4 +154,7 @@ io.open(os.path.join(out, "verdict.txt"), "w").write("\n".join(v) + "\n")
 print("\n".join(v))
 PY
 
+# 网络源: 服务器字节级日志是判据的独立交叉源, 必须随产物归档
+[ "${NET:-0}" = "1" ] && [ -f assets/server-requests.log ] && \
+  cp assets/server-requests.log "$OUT/server-requests.log"
 echo "== 产物: $OUT =="
