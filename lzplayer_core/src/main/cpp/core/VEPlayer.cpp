@@ -14,6 +14,17 @@ namespace VE {
         /// 单个流程阶段等待组件回执的上限，超时后强制推进，
         /// 宁可状态略有偏差也不能让 seek 永久卡死
         constexpr int64_t kAckTimeoutUs = 2000000;
+        /// 回退续播的超时窗口。比常规 seek 宽, 因为这条路径**天然要多做一次
+        /// 建链**: 拆掉硬解链 → 重建软解链 → 再走完整的 seek 三阶段。
+        ///
+        /// 实测(故障注入 failHwAfterFrames=100): 回退全程正确 —— 重建成功、
+        /// ON_INFO 通知发出 —— 但续播的 seek 在 2 秒内没能完成首帧上屏,
+        /// 触发 VE_TIMED_OUT, 上层据此复位, state 16 -> 0。
+        /// 表现是"回退成功了却仍然中断播放", 而 decoder-test-redesign §2.2
+        /// 判定链第 ④ 条要求的正是"播放不中断"。
+        ///
+        /// 不放宽全局 kAckTimeoutUs: 那会掩盖真正的组件卡死。
+        constexpr int64_t kFallbackSeekTimeoutUs = 6000000;
 
         /// 进度上报间隔。原先每渲染一帧上报一次(30fps 即每秒 30 条跨线程消息
         /// 加 30 次 JNI 回调)，且纯音频文件因为没有视频渲染完全收不到进度。
@@ -504,8 +515,9 @@ namespace VE {
         notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_INFO, VE_INFO_DECODER_FALLBACK,
                    "decoder fallback to software", nullptr);
 
-        // 回到中断前的位置续播
+        // 回到中断前的位置续播。用更宽的超时窗口, 见 kFallbackSeekTimeoutUs
         mState = wasPlaying ? STATE_STARTED : STATE_PAUSED;
+        mSeekTimeoutOverrideUs = kFallbackSeekTimeoutUs;
         startSeek(resumeMs);
     }
 
@@ -1845,7 +1857,15 @@ namespace VE {
     void VEPlayer::postFlowTimeout(int64_t delayUs) {
         auto timeoutMsg = std::make_shared<AMessage>(kWhatAckTimeout, shared_from_this());
         timeoutMsg->setInt32("seq", mFlowSeq);
-        timeoutMsg->post(delayUs > 0 ? delayUs : kAckTimeoutUs);
+        // 覆盖值持续到本次 seek 结束才清, **不能用完即清**:
+        // seek 三阶段各自 postFlowTimeout(暂停/定位/预热), 一次性覆盖只够
+        // 第一阶段用, 后两阶段又退回 2 秒 —— 实测注入到复位间隔仍是 2.06 秒,
+        // 覆盖形同虚设。由 seekFinish/abortSeek 负责清零。
+        int64_t effective = delayUs > 0 ? delayUs : kAckTimeoutUs;
+        if (mSeekTimeoutOverrideUs > 0) {
+            effective = mSeekTimeoutOverrideUs;
+        }
+        timeoutMsg->post(effective);
     }
 
     void VEPlayer::onFlowTimeout(const std::shared_ptr<AMessage> &msg) {
@@ -1885,6 +1905,7 @@ namespace VE {
     }
 
     void VEPlayer::abortSeekOnTimeout() {
+        mSeekTimeoutOverrideUs = 0;
         converge();
         dropQueuedSeeks();
         mState = STATE_ERROR;
@@ -2083,6 +2104,8 @@ namespace VE {
     }
 
     void VEPlayer::seekFinish() {
+        // 清掉回退续播的超时覆盖, 恢复常规 seek 的 2 秒余量
+        mSeekTimeoutOverrideUs = 0;
         ALOGI("VEPlayer::seekFinish, restore state %d", mStateBeforeSeek);
         mSeekStage = SEEK_STAGE_NONE;
         ++mFlowSeq;   // 作废阶段③的超时兜底

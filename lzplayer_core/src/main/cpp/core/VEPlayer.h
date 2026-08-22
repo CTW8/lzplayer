@@ -448,6 +448,9 @@ namespace VE {
         VEPerfStats::Timeline mTimeline;
         /// seek 三阶段耗时与精度，环形缓冲留最近 10 次
         std::shared_ptr<VESeekTrace> mSeekTrace;
+        /// 下一次流程超时的一次性覆盖值(微秒), 0=用默认。
+        /// 回退续播要多做一次建链, 见 kFallbackSeekTimeoutUs
+        int64_t mSeekTimeoutOverrideUs = 0;
 
         std::string mPath;
 
