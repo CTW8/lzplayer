@@ -20,6 +20,10 @@ android {
                 if (project.hasProperty("veTraceFrame") && project.veTraceFrame == "true") {
                     arguments "-DVE_TRACE_FRAME=ON"
                 }
+                // 故障注入: ./gradlew ... -PveFaultInject=true (默认关, Release 不含代码)
+                if (project.hasProperty("veFaultInject") && project.veFaultInject == "true") {
+                    arguments "-DVE_ENABLE_FAULT_INJECTION=ON"
+                }
                 if (project.hasProperty("veQuietLog") && project.veQuietLog == "true") {
                     arguments "-DVE_QUIET_LOG=ON"
                 }

@@ -1,4 +1,5 @@
 #include "VEMediaCodecVideoDecoder.h"
+#include "utils/VEFaultInject.h"
 #include "VECodecWarmup.h"
 #include "utils/VEPerfStats.h"
 
@@ -241,6 +242,14 @@ namespace VE {
         mCodec = VECodecWarmup::take(mime);
         if (mCodec == nullptr) {
             mCodec = AMediaCodec_createDecoderByType(mime);
+            if (VE_FAULT_HW_CREATE()) {
+                // 注入建链期失败: 验证工厂能否安静回退软解
+                ALOGW("VEFAULT inject: hw create failure");
+                if (mCodec != nullptr) {
+                    AMediaCodec_delete(mCodec);
+                }
+                mCodec = nullptr;
+            }
         }
         if (mStartupTrace != nullptr) {
             mStartupTrace->mark(VEStartupTrace::T4A_CODEC_CREATED);
@@ -269,6 +278,11 @@ namespace VE {
         }
 
         media_status_t st = AMediaCodec_configure(mCodec, format, mWindow, nullptr, 0);
+        if (VE_FAULT_HW_CONFIGURE()) {
+            // 注入配置期失败: 与建链期失败走的是不同分支
+            ALOGW("VEFAULT inject: hw configure failure");
+            st = AMEDIA_ERROR_UNSUPPORTED;
+        }
         if (mStartupTrace != nullptr) {
             mStartupTrace->mark(VEStartupTrace::T4A_CODEC_CONFIGURED);
         }
@@ -507,7 +521,15 @@ namespace VE {
             return false;
         }
         AMediaCodecBufferInfo info;
-        const ssize_t index = AMediaCodec_dequeueOutputBuffer(mCodec, &info, 0);
+        ssize_t index = AMediaCodec_dequeueOutputBuffer(mCodec, &info, 0);
+        const int64_t renderedNow = mRenderedFrames.load(std::memory_order_relaxed);
+        if (VE_FAULT_HW_AFTER(renderedNow)) {
+            // **运行期失败, 最难触发也最该测的一条**: 建链期失败还有工厂兜底,
+            // 运行期要求播放器在播放中途重建为软解且画面不中断
+            ALOGW("VEFAULT inject: hw runtime failure after %lld frames",
+                  (long long) renderedNow);
+            index = AMEDIA_ERROR_UNKNOWN;
+        }
         if (index == AMEDIACODEC_INFO_TRY_AGAIN_LATER ||
             index == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED) {
             return false;

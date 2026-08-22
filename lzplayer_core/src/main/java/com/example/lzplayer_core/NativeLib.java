@@ -359,6 +359,14 @@ public class NativeLib {
     private native String nativeGetStats(long handle);
     private native String nativeGetStartupTrace(long handle);
     private native String nativeGetSeekTrace(long handle);
+    /**
+     * 故障注入（仅 -PveFaultInject=true 构建有效，返回 -1 表示本构建未编入）。
+     * 静态方法：注入是全局调试设施，不属于某个播放器实例。
+     */
+    public static native int nativeSetFaultInject(boolean failCreate,
+                                                  boolean failConfigure,
+                                                  int failAfterFrames);
+
     private native int nativeSetForceSoftwareDecoder(long handle,boolean force);
     private native int nativeSetForceSlesAudio(long handle,boolean force);
     private native int nativeSetPreferVulkanRender(long handle,boolean prefer);

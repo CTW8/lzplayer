@@ -84,6 +84,14 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         const val EXTRA_PLAY_SECONDS = "playSeconds"
         /** --es caseName fallback-runtime : 报告里的用例名 */
         const val EXTRA_CASE_NAME = "caseName"
+
+        /// 故障注入（decoder-test-redesign §2）。仅 -PveFaultInject=true 构建有效。
+        /** --ez faultHwCreate true : 硬解建链失败，验工厂能否安静回退软解 */
+        const val EXTRA_FAULT_HW_CREATE = "faultHwCreate"
+        /** --ez faultHwConfigure true : 硬解配置失败，与建链失败是不同分支 */
+        const val EXTRA_FAULT_HW_CONFIGURE = "faultHwConfigure"
+        /** --ei faultHwAfterFrames 100 : 第 N 帧后运行期失败。**最难触发也最该测** */
+        const val EXTRA_FAULT_HW_AFTER = "faultHwAfterFrames"
     }
 
     private lateinit var etSource: EditText
@@ -359,6 +367,20 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
                 benchArg(true, "playSeconds=$v")
             }
         }
+        // 故障注入：**每次都下发**（包括全关），否则上一次用例的注入会残留到
+        // 下一次，让后续结论全部作废且极难发现
+        val fc = i.getBooleanExtra(EXTRA_FAULT_HW_CREATE, false)
+        val fg = i.getBooleanExtra(EXTRA_FAULT_HW_CONFIGURE, false)
+        val fa = i.getIntExtra(EXTRA_FAULT_HW_AFTER, 0)
+        val ret = com.example.lzplayer_core.NativeLib.nativeSetFaultInject(fc, fg, fa)
+        if (fc || fg || fa > 0) {
+            if (ret != 0) {
+                benchArg(false, "故障注入设置无效——本构建未编入(需 -PveFaultInject=true)")
+            } else {
+                benchArg(true, "faultInject create=$fc configure=$fg afterFrames=$fa")
+            }
+        }
+
         caseName = i.getStringExtra(EXTRA_CASE_NAME)?.trim().orEmpty()
         if (caseName.isNotEmpty()) {
             benchArg(true, "caseName=$caseName")

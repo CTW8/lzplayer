@@ -8,6 +8,14 @@ set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 # 日志开销对照实验开关：ON 时即使 Debug 构建也编译期剔除 V/D/I 日志。
 # 用法: -DVE_QUIET_LOG=ON。native ALOGV 在解码/解封装路径上每帧数条，
 # 30fps 下每秒上千次 __android_log_print(格式化 + 写 socket)，本身就在吃 CPU。
+# 故障注入。**Release 里连代码都不存在** —— 播放器的故障注入一旦能在生产包
+# 里被打开, 就是一个可被利用的稳定性开关。用法: -PveFaultInject=true
+option(VE_ENABLE_FAULT_INJECTION "Compile in fault injection hooks (debug only)" OFF)
+if (VE_ENABLE_FAULT_INJECTION)
+    add_compile_definitions(VE_ENABLE_FAULT_INJECTION)
+    message(STATUS "VE_ENABLE_FAULT_INJECTION=ON: 故障注入已编入, 切勿用于生产包")
+endif ()
+
 option(VE_TRACE_FRAME "Enable per-frame/per-packet ALOGF logs" OFF)
 if (VE_TRACE_FRAME)
     add_compile_definitions(VE_TRACE_FRAME)

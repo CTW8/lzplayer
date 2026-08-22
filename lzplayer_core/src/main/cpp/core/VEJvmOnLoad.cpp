@@ -52,6 +52,7 @@ static JNINativeMethod gVEPlayerMethods[] = {
         {"nativeGetStats",     "(J)Ljava/lang/String;",                    (void *) VE::nativeGetStats},
         {"nativeGetStartupTrace", "(J)Ljava/lang/String;",                 (void *) VE::nativeGetStartupTrace},
         {"nativeGetSeekTrace", "(J)Ljava/lang/String;",                    (void *) VE::nativeGetSeekTrace},
+        {"nativeSetFaultInject",          "(ZZI)I",                        (void *) VE::nativeSetFaultInject},
         {"nativeSetForceSoftwareDecoder", "(JZ)I",                         (void *) VE::nativeSetForceSoftwareDecoder},
         {"nativeSetForceSlesAudio", "(JZ)I",                               (void *) VE::nativeSetForceSlesAudio},
         {"nativeSetPreferVulkanRender", "(JZ)I",                           (void *) VE::nativeSetPreferVulkanRender},

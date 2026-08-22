@@ -4,6 +4,7 @@
 
 #include <android/native_window_jni.h>
 #include "native_PlayerInterface.h"
+#include "utils/VEFaultInject.h"
 #include "utils/Log.h"
 #include "VEPlayerDriver.h"
 #include "ScopedUtfChars.h"
@@ -315,6 +316,29 @@ namespace VE {
         }
         const std::string json = vePlayer->getStartupTrace();
         return env->NewStringUTF(json.c_str());
+    }
+
+    /// 故障注入开关。**不经 VEPlayerDriver**: 注入是全局的调试设施, 不是
+    /// 播放器状态, 走 driver 会让它出现在状态机里、被状态校验挡掉。
+    /// Release 构建里 VEFaultInject 的三个原子量仍在(体积可忽略), 但读它们的
+    /// 宏是 false, 所以设了也无效 —— 真正的隔离在 VE_ENABLE_FAULT_INJECTION
+    jint nativeSetFaultInject(JNIEnv *env, jobject obj, jboolean failCreate,
+                              jboolean failConfigure, jint failAfterFrames) {
+        VEFaultInject::sFailHwCreate.store(failCreate == JNI_TRUE,
+                                           std::memory_order_relaxed);
+        VEFaultInject::sFailHwConfigure.store(failConfigure == JNI_TRUE,
+                                              std::memory_order_relaxed);
+        VEFaultInject::sFailHwAfterFrames.store((int) failAfterFrames,
+                                                std::memory_order_relaxed);
+        VEFaultInject::dump("nativeSetFaultInject");
+#if defined(VE_ENABLE_FAULT_INJECTION)
+        return 0;
+#else
+        // 明确告诉调用方"设了但不会生效", 否则用例会以为注入成功而实际什么
+        // 都没注入 —— 本项目在 stall 场景上已经栽过三次同类问题
+        ALOGW("VEFAULT: 本构建未编入故障注入(需 -PveFaultInject=true), 设置无效");
+        return -1;
+#endif
     }
 
     jint nativeSetForceSoftwareDecoder(JNIEnv *env, jobject obj, jlong handle, jboolean force) {
