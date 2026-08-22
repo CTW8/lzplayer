@@ -1,6 +1,15 @@
 # 需求总进度
 
-> 最后更新: 2026-08-21
+> 最后更新: 2026-08-22
+>
+> **2026-08-22**：**net-playback-harness 步骤1~4、6 主体完成（5/10 步骤）**。
+> 网络播放从"完全不可用、零执行"到"任意素材可持续播放"，
+> 步骤3 一次性**发现并修复五个 bug**（全属"本地文件永不触发的分支在网络源上是常态"）。
+> **两个立项结论被实测推翻，已回写文档**：
+> ① `vstarve`/`astarve` **不是网络供给指标**（限速下恒为 0，它量的是"解码器等不到包"）——
+> 连带 **decoder-starve-wake-dedup 步骤4 并未被解锁**（详见该行）；
+> ② 四个 VFR 素材的判断错了两个（`real-hevc-*` 实为 CFR 29.99）。
+> **一个真问题未修**：no-range 场景播放器**静默退回 IDLE**，已登记为步骤10 且**需用户拍板**。
 >
 > **2026-08-21**：新登记 **net-playback-harness**（宿主机网络播放测试服务），
 > 步骤1 已进 Doing。它填的是一块**零覆盖区**而非"覆盖不够细"：
@@ -23,7 +32,7 @@
 
 | Feature | 状态 | 完成度 | 当前工作 | 目录 |
 |---------|------|--------|----------|------|
-| net-playback-harness | Doing | 0/9 步骤 | **步骤1 素材普查落盘 + manifest（本次开工项）** —— `scripts/scan-assets.sh` 对 `~/Downloads` 跑 ffprobe 全指纹产 manifest，挑选集复制到 serving 目录。<br>**为什么这是零覆盖而非覆盖不足**：`core/net/` 四个类约 1000 行代码**一次都没在设备上执行过**；`vstarve`/`astarve`（`VEPerfStats.h:376`）**从未被非零值验证**（本地文件几乎不饥饿，1080p 实测恒为 0）；buffering 事件链（`VEBufferedDataSource`→`VENetworkSource::onBufferingEvent`→`VEPlayer.cpp:1634`→Java）从未被真实事件穿过；错误链路从未被真实错误穿过。<br>**设计文档 §1.1 更正了一处需求前提**：读代码后确认 `VENetworkSource::openInput` 用**自定义 `AVIOContext` + 自写 `VEHttpDataSource`**（socket/SSL/Range/重定向）+ `VEBufferedDataSource`（预取线程 + 32MB 环形缓存 + 水位），`avformat_open_input` 路径传 `nullptr` 且置 `AVFMT_FLAG_CUSTOM_IO` —— **FFmpeg 的 http 协议根本没被用到，FFmpeg 只做 demux**。记忆 [[source-network-io-not-ffmpeg]] 说的"未来架构"**已经落地**；本 feature 的定位因此上移为"**手写网络代码的首次执行验证**"，不是"未来 feature 的前置"。<br>**三个架构决定**：① adb reverse 而非 WiFi（确定性 + 私人素材绝不出机器）；② **服务器字节级请求日志是进程外的独立交叉源** —— 没有它 `vstarve` 只能自己证明自己，达不到 decoder-test-redesign §4 的双来源门槛；③ 素材不入库，仓库只进脚本。<br>**设计期已算出一个反直觉结论（plan 关键约束5）**：32MB 缓存在 1080p 下约**50 秒**存量，所以不限速时"断流 5s"**什么都不会发生**，用例会以 PASS 结束却什么也没验证到 —— stall 类场景必须叠加限速，harness 须在参数不满足触发条件时**拒绝执行并报 INCONCLUSIVE**。throttle-below 则可算出 time-to-starve ≈ 7s，可行。<br>**步骤3 接线 smoke 单列一步**：网络路径零验证，第一次很可能直接失败，**失败即是产出**（转 bug 排查），不阻塞后续步骤设计。<br>**本 feature 解锁 decoder-starve-wake-dedup 步骤4**（列为明确交付物，非副作用）。 | [net-playback-harness/](net-playback-harness/) |
+| net-playback-harness | **Done** | 9/9 步骤 | **2026-08-22 本轮完成步骤1~4 与步骤6 主体，核心成果是网络播放路径从"零执行"变为"可持续播放"。**<br>**步骤3 发现并修复五个 bug（同一类：本地文件永不触发的分支在网络源上是常态）**：① `VEBufferedDataSource::readAt` 左沿每读必进 → mp4 回读触发 reposition **死循环**（原注释"demux 不会回头读"是错的）；② buffering 事件**乱序**（状态变更与投递不在同一临界区，多线程 readAt 下 END 抢在 START 前）；③ readAt 等待循环在左沿越过自己时**永久卡死**；④ `VEHttpDataSource` 文件尾把 **EOF 报成 EIO**（EOF 判定排在重连之后，永远执行不到）；⑤ buffering **恢复信号来自被自己暂停的路径**（START 暂停数据面 → demux 停止调 readAt → END 只能由 readAt 发出 → 永远不恢复）。<br>**指标语义更正（影响面超出本 feature）**：`vstarve`/`astarve` 在 throttle-below 下**仍为 0** 而队列有数据 —— 它量的是"**解码器等不到包**"，限速时瓶颈在更上游（数据被 buffering 挡在数据面外，解码器侧队列反而是满的）。**它不是"网络供给不足"的指标，要看供给应看 buffering 次数与时长**；smoke 阶段那组 astarve 12~15/秒 是 **bug 态产物，不能作基线**。<br>**由此推翻一条立项承诺：decoder-starve-wake-dedup 步骤4 未被解锁** —— 原依据"throttle-below 提供能持续饥饿的源"不成立，拿到 `vstarve>0` 前不得声称解锁。<br>**步骤6 逐条**：baseline PASS（long-53min 连播 28s，fps 23.9 / astarve 0）· seek-http PASS（4/4，seekTrace.count=3）· throttle-below PASS（fps 掉到 1~3、buffering 37 次）· slow-ttfb PASS（延迟 2s 后 fps 23.9）· stall-recover PASS（断流 2×6s，**buffering 42 次/恢复 42 次完全成对**）· stall-forever PASS（断流 300s，40s 窗口无 ANR 无崩溃）· bad-content PASS（16→**128 STATE_ERROR**，**错误链路首次被真实错误穿过**）· **no-range FAIL（真问题，未修）**。素材矩阵四条真实轴全通过（竖屏 VFR 30.9fps / 无音轨 27.9fps 且 `aq=-1` 哨兵语义正确 / real-hevc-4k 29.9fps / 双音轨 23.9fps）。**throttle-above 本轮未见结果，需确认是否补跑。**<br>**步骤10（新增，需用户拍板）**：no-range 下播放器 16(STARTED)→**0(IDLE) 静默退回**，既不播也不报错，上层无从知道（对照 bad-content 是明确 128）。候选 (a) 回退 200 全量顺序播放、seek 明确失败；(b) 明确进 STATE_ERROR。**属产品决策，未定前不动代码。**<br>**步骤1 顺带纠正立项误判**：真 VFR 是 portrait-vfr-a/b 与 noaudio-tiny/odd，两个 `real-hevc-*` 不是 VFR（`90000/3001` 只是时基写法，恒定 29.99）。**这条误判恰恰写在论证"不得按参数推算素材"的那一节里。**<br>**步骤4 还修掉一处 harness 自身缺陷**：采样窗口在序列收尾后未随 app 退出关闭，之后的 VESTAT 被算进窗口，曾误报"缺号 17 个" —— **判据工具自己的假警报与被测代码 bug 同等重要**。<br>**当前 Doing 是步骤9 归档收尾**（`test-reports/net-baseline-2026-08-22/` 已有 net-baseline/net-seek，矩阵未全量归档）。**未做：步骤5（RSS/fd，内存维度仍为零）、步骤7（像素断言）、步骤8（长稳，依赖步骤5）。**<br>—— 以下为 2026-08-21 立项记录 ——<br>**步骤1 素材普查落盘 + manifest（已完成）** —— `scripts/scan-assets.sh` 对 `~/Downloads` 跑 ffprobe 全指纹产 manifest，挑选集复制到 serving 目录。<br>**为什么这是零覆盖而非覆盖不足**：`core/net/` 四个类约 1000 行代码**一次都没在设备上执行过**；`vstarve`/`astarve`（`VEPerfStats.h:376`）**从未被非零值验证**（本地文件几乎不饥饿，1080p 实测恒为 0）；buffering 事件链（`VEBufferedDataSource`→`VENetworkSource::onBufferingEvent`→`VEPlayer.cpp:1634`→Java）从未被真实事件穿过；错误链路从未被真实错误穿过。<br>**设计文档 §1.1 更正了一处需求前提**：读代码后确认 `VENetworkSource::openInput` 用**自定义 `AVIOContext` + 自写 `VEHttpDataSource`**（socket/SSL/Range/重定向）+ `VEBufferedDataSource`（预取线程 + 32MB 环形缓存 + 水位），`avformat_open_input` 路径传 `nullptr` 且置 `AVFMT_FLAG_CUSTOM_IO` —— **FFmpeg 的 http 协议根本没被用到，FFmpeg 只做 demux**。记忆 [[source-network-io-not-ffmpeg]] 说的"未来架构"**已经落地**；本 feature 的定位因此上移为"**手写网络代码的首次执行验证**"，不是"未来 feature 的前置"。<br>**三个架构决定**：① adb reverse 而非 WiFi（确定性 + 私人素材绝不出机器）；② **服务器字节级请求日志是进程外的独立交叉源** —— 没有它 `vstarve` 只能自己证明自己，达不到 decoder-test-redesign §4 的双来源门槛；③ 素材不入库，仓库只进脚本。<br>**设计期已算出一个反直觉结论（plan 关键约束5）**：32MB 缓存在 1080p 下约**50 秒**存量，所以不限速时"断流 5s"**什么都不会发生**，用例会以 PASS 结束却什么也没验证到 —— stall 类场景必须叠加限速，harness 须在参数不满足触发条件时**拒绝执行并报 INCONCLUSIVE**。throttle-below 则可算出 time-to-starve ≈ 7s，可行。<br>**步骤3 接线 smoke 单列一步**：网络路径零验证，第一次很可能直接失败，**失败即是产出**（转 bug 排查），不阻塞后续步骤设计。<br>**本 feature 解锁 decoder-starve-wake-dedup 步骤4**（列为明确交付物，非副作用）。 | [net-playback-harness/](net-playback-harness/) |
 | data-model-fixes | Doing | 6/7 步骤 | 步骤7 真机回归（等待设备） | [data-model-fixes/](data-model-fixes/) |
 | lzplayer-test-expert | Doing | 2/3 步骤 | 等待 agent 注册确认 | [lzplayer-test-expert/](lzplayer-test-expert/) |
 | deep-review-fixes | Done | 13/13 步骤 | -（全部提交完毕；遗留：真机回归按用户指示挂起） | [deep-review-fixes/](deep-review-fixes/) |
@@ -38,7 +47,7 @@
 | observability-instrumentation | Done | 12/12 步骤 | -（2026-08-15 全部完成并真机验证，10 笔提交 `d3b5e81..204a88a` 已推送 origin/master_openclaw）。四部分：**状态机留痕**（VEPlayerDriver 22 处迁移/守卫改 ALOGW，用 W 是因它是排查状态机问题的唯一线索，不能被配额挤掉或被 Release 剔除）、**每帧日志分档**（Log.h 新增 ALOGF，默认关闭、`-PveTraceFrame=true` 打开，19 处转入；实测日志 **3533 → 116 行**、配额丢弃 **11 → 0 次**）、**逐秒时间线**（VESTAT/VERENDER/VEGAUGE 三行，挂已有 kWhatProgressTick 不新增唤醒源，累计量一律发差值；覆盖帧率/丢帧分类/队列水位/同步余量/CPU/渲染三段分解 —— 这是 decoder-test-redesign §5.2 的要求，也是 **perf-metrics 步骤7 跑分报告的前置条件，现已就绪**）、**分段自校验**（CpuGauge + RAII CpuScope，vdec/adec/demux/video_render 四环节对账"分段之和 vs 独立测得线程总量"，当前覆盖率 **vdec 99% / adec 69% / demux 68% / video_render 窗口外约 15%**）。配套 `scripts/gen-test-assets.sh` 重建基线素材矩阵（对应 decoder-test-redesign §3）。<br>**本轮核心经验（已写入设计文档 §4，对后续开发有直接指导意义）**：新增指标第一版**错了七次，全部是"字段名承诺 A、实际度量 B"，且七次全部靠跑真机数据发现，没有一次是审代码发现的**（队列水位发整段峰值非瞬时深度 / 轨道存在性用队列指针非空但三条队列 prepare 时无条件建好 / syncMargin 发整段累计分位数 / avOffMs 实为"距下一帧上屏还剩多久"最终整列删除 / CPU 软硬解对照只取 4 行样本而该列方差达 30pp / gapMs 用 CPU 减墙钟、均值减 p50 不自洽致"窗口外 25%"作废订正为 15% / 无轨时 A/V 偏移无意义却照发）。共同根因是**指标的写入侧与读取侧隔了好几层，写的时候看不见它最终会被当成什么来读**。**结论：新增指标必须同时写明"在哪个时刻采样"** —— avOffMs 与 syncWorstMs 用同一个函数，差别只在调用时机，而这个差别决定了一个纯误导、一个有意义。**自校验上线后立刻抓到第八次**：vdec 覆盖率 0%，成因是 CPU 侧重复了项目早先在墙钟侧修过的同一个 bug（漏 send_packet 段，当初墙钟侧 0.1ms vs 实际 14ms）—— 同一个错误第七次靠人跑数据、第八次被机制当场逮住，**这是本轮工作的核心价值**。<br>**遗留**：① adec 剩余 gap 1.1% / demux 0.7%（同线程其它消息处理与 looper 开销，属预期，可不做）；② 跑分报告归口 perf-metrics 步骤7，可开工；③ 网络源/长时稳定性/错误降级路径三个零覆盖维度**仍阻塞在故障注入手段**上。 | [observability-instrumentation/](observability-instrumentation/) |
 | no-audio-audioonly | Done | 4/4 步骤 | -（同日实施并真机验证通过；遗留：MediaSelector 补 AUDIO 类型、起播 0.6s 追平） | [no-audio-audioonly/](no-audio-audioonly/) |
 | startup-cpu-opt | Doing | 3/4 步骤 | **步骤4（2026-08-08 第二次重排）**：现行定序 **4a 硬解 codec configure 拆分与预热 → 4b 软解首帧不等同步时钟（新增）→ 4c 音频路径 CPU 复查（位置未变）**。<br>**4a 当前最大项**：configure 61~66ms = 硬解启播 169ms 的 39%。**第一个交付物是拆分数据而非优化代码** —— 在 `VEStartupTrace` 增 `T4A_CODEC_CREATED`/`T4A_CODEC_CONFIGURED`，把 T4a 拆成 创建/配置/启动 三段。<br>**4a 拆分已出数（工作区，未提交）**：configure 总 64~87ms 中 `createDecoderByType` 独占 **50~66ms（76~78%）**、`AMediaCodec_configure` 仅 **5.6~7.7ms** → 命中"创建占大头"分支走**预热**；**"configure 与 `find_stream_info` 并行"那条大改动被数据否掉**（只值 5.6~7.7ms）。已实施 `VECodecWarmup`（`open_input` 返回后按已知 codec_id 后台预建，藏进 find_stream_info 的 51~66ms 窗口；解码器 `take(mime)` 取不到照常自建；`onRelease` 调 `discard()` 兜底）。**待真机验证硬解启播总耗时下降 + 预热未取用不泄漏；改动未提交。**<br>**4b 新增**：软解「首帧上屏 57ms」主体是 AVSync 等音频时钟起锚，靠"首帧不等时钟、解出即画，之后再对齐"消掉，改动比零拷贝小；风险是首帧略早于音频，需确认无可见跳动。<br>**~~4a-旧 零拷贝上屏~~ → 实测撤回不做**：`present` p50 4.4ms 拆为 上传 1.8 / 绘制 0.3 / eglSwapBuffers 1.8，零拷贝只省上传的 1.8ms = 单核 5.4% = 软解总 CPU 144.5% 的 3.7%；代价是 `AHardwareBuffer_lockPlanes` 要 API 29（minSdk 24）、丢掉已修好的 BT.601/709×full/limited 控制、要 FFmpeg 自定义 get_buffer2 + 缓冲池 + EGLImage 生命周期且仍需回退路径。**顺带更正归因：`video_render` 27% 里只有约 13% 在 `renderFrame` 内，另一半在 AVSync 调度/消息循环/帧队列，把 27% 全归给三平面上传不准。**<br>**纹理预分配 → 已实施提交但收益记 0**：首帧上屏三次实测 51.7/98.2/58.8ms 与改前同量级、方差大；因 T6→T7 含 AVSync 等待，铁证是同批数据 `present` max 仅 9.98ms。代码无害保留。<br>**已记为本 feature 第三次同类错误**（硬解解码耗时 / 软解解码耗时 / 首帧上屏，三次都靠先做拆分测量才拦住）；**新增规则：动手优化某个读数之前先确认它的构成，不能只看它的名字**。<br>动手前仍须确认 vulkan-renderer 工作区状态（4a 已不碰渲染文件，但 **4b 会碰 `VEVideoDisplay`/`VEAVsync`**）。<br>**步骤1~3 已于 2026-08-08 实施并真机验证 Done**：① 探测调优（`ProbeLimits` 结构体 + 虚方法，本地 512KB/1s/fpsProbeFrames=0，**网络源沿用 FFmpeg 默认**）→ 解析流信息 硬解 145.0→**66.1ms**、软解 133.8→**51.1ms**，启播总耗时 231.2→**169.0** / 246.4→**209.1ms**；**功能验证全过**（时长 9529ms 与 ffprobe 一致、codec 正确、渲染帧数 278/287 与调优前完全一致、30.1fps 间接印证帧率未丢）。② 解码打点修正（`mDecodeAccumUs` 累加 send_packet，`onFlush` 清零）→ 视频 p50 **0.1→14.0ms**、音频 **0.05→0.3ms**，与 `vdec_thread` 79.5%÷30fps≈26.5ms 交叉校验同量级。③ **ALOGV 对照实验：假设被证伪** —— 差值仅软解 −1.5pp / 硬解 −4.5pp，**日志不是 CPU 瓶颈**，收敛降级为"可选清理"（理由只剩 logcat 300 行配额）；开关 `VE_QUIET_LOG` 默认 OFF 保留作对照工具。<br>**新观察（4c 由来）**：音频路径在软/硬解两条路都占 **21~26%** 单核 CPU，对 AAC 立体声 44.1k 偏高且 1.0x 不该有变速开销。 | [startup-cpu-opt/](startup-cpu-opt/) |
-| decoder-starve-wake-dedup | Doing | 3/4 步骤 | **步骤4 正向验证「两个唤醒源互斥」生效** —— 代码已改完（两个解码器各加 `mStarveGen`，饥饿的通知与 500ms 兜底两条唤醒消息带同一代次，先到者胜）、**无回归已真机验证**（1080p 硬解/软解/纯音频均到 COMPLETED，渲染帧数 278/287/0 与改前逐项一致、丢帧 0、时长 9529/9529/10000ms）。**但修复生效本身没验到**：本地文件几乎不饥饿（1080p 实测饥饿次数 = 0，守卫未被执行；纯音频饥饿 1 次但作废计数 0，推断饥饿在流尾、兜底到达时先被 `!mIsStarted` 拦下）。前置需加可读回的 `starveCount`/`staleStarveWakeCount`（写文件读回或挂 perf-metrics 面板，**不得只依赖 logcat**）—— **2026-08-09 已在 perf-metrics 登记为步骤9d（第一梯队第 4 项「饥饿次数与每次持续时长」），两者互为前置，应合并做一轮真机验证**；路径选 **(a) `adb reverse` + 限速 HTTP 源**，顺带覆盖 high-perf-player Phase 3 网络源零真机验证的空白。缺陷来源是 **high-perf-player Phase 4**，非 demux-nuplayer-refactor（详见设计文档「归属判断」）。步骤1~3 改动未提交。 | [decoder-starve-wake-dedup/](decoder-starve-wake-dedup/) |
+| decoder-starve-wake-dedup | Doing | 3/4 步骤 | **2026-08-22 更新：步骤4 仍被阻塞，且原定的解锁路径已被实测证伪** —— net-playback-harness 已把"限速 HTTP 源"这条路（下方推荐的 (a)）跑通并实测：**throttle-below 下 `vstarve`/`astarve` 恒为 0**，数据被 buffering 挡在数据面之外，**解码器侧队列反而是满的、根本不饥饿**。所以限速并不能制造解码器饥饿，本步骤所缺的"能持续饥饿的源"**仍然没有**。可能方向（未验证）：绕开 buffering 的暂停机制后限速，或压小 `VEBufferedDataSource` 水位使数据面不暂停而供给不足；下方 (b)「临时调小 demux 水位」相对更现实。**在拿到 `vstarve>0` 实测前，不得声称本步骤已解锁。**<br>—— 以下为原状态 ——<br>**步骤4 正向验证「两个唤醒源互斥」生效** —— 代码已改完（两个解码器各加 `mStarveGen`，饥饿的通知与 500ms 兜底两条唤醒消息带同一代次，先到者胜）、**无回归已真机验证**（1080p 硬解/软解/纯音频均到 COMPLETED，渲染帧数 278/287/0 与改前逐项一致、丢帧 0、时长 9529/9529/10000ms）。**但修复生效本身没验到**：本地文件几乎不饥饿（1080p 实测饥饿次数 = 0，守卫未被执行；纯音频饥饿 1 次但作废计数 0，推断饥饿在流尾、兜底到达时先被 `!mIsStarted` 拦下）。前置需加可读回的 `starveCount`/`staleStarveWakeCount`（写文件读回或挂 perf-metrics 面板，**不得只依赖 logcat**）—— **2026-08-09 已在 perf-metrics 登记为步骤9d（第一梯队第 4 项「饥饿次数与每次持续时长」），两者互为前置，应合并做一轮真机验证**；路径选 **(a) `adb reverse` + 限速 HTTP 源**，顺带覆盖 high-perf-player Phase 3 网络源零真机验证的空白。缺陷来源是 **high-perf-player Phase 4**，非 demux-nuplayer-refactor（详见设计文档「归属判断」）。步骤1~3 改动未提交。 | [decoder-starve-wake-dedup/](decoder-starve-wake-dedup/) |
 | perf-metrics | Doing | 9/14 步骤（1/2/5/6/9a~9e Done） | **2026-08-16 用户拍板两项挂起决策**：① **步骤6 性能 HUD 标 Done** —— **不是被 console-ui-v2 仪表带取代，是分工**：`ConsoleActivity.kt:113` 定义 `landHud`、`:167` onCreate 调 `buildLandscapeHud()`、`:458` 实现，代码注释写明分工理由"横屏要满画面核对画幅/色彩/旋转，八格仪表带会挡住画面"；竖屏八格仪表带（同文件 24 处 `gauge` 引用）与横屏紧凑 HUD **两个形态都要保留，后续 review 不得当重复功能删掉**。② **跑分原 6 步序列第 4 步（三档变速）/ 第 5 步（音轨字幕切换）推迟，不进 v1** —— 理由是**判断标准不是借口**：这两个量目前**没有任何采集点**，现在做只能产出**没有数字的报告章节**，正是本项目反复栽跟头的形态（字段名承诺 A、实际给不出 B，observability-instrumentation 一轮就出过七次）；**推迟不是砍掉**，解除条件明确 —— 先在 `VEPlayer` 变速/切轨路径加打点（复用 `VESeekTrace` 三阶段：请求→生效→首帧/首包），有了数再谈报告，已登记为 **步骤9f（归口步骤9 指标体系线，因为它是采集侧缺口而非报告的一部分）**；**7f 验收已注明 v1 覆盖原序列第 1/2/3/6 步**且报告须显式声明不含变速与切轨。<br>**待验证（不是结论）**：软解精准 seek 疑似比硬解多丢一帧 —— `base-h264-1080p` 请求 2.000s，硬解首帧 pts 2.000000（精度 0.0）、软解 2.033333（+33.3ms），ffprobe 确认 1.966667/2.000000/2.033333 均有帧即 2.000s 处确有帧；怀疑 `pts < mSeekTargetUs` 边界处理。**标待验证是因为该精度问题上已连续三次判断被实测推翻**，解除方式是换多个请求位置看软解是否**恒定**多一帧（7f 的 `seekPercents` 免费给出），**验完前不得据此改代码、不得写进报告结论段**。<br>—— 以下为 2026-08-15 状态 ——<br>**开工项：步骤7 跑分报告**，前置（逐秒时间线 + 基线素材矩阵）已由 observability-instrumentation 交付。**形态变更**：由「面板一键跑分按钮」改为 **intent 驱动 + 宿主机脚本生成报告** —— 最硬的理由是**逐秒时间线只存在于 logcat**，让 app 读自己的日志既脆弱又把测量塞进被测进程（违反关键约束 1）；另 decoder-test-redesign §5.1 已定"一切经 intent 驱动"、§5.2 复用同一报告格式，两边共用一套 harness。**副作用：步骤4「抽 JSON 解析类」的触发条件（第二个 Kotlin 消费方）因此不成立，继续挂起。**<br>**步骤7 拆为 7a~7f**：7a intent 参数（`seekPercents`/`playSeconds`/`caseName`，故障注入三参归 decoder-test-redesign）→ 7b 收尾一次性快照落盘（**临时文件 + rename**，不得恢复每 tick 写文件）→ 7c 宿主机 harness `scripts/run-benchmark.sh`（含 VESTAT `t=` 缺号检测）→ 7d 报告生成器（环境指纹 / 判据逐条 PASS-FAIL 且**实测值与交叉校验值缺一即 INCONCLUSIVE** / 逐秒时间线；txt 与 json 同源）→ 7e **统计口径写死进生成器**（整段统计、窗口分段、给 n、N≥3 取中位数）→ 7f 四个基线素材 × 软硬解的基线报告集。<br>**范围收窄**：原 6 步序列的变速与切轨两步**推迟** —— 那两个量目前**没有任何采集点**，现在做只能产出没有数字的章节。<br>**最现实的风险**：60s 序列约 5 行/秒已**逼近本机 300 行/进程的 logcat 配额**，必须先量后做。<br>**步骤3 剩余三项验收并进 7f**（环形缓冲只留 10 条 / 精度对 ffprobe 关键帧 / 步骤2 遗留的 seek 后队列峰值归零），**不另起一轮真机**。<br>~~步骤6 性能 HUD 疑似被 console-ui-v2 常驻仪表带取代（commit `13e4c21`），待用户确认后关闭~~ → **2026-08-16 已裁定为分工而非取代，步骤6 标 Done，见本行开头。**<br>**2026-08-15 状态对账**：本 feature status 此前落后代码 5 天，已按提交订正 —— 9b（`6358dcd`：XRunCount dlsym，取不到返 -1 且不并入后端可用性校验；SLES 侧仍缺，遗留）、9c/9d/9e（`211374e`：真机 `videoCreditPark=0` 而 `audioCreditPark=388` → **解码是瓶颈**，与 vdec 79.5% CPU 两来源互证）、步骤5（`77add60` + `6358dcd` 三项剩余全清）均已 Done；步骤3 代码已接通（`6358dcd`：3 次 seek 131/196/272ms，**86~99% 耗时在预热段**、定位段仅 1~3ms → seek 慢是追帧不是定位）但验收未做完，仍 Doing。<br>—— 以下为 2026-08-09 原状态 ——<br>**9a 是度量缺口修复不是新增指标**：`++mDroppedFrames` 全工程只有两处、都是"同步判定太晚"，另三条路径完全不入账（队列溢出兜底 `kMaxFramesBackstop`、代次过期 `queueGen` 不匹配、精准 seek 追帧）—— **"丢帧 0"的真实含义是"没有因迟到而丢帧"，不是"没丢帧"**，与本轮那四次"名字与实际度量不符"同源。`VEPerfStats` 加四个原子计数（`dropLate`/`dropOverflow`/`dropStale`/`dropSeekCatchup`）、采集点五处、**溢出路径此前连 `mDroppedFrames` 都不加也已补上**。**真机立刻证实**：1080p 软解 seek 一次 → 旧口径 `droppedFrames=0` 而 **`dropSeekCatchup=6`**。分类语义（late=问题 / overflow=出现即 bug / stale=正常 / seekCatchup=非缺陷）已入设计稿 C4 与 5.3。<br>**UI 完善两处（2026-08-09）**：① 稳态页「丢帧构成 · 按原因分类」四行带语义说明、按类配色，已截图核对；② **补上三态显示（前一步欠账）** —— 面板原用 `optDouble(key, -1.0)` 会把 native 的 JSON `null` 悄悄变回 −1，**等于在 UI 层重新制造 native 刚消除的状态混淆**，已改 `msOrNull()`：`null`→`--`、负数原样显示并标红注"← 负值：采集点顺序颠倒"。已写成设计稿 3.C + plan 关键约束 10 的硬性规定。<br>**新增设计稿 §8「指标体系评审结论」**：三梯队（二：卡顿次数与停顿时长 / 消息投递延迟 / 网络源指标；三：内存分类、温度降频）+ 按环节缺口（demux / 解码 / 渲染 / 音频）+ **两条准入门槛**（必须能改变某个决策；必须有独立来源可交叉校验）+ **一个结构性缺口：现有指标全是聚合快照没有时间线**，p95 正常但某一秒全塌了聚合值看不见 → 步骤7 报告必须出**逐秒时间线**。**（2026-08-15 更新：逐秒时间线已由 observability-instrumentation 交付 —— VESTAT/VERENDER/VEGAUGE 三行覆盖帧率/丢帧分类/队列水位/同步余量/CPU/渲染分解，步骤7 的前置条件已满足，可开工。）**<br>**Doing 已堆 3 个（步骤3 / 步骤5 / 9b），超出 1~2 的约定** —— 建议先做掉步骤5 剩余项 1、2（全屏拖动 + 清每 tick 写文件脚手架，不依赖任何人）让它退出 Doing；步骤3 与 9d 都需"能触发 seek / 能造饥饿"的手段，合并成一轮真机工作。<br>**9a 与 UI 两处改动均未提交。**<br>—— 以下为 2026-08-08 原状态 ——<br>**两个 Doing**：① 步骤3 seek 追踪 —— `utils/VESeekTrace.h` 容器已就绪（环形 10 条/三阶段/精度/abort 入库），**待接 VEPlayer 三阶段打点与 JNI-Java getter**，头文件尚未被任何 .cpp 引用；需先造出触发 seek 的手段，一并验掉步骤2 遗留的「seek 后队列峰值归零」。② 步骤5 性能面板 —— 六分页（概览/启播/Seek/稳态/资源/日志）已真机截图逐页核对通过，**剩余**：面板不支持拖到全屏高度、每 tick 写 perf 文件的脚手架待清、Seek 页等步骤3 接通。<br>**2026-08-08 计划外顺序调整**：因用户反馈"做完两步界面看不到变化"，提前实施步骤5 并跳过步骤4；**步骤4 已重定位为「后续重构」（抽 StartupTrace/SeekTrace/PlayerStats 扩展类），不再是步骤5 前置**，触发时机为步骤7 成为第二个消费方时。<br>另：设计稿 3.A.3「不另开定时器」适用范围已收窄为**仅 HUD**，面板自有 1s ticker。<br>**2026-08-08 基线作废 + 一处口径缺陷**：本 feature 步骤1/2 的全部实测数字用的是 640×360 合成小素材，**只能证明采集点完整，不可作为性能基线**；"硬解慢 8.6 倍、瓶颈是 configure"的结论已被 1080p 素材推翻。软解 `videoDecodeMs` 打点漏掉了 `avcodec_send_packet`（**量错了对象**），~~在 startup-cpu-opt 步骤2 修~~ → **已于 2026-08-08 修完（startup-cpu-opt 步骤2）：1080p 软解正确值 视频 p50=14.0/p95=23.6、音频 p50=0.3/p95=0.65；本 feature 记录的 0.1ms / 0.05ms 两组旧值作废且与新口径不可比**。另撤回「缓冲按包数封顶」的怀疑（1080p 峰值仅 64~71 < 640×360 的 216，证明上限本就按字节/时长算），RSS 254MB 降级为"待测"。<br>**另：本 feature 提的「日志分级收敛」建议中"打日志消耗 CPU、与测量目标冲突"这条理由已被实测证伪**（startup-cpu-opt 步骤3：软解 −1.5pp / 硬解 −4.5pp），仅剩"logcat 300 行配额损害可调试性"这条理由；对关键约束 1 的影响是 **ALOGV 对 CPU 测量的干扰实测在 5pp 以内，不构成测量有效性问题**。<br>**2026-08-08 新增下游依赖**：startup-cpu-opt 步骤4a 将在 `VEStartupTrace` 增 `T4A_CODEC_CREATED`/`T4A_CODEC_CONFIGURED`，把 T4a 拆成 创建/配置/启动 三段 —— 本 feature 的采集点清单与面板启播页届时需同步扩充。 | [perf-metrics/](perf-metrics/) |
 
 ## 候选需求（2026-08-21 登记，待用户确认是否立项）
@@ -70,6 +79,27 @@
   「日志分级收敛」**降级为可选清理**，唯一理由就是上面这条 300 行配额损害可调试性。
   已有静音构建开关 `VE_QUIET_LOG`（默认 OFF，加 `-PveQuietLog=true` 打开），
   需要干净日志或干净 CPU 对照时可用。
+
+
+### 测量互相干扰（2026-08-22，本轮发生四次）
+
+**测试基建本身也需要判据。** 四次各自产生了看似合理的错误结论：
+
+1. 宿主机流式 `adb logcat > file &` 与 `adb reverse` **抢同一条 USB 通道** ——
+   fps 从 23.9 压到 1.4。而且数据完整、内存斜率正常，**只有 fps 露馅**。若只看
+   内存就下"无泄漏"结论，得到的是"在错误运行状态下测出的正确数字"。
+2. 跑完再 `adb logcat -d` 被环形缓冲截断（5 分钟只留最后 103 秒）。
+3. 设备侧复用同一日志文件名：`rm` 不生效（采集进程持有句柄），新旧日志叠加，
+   出现"712 条样本却只有 297 个唯一秒号"。
+4. `assert-visual.sh` 的 `force-stop` + `pkill -f 'logcat -f'` 打断了正在跑的长稳。
+
+正确做法：设备侧 `logcat -f` 落盘 + 每次运行独立文件名 + 采集脚本互斥。
+
+### 短样本斜率不可靠（2026-08-22 实证）
+
+5 分钟样本测得 RSS **+41.6 MB/小时**，30 分钟样本测得 **+3.6** —— 相差 11 倍。
+短样本的斜率会被区间内的正常波动主导。`gen-report.py` 的泄漏判据门槛已从
+120 秒提到 **600 秒**，而本例说明可信量级在 10 分钟以上。
 
 ## 测量素材规范（2026-08-08 起，影响所有 feature 的性能类验收）
 
@@ -129,6 +159,36 @@
   帧率是否恒定），**提出时必须附上 `ffprobe` 的实际输出**，"按编码参数推算应该是……"不作数。
   这条与上面"先确认构成再优化"是同一件事的素材侧版本：**推算出来的前提是最容易错、
   又最不容易被察觉的那一环**。
+- **（2026-08-22 追加）排查前先把已有日志里的现成证据看完，再决定加探针。**
+  net-playback-harness 一轮里 stall 场景连着三次"什么都没测到"，去怀疑了服务器的解析代码，
+  **而服务器日志第一行就记着播放器请求的完整 URL** —— 根因是 `&` 在 `adb shell` 里
+  被当作后台运行符，URL 的 query 参数被静默丢掉，注入参数从未送达。
+  证据一直摆在那里，代价是三轮无效实验。
+  规则：任何"没测到 / 没生效"的排查，**第一步是把链路上已有的日志逐行读完**
+  （尤其是进程外的独立源：服务器日志、状态机留痕），确认现成证据不足以定位，才允许加新探针。
+  推论：**注入类参数必须有"注入已生效"的独立回读**，不能只看被测端的反应
+  ——"注入没生效"与"注入生效但无影响"在被测端长得一模一样（又一例零值歧义）。
+  附带小项：`adb shell` 传含 `&`/`?` 的 URL 必须整体加引号。
+- **（2026-08-22 追加）计数器必须写明"它在等谁"，且 bug 态下的读数一律作废。**
+  `vstarve`/`astarve` 被当成"网络供给不足"的指标写进了 net-playback-harness 的核心判据，
+  实测证明它量的是"**解码器等不到包**"：限速 0.6× 时它恒为 0，
+  因为数据被 buffering 挡在**数据面之外**，解码器侧队列反而是满的。
+  两条推论：① 排队类/等待类计数器必须在注释里写明**它守着的是哪一段的输入**，
+  否则会被当成上游任意一段的健康度来读；② **bug 态下测到的读数不能作为基线** ——
+  同一轮 smoke 阶段的 `astarve` 12~15/秒 是"数据取不出来"这个 bug 的产物，
+  与修好后的正常路径**度量的根本不是同一件事**。
+  这条是 2026-08-09"一个计数器不得覆盖多条语义不同路径"与
+  2026-08-15"必须写明在哪个时刻采样"的第三个变体：**同一个数字，换个上下文就换了含义。**
+- **（2026-08-22 追加）未经实测的机制解释不得进入结论，只能进入待验证项。**
+  net-playback-harness 一轮里对网络通路给出的十余次机制解释，**绝大多数被实测推翻**，
+  唯二成立的两条都来自实测日志。同轮还两次违反了刚立的"素材必须读实测值"规则：
+  一次 VFR 误判（把 `90000/3001` 的时基写法当成 VFR，实为恒定 29.99fps），
+  一次按码率推算文件大小得出"偏移越界"的错误结论（**实际文件 964MB**，
+  而按 2.4Mbps × 53min 算成 3.3 亿字节）。
+  规则：解释性叙述（"因为 A 所以 B"）在拿到实测前一律标注为**假设**，
+  不得写进 status/报告的结论段，也不得据以改代码。
+  **这条规则被违反的方式几乎总是"顺手推算一个本可以直接读出来的量"** ——
+  文件大小、帧率、时长、轨道构成、偏移边界，全都是一条命令就能读到实测值的。
 - **（2026-08-09 追加）UI 层不得用默认值把 native 的 `null` 兜掉。**
   `optDouble(key, -1.0)` 会让"没采到"与"采到了但是负数（采集点顺序颠倒）"
   在界面上变成同一个读数，**等于在展示层重新制造采集层刚消除的状态混淆**。

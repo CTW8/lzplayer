@@ -1,7 +1,18 @@
 # decoder-starve-wake-dedup 进度
 
-> 最后更新: 2026-08-08
+> 最后更新: 2026-08-22
 > 总体状态: Doing
+>
+> **2026-08-22 重要更新（影响步骤4 的可行性判断）**：net-playback-harness 已把下方路径 (a)
+> （`adb reverse` + 限速 HTTP 源）完整跑通，**实测结果否定了这条路** ——
+> throttle-below（限速 0.6× 码率）下 fps 掉到 1~3、buffering 触发 37 次，
+> 而 **`vstarve`/`astarve` 仍然是 0**：数据被 buffering 挡在**数据面之外**，
+> 解码器侧队列**反而是满的**，解码器根本没饥饿。
+> 结论：**限速 HTTP 源不能制造解码器饥饿**，本步骤所缺的手段仍然没有，
+> 且 net-playback-harness "解锁本步骤"的立项承诺**不成立**。
+> 剩余方向（均未验证）：绕开 buffering 暂停机制后限速；或走下方路径 (b)
+> 压小 `VEBufferedDataSource` / demux 水位，使数据面不暂停而供给不足 —— (b) 现在相对更现实。
+> **拿到 `vstarve > 0` 的实测之前，不得声称本步骤已解锁。**
 
 ## Done
 
