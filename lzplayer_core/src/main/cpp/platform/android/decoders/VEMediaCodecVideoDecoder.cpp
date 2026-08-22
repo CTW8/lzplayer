@@ -242,14 +242,17 @@ namespace VE {
         mCodec = VECodecWarmup::take(mime);
         if (mCodec == nullptr) {
             mCodec = AMediaCodec_createDecoderByType(mime);
-            if (VE_FAULT_HW_CREATE()) {
-                // 注入建链期失败: 验证工厂能否安静回退软解
-                ALOGW("VEFAULT inject: hw create failure");
-                if (mCodec != nullptr) {
-                    AMediaCodec_delete(mCodec);
-                }
-                mCodec = nullptr;
+        }
+        // 注入点放在**两条路径汇合之后**。第一版放在 createDecoderByType 那一
+        // 支里, 而预热实例命中时走的是 take() 分支 —— 注入设置生效了、注入点
+        // 却从不执行, 实测 "VEFAULT inject" 一次都没打印。
+        // 凡有多条路径得到同一个资源的地方, 注入点必须在汇合处。
+        if (VE_FAULT_HW_CREATE()) {
+            ALOGW("VEFAULT inject: hw create failure (codec=%p)", (void *) mCodec);
+            if (mCodec != nullptr) {
+                AMediaCodec_delete(mCodec);
             }
+            mCodec = nullptr;
         }
         if (mStartupTrace != nullptr) {
             mStartupTrace->mark(VEStartupTrace::T4A_CODEC_CREATED);
