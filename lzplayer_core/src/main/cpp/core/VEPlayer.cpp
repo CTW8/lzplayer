@@ -2071,6 +2071,13 @@ namespace VE {
         // 硬解虽然 mVideoRender 为 null，但它照样发首帧事件，等得到。
         const bool seekWaitsForFrame =
                 (mMediaInfo != nullptr) && mMediaInfo->hasVideo();
+        // 重建续播卡在预热段时, 需要一次看清各组件实际是否被拉起 ——
+        // 本轮在这条链上逐点猜测已连续误判五次
+        ALOGW("VESEEK stage3 waitsForFrame=%d window=%p source=%p vdec=%p "
+              "adec=%p vrender=%p aout=%p",
+              (int) seekWaitsForFrame, (void *) mWindow, (void *) mSource.get(),
+              (void *) mVideoDecoder.get(), (void *) mAudioDecoder.get(),
+              (void *) mVideoRender.get(), (void *) mAudioOutput.get());
         if (seekWaitsForFrame && mWindow != nullptr) {
             // 有视频且 surface 就绪时以首帧上屏作为 seek 完成的判据；
             // 暂停态下也要出这一帧，否则 seek 后画面不会更新。
