@@ -705,6 +705,23 @@ namespace VE {
     }
 
     void VEMediaCodecVideoDecoder::reportFatal(const char *reason) {
+        // **致命错误只上报一次。**
+        //
+        // 上报后播放器会重建视频链, 而本实例被弃用后仍可能在自己的 looper 上
+        // 跑完最后一轮 —— 再撞一次 dequeueOutputBuffer 错误就会二次上报,
+        // 而那时它已经不该发言了。上层收到这个迟到的 ERROR 会复位播放器,
+        // 于是"回退成功了却仍然中断播放"。
+        //
+        // 实测(故障注入 failHwAfterFrames=100): 重建成功、ON_INFO 回退通知
+        // (what:261 arg1:12289)正常发出**之后**, 又来一个真 ERROR
+        // (what:260 arg1:-2147483634), 上层据此 reset, state 16 -> 0。
+        //
+        // mIsStarted 就是现成的存活标志, 第一次上报时已置 false。
+        if (!mIsStarted) {
+            ALOGW("VEMediaCodecVideoDecoder::%s suppressed (already reported): %s",
+                  __FUNCTION__, reason);
+            return;
+        }
         ALOGE("VEMediaCodecVideoDecoder fatal: %s", reason);
         mIsStarted = false;
         // arg2 带上 fallback 标记：播放器据此走"重建为软解"而不是直接进 ERROR
