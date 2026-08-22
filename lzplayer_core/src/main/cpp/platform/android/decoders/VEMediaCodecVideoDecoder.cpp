@@ -527,6 +527,12 @@ namespace VE {
         ssize_t index = AMediaCodec_dequeueOutputBuffer(mCodec, &info, 0);
         const int64_t renderedNow = mRenderedFrames.load(std::memory_order_relaxed);
         if (VE_FAULT_HW_AFTER(renderedNow)) {
+            // **注入后立即自失效**。注入是全局且持续生效的, 不清掉的话播放器
+            // 重建出来的解码器会被同一个注入再次打掉 —— 实测表现为
+            // "rebuildVideoAsSoftware hardware decoder failed" 后补发真 ERROR,
+            // 看起来像播放器不会回退, 实际是注入器不让它回退。
+            // 运行期故障的语义本就是"发生一次", 不是"从此永久损坏"。
+            VEFaultInject::sFailHwAfterFrames.store(0, std::memory_order_relaxed);
             // **运行期失败, 最难触发也最该测的一条**: 建链期失败还有工厂兜底,
             // 运行期要求播放器在播放中途重建为软解且画面不中断
             ALOGW("VEFAULT inject: hw runtime failure after %lld frames",
