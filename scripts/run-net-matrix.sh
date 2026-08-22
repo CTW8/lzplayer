@@ -59,6 +59,12 @@ run_case portrait-vfr    "$BASE/portrait-vfr-a.mp4"                    20 ""
 run_case real-hevc-4k    "$BASE/real-hevc-4k.mp4"                      20 ""
 run_case noaudio-odd     "$BASE/noaudio-odd.mp4"                       25 ""
 
+# —— 故障注入场景（需 -PveFaultInject=true 构建，否则 app 会明确告警并返回 -1）——
+# 用本地素材: 注入验的是解码器行为, 叠加网络变量只会让失败原因难以归属
+FAULT_HW_CREATE=true    run_case fault-hw-create    "/sdcard/Movies/base-h264-1080p.mp4" 25 ""
+FAULT_HW_CONFIGURE=true run_case fault-hw-configure "/sdcard/Movies/base-h264-1080p.mp4" 25 ""
+FAULT_HW_AFTER=100      run_case fault-hw-runtime   "/sdcard/Movies/base-h264-1080p.mp4" 30 ""
+
 echo ""
 echo "== 归档 $OUT =="
 ls "$OUT" | tr '\n' ' '

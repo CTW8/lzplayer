@@ -59,6 +59,10 @@ echo "   素材=$ASSET 软解=$SOFTWARE 稳态=${PLAY_SECONDS}s seek=${SEEK_PERC
   # 日志打爆配额。harness 无法从设备读到它们, 所以记录"未知"而不是假装知道
   echo "veQuietLog=unknown(见构建命令)"
   echo "veTraceFrame=unknown(见构建命令)"
+  # **注入状态必须进指纹**: 一次忘关的注入会让后续所有结论作废且极难发现
+  echo "faultHwCreate=${FAULT_HW_CREATE:-}"
+  echo "faultHwConfigure=${FAULT_HW_CONFIGURE:-}"
+  echo "faultHwAfterFrames=${FAULT_HW_AFTER:-}"
 } > "$OUT/env.txt"
 
 # —— 素材指纹 ——
@@ -73,7 +77,10 @@ if [ -f "$LOCAL_ASSET" ]; then
     | tr -d ',' > "$OUT/keyframes.txt"
 else
   echo "{}" > "$OUT/asset.json"
-  echo "!! 本机找不到 $LOCAL_ASSET，素材指纹缺失（先跑 gen-test-assets.sh）"
+  # 变量名必须加花括号: 后面紧跟中文全角逗号时, shell 会把逗号当成变量名的
+  # 一部分, set -u 下报 unbound variable。这条一直存在, 只是素材总能找到、
+  # 从没走进这个 else 分支
+  echo "!! 本机找不到 ${LOCAL_ASSET}，素材指纹缺失（先跑 gen-test-assets.sh）"
 fi
 
 # —— 采集 ——
@@ -85,9 +92,19 @@ case "$ASSET" in
       SRC_URI="$ASSET"
       # 网络源: 服务器请求日志并入产物, 它是判据的独立交叉源
       NET=1 ;;
+  /*) # 绝对路径原样用, 不再拼 DEV_DIR —— 否则得到
+      # /sdcard/Movies//sdcard/Movies/xxx.mp4, 播放起不来而报告只显示
+      # "解码路径 FAIL", 症状与播放器缺陷难以区分
+      SRC_URI="$ASSET"; NET=0 ;;
   *)  SRC_URI="$DEV_DIR/$ASSET"; NET=0 ;;
 esac
 CMD="am start -n $ACT -e source $SRC_URI --ez autoplay true --ez software $SOFTWARE"
+# 故障注入经环境变量透传(仅 -PveFaultInject=true 构建有效)。
+# 走环境变量而非位置参数: 注入是可选的第 6~8 个维度, 加成位置参数会让
+# 常规调用也得写一串空串
+[ -n "${FAULT_HW_CREATE:-}" ]    && CMD="$CMD --ez faultHwCreate $FAULT_HW_CREATE"
+[ -n "${FAULT_HW_CONFIGURE:-}" ] && CMD="$CMD --ez faultHwConfigure $FAULT_HW_CONFIGURE"
+[ -n "${FAULT_HW_AFTER:-}" ]     && CMD="$CMD --ei faultHwAfterFrames $FAULT_HW_AFTER"
 CMD="$CMD --ei playSeconds $PLAY_SECONDS --es caseName $CASE"
 [ -n "$SEEK_PERCENTS" ] && CMD="$CMD --es seekPercents $SEEK_PERCENTS"
 # 整条命令加引号在设备侧 shell 执行: URL query 里的 & 否则会被当成后台
