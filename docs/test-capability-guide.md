@@ -16,6 +16,7 @@
 | **画面正确性** | `assert-visual.sh` 四角色块 | 像素比对 |
 | 网络播放 | `media-server.py` + 场景矩阵 | 服务器字节日志交叉校验 |
 | 跑分报告 | `run-benchmark.sh` + `gen-report.py` | 口径写死在生成器里 |
+| **回归检测** | `compare-reports.py` | 指纹必须一致才比；判据翻转单独列出 |
 
 ## 二、常用命令
 
@@ -40,6 +41,10 @@ adb reverse tcp:8188 tcp:8188
 
 # 6. 画面正确性断言（不能与上面并行）
 ./scripts/assert-visual.sh "http://127.0.0.1:8188/probe-visual.mp4"
+
+# 7. 跨轮次对照（回归检测）—— 判据 PASS→FAIL 或出现回退时退出码非零，可接 CI
+./scripts/compare-reports.py 基线目录 新目录
+./scripts/compare-reports.py "a1,a2,a3" "b1,b2,b3"   # N>=3 取中位数
 ```
 
 ## 三、注入参数（网络场景）
