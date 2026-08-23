@@ -2035,7 +2035,11 @@ namespace VE {
         ++mFlowSeq;
 
         const double target = mSeekTargetMs;
-        forEachRole([target](Role &r) { r.comp->seekTo(target); r.state = ROLE_SEEKING; });
+        // 打出实际遍历到谁 —— 回退续播后新显示端似乎收不到 seekTo,
+        // 而 m_NotifyFirstFrame 正是在 onSeekTo 里置位的。本轮逐点推断已误判十次
+        forEachRole([target](Role &r) {
+            ALOGW("VESEEK stage2 -> comp=%p", (void *) r.comp.get());
+            r.comp->seekTo(target); r.state = ROLE_SEEKING; });
         postFlowTimeout(kAckTimeoutUs);
     }
 
