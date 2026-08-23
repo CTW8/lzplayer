@@ -313,6 +313,28 @@ namespace VE {
 
     void VEMediaCodecVideoDecoder::destroyCodec() {
         if (mCodec) {
+            // **释放前必须先解绑 surface。**
+            //
+            // 一个 ANativeWindow 同时只能有一个 API 连接方: MediaCodec 直出时
+            // 已 native_window_api_connect 独占它。若 codec 处于错误态(运行期
+            // 故障、注入),  AMediaCodec_stop 可能失败, 连接不会被断开 ——
+            // 此后回退重建软解, 新的 GLES 渲染器再连同一 surface 就会拿到
+            //   native_window_api_connect failed (already connected)
+            //   eglCreateWindowSurface error 3003 (EGL_BAD_ALLOC)
+            // 渲染器建不出来, 每帧走 "renderer not ready" 被丢掉, 首帧永不上屏,
+            // seek 预热超时, 上层复位 —— 表现为"回退成功却中断播放"。
+            //
+            // setOutputSurface(nullptr) 显式归还连接, 不依赖 stop 是否成功。
+            if (mWindow != nullptr) {
+                // 错误态下 setOutputSurface 会直接失败(实测 ret=-10000),
+                // 先 flush 把 codec 拉回可操作态再解绑
+                AMediaCodec_flush(mCodec);
+                media_status_t ds = AMediaCodec_setOutputSurface(mCodec, nullptr);
+                if (ds != AMEDIA_OK) {
+                    ALOGW("VEMediaCodecVideoDecoder::%s detach after flush ret=%d",
+                          __FUNCTION__, (int) ds);
+                }
+            }
             AMediaCodec_stop(mCodec);
             AMediaCodec_delete(mCodec);
             mCodec = nullptr;
