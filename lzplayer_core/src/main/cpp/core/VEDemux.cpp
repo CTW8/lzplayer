@@ -67,6 +67,7 @@ namespace VE {
 
 
     VEResult VEDemux::start() {
+        ALOGW("VEDemux::start() called, posting kWhatStart");
         std::shared_ptr<AMessage> msg = std::make_shared<AMessage>(kWhatStart, shared_from_this());
         msg->post();
         return VE_OK;
@@ -110,6 +111,16 @@ namespace VE {
             return VE_NOT_ENOUGH_DATA;
         }
         if (queue->getDataSize() == 0) {
+            // 打出**读的是哪条轨**: demux 侧 vq=30 而消费侧报空, 唯一可能是
+            // 两边看的不是同一条轨。限流每秒一条
+            static int64_t sUs3 = 0;
+            const int64_t n3 = nowUs();
+            if (n3 - sUs3 > 1000000) {
+                sUs3 = n3;
+                ALOGW("VEDemux::read EMPTY this=%p type=%d aq=%d vq=%d", (void *) this, (int) type,
+                      mAudioPacketQueue ? mAudioPacketQueue->getDataSize() : -1,
+                      mVideoPacketQueue ? mVideoPacketQueue->getDataSize() : -1);
+            }
             ALOGV("VEDemux::read queue empty, wait");
             return VE_NOT_ENOUGH_DATA;
         }
@@ -232,6 +243,19 @@ namespace VE {
         }
         // 只要读循环还该继续跑就唤醒它。这里是消费者线程侧的提示(多路
         // 队列状态非原子读无妨)，demux 线程 onRead 会用同一判据权威复查。
+        {
+            // park 判据的实际输入。onRead 反复进入却无任何读动作留痕,
+            // 最可能是这里判定"缓冲够了"直接返回
+            static int64_t sUs2 = 0;
+            const int64_t n2 = nowUs();
+            if (n2 - sUs2 > 1000000) {
+                sUs2 = n2;
+                ALOGW("VEDemux park? this=%p aq=%d vq=%d park=%d", (void *) this,
+                      mAudioPacketQueue ? mAudioPacketQueue->getDataSize() : -1,
+                      mVideoPacketQueue ? mVideoPacketQueue->getDataSize() : -1,
+                      (int) shouldParkRead());
+            }
+        }
         if (!shouldParkRead()) {
             // exchange 去重：已有在途的续读消息就不再投
             if (!mContinuePending.exchange(true)) {
@@ -302,6 +326,9 @@ namespace VE {
                 break;
             }
             case kWhatStart: {
+                // 回退续播时 mSource->start() 调了却不见 onStart —— 需确认
+                // 消息是否根本没到。本轮在这条链上逐点推断已误判六次
+                ALOGW("VEDemux kWhatStart received (mIsStart was %d)", (int) mIsStart);
                 mIsStart = true;
                 mIsEOS = false;
                 mAbortRequest = false;   // stop 后重新 start：解除中断标志
@@ -616,6 +643,18 @@ namespace VE {
         // 覆盖所有返回路径, 见 VEPerfStats::CpuScope
         VEPerfStats::CpuScope cpuScope(mPerfStats ? &mPerfStats->demuxCpu : nullptr);
 
+        {
+            // 回退续播时 kWhatStart 收到了、读循环却没跑起来。一次看清
+            // onRead 到没到、被哪个分支挡了 —— 逐点推断已误判七次
+            static int64_t sUs = 0;
+            const int64_t n = nowUs();
+            if (n - sUs > 1000000) {
+                sUs = n;
+                ALOGW("VEDemux::onRead entry released=%d ctx=%p isStart=%d eos=%d",
+                      (int) mReleased, (void *) mFormatContext,
+                      (int) mIsStart, (int) mIsEOS);
+            }
+        }
         if (mReleased || mFormatContext == nullptr) {
             // 终态防护：teardown 超时强推后可能有迟到的读消息
             ALOGW("VEDemux::onRead after release, ignore");
