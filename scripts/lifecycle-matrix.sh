@@ -111,7 +111,13 @@ for name, (sig_name, sig_re) in SIGNAL.items():
     p = os.path.join(out, name + ".txt")
     if not os.path.exists(p):
         continue
-    t = io.open(p, errors="ignore").read()
+    raw = io.open(p, errors="ignore").read()
+    # **只统计本应用的日志**。logcat 是全局的, 锁屏时系统媒体组件
+    # (TBLExoPlayer / MediaCodecVideoRenderer)也在调 setSurface ——
+    # 实测 lock 场景 36 次"surface 变化"里只有 5 次是我们的, 其余是别人的。
+    # 不过滤会让压力自检看起来通过, 实际信号来自无关进程
+    t = "\n".join(L for L in raw.splitlines()
+                   if "VEPlayer" in L or "NativeLib" in L or "lzplayer" in L)
 
     sig = len(re.findall(sig_re, t))
     bs = t.count("buffering, pausing data flow")

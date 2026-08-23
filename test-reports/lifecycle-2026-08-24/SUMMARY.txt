@@ -1,0 +1,29 @@
+生命周期矩阵基线   2026-08-24
+复跑: ./scripts/lifecycle-matrix.sh
+
+场景            信号(本应用)      VESTAT  ERROR态  结果
+background      surface 变化 6    5       0        PASS
+lock            surface 变化 4    5       0        PASS
+rotate          surface 变化 2    17      0        PASS
+switch-src      换源 2            13      0        PASS
+open-release    重复起播 5        18      0        PASS
+
+五个场景全部通过, 且**压力自检全部有效**(信号均 >= 2, 生命周期变化真实发生)。
+判据: 崩溃/ANR、buffering 失配、credit 记账失守、ATE EOF sentinel 回归 ——
+均未出现。
+
+两处过程中的发现:
+
+1. **logcat 是全局的, 必须按进程过滤**。第一版 lock 场景报"surface 变化 36 次",
+   实际只有 5 次是本应用, 其余来自系统媒体组件(TBLExoPlayer /
+   MediaCodecVideoRenderer —— 锁屏时它们也在调 setSurface)。
+   不过滤会让压力自检看起来通过, 而信号其实来自无关进程 —— 这是一种新形态的
+   假 PASS: 不是"没施加压力", 而是"测到了别人的压力"。
+
+2. switch-src 第一次报 1 次 ERROR 态, 原因是第二素材 real-hevc-1080p.mp4 不在
+   设备上(demux open failed, code 8193)。**不是换源逻辑缺陷**, 是素材未推送。
+   补齐后 ERROR 归零。
+
+对照锁屏那次的历史误判: 当时把"软解不渲染"当成缺陷, 实际是设备休眠/keyguard。
+现在 lock 场景有了基线 —— 锁屏解锁一个来回, surface 变化 4 次、无 ERROR、
+无 buffering 失配, 这就是正常行为的样子。
