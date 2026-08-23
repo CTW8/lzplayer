@@ -33,7 +33,7 @@ mkdir -p "$OUT"
 
 # 本机素材路径（gen-test-assets.sh 的默认输出目录），用于 ffprobe 指纹。
 # 指纹取自本机副本而不是设备：ffprobe 在宿主机现成，且两者是同一份文件
-LOCAL_ASSET="/tmp/lzplayer-assets/$ASSET"
+LOCAL_ASSET="assets/generated/$ASSET"
 # 取本机副本路径时必须**先去掉 URL query**: 注入场景的 URL 形如
 # xxx.mp4?kbps=1440&stall=6@0.25, basename 会把整串 query 带进文件名,
 # 找不到文件 → 素材指纹为空 → 后续全部失败。实测 12 个场景里 6 个带注入的

@@ -8,9 +8,11 @@
 #        ./scripts/gen-test-assets.sh --push        生成后推到设备
 set -euo pipefail
 
-OUT="${1:-/tmp/lzplayer-assets}"
+# 默认放工程内 assets/ 而非 /tmp: /tmp 会被系统清理, 素材没了之后
+# gen-report 会因拿不到 ffprobe 指纹而拒绝出报告(设计如此), 但原因隐蔽
+OUT="${1:-assets/generated}"
 PUSH=0
-if [ "${1:-}" = "--push" ]; then OUT=/tmp/lzplayer-assets; PUSH=1; fi
+if [ "${1:-}" = "--push" ]; then OUT=assets/generated; PUSH=1; fi
 DEV=/sdcard/Movies
 mkdir -p "$OUT"
 
