@@ -515,6 +515,11 @@ namespace VE {
         notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_INFO, VE_INFO_DECODER_FALLBACK,
                    "decoder fallback to software", nullptr);
 
+        // 新显示端不经历 onSeekTo(见 armFirstFrameNotify 注释), 必须在这里
+        // 补上首帧标记, 否则 stage3 预热永远等不到首帧事件
+        if (mVideoRender) {
+            mVideoRender->armFirstFrameNotify();
+        }
         // 回到中断前的位置续播。用更宽的超时窗口, 见 kFallbackSeekTimeoutUs
         mState = wasPlaying ? STATE_STARTED : STATE_PAUSED;
         mSeekTimeoutOverrideUs = kFallbackSeekTimeoutUs;

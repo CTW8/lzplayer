@@ -21,6 +21,14 @@ namespace VE {
 
     class VEVideoDisplay :public AHandler, public IFrameSink, public IVEComponent{
     public:
+        /// 标记"下一帧上屏时要上报首帧"。
+        ///
+        /// 正常路径由 onSeekTo 置位, 但**回退重建的显示端不经历 onSeekTo**:
+        /// rebuildVideoAsSoftware 在 seek 流程内部换掉了这个参与者, 而
+        /// stage2 的 forEachRole 早已遍历完毕。于是它照常渲染却永不上报首帧,
+        /// seek 预热段永远等不到, 超时后上层复位 —— 表现为"回退成功却中断播放"。
+        void armFirstFrameNotify() { m_NotifyFirstFrame = true; }
+
         /// 帧队列瞬时深度。可从任意线程调用(读原子镜像，见 mFrameDepth)
         int getFrameQueueDepth() const {
             return mFrameDepth.load(std::memory_order_relaxed);
