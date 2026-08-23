@@ -515,8 +515,20 @@ namespace VE {
         notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_INFO, VE_INFO_DECODER_FALLBACK,
                    "decoder fallback to software", nullptr);
 
-        // 新显示端不经历 onSeekTo(见 armFirstFrameNotify 注释), 必须在这里
-        // 补上首帧标记, 否则 stage3 预热永远等不到首帧事件
+        // **surface 必须重新下发给新显示端。**
+        //
+        // 重建只造了 VEVideoDisplay 对象, 而它内部的实际渲染器(GLES/Vulkan)
+        // 要等 setSurface 才创建。不下发的话每帧都走
+        // "renderer not ready, drop frame" 分支被丢掉 —— 实测回退后该日志
+        // 反复出现、一帧都没上屏, 于是首帧事件永不发出、stage3 预热超时、
+        // 上层复位, 表现为"回退成功却中断播放"。
+        //
+        // 走与起播 onSurfaceChanged 相同的通路, 不另造一条。
+        if (mVideoRender && mWindow != nullptr) {
+            mVideoRender->setSurface(mWindow, mViewWidth, mViewHeight);
+        }
+        // 新显示端不经历 onSeekTo(见 armFirstFrameNotify 注释), 补上首帧标记,
+        // 否则即使能渲染也不会上报首帧
         if (mVideoRender) {
             mVideoRender->armFirstFrameNotify();
         }
