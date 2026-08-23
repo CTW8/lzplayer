@@ -1,0 +1,27 @@
+时序压力测试基线   2026-08-23
+复跑: ./scripts/stress-timing.sh
+
+三个场景：
+  seek-storm  PASS  seek=8  abort=0   步距 200ms，发起 12 次
+  cmd-jitter  PASS  状态迁移 34 次     play/pause × 30，间隔 300ms
+  cpu-load    PASS  VESTAT 31 行       背景占满 CPU
+
+判据不是"跑完不崩"，而是留痕自洽：buffering 成对 / 无 dropOvf（credit 记账
+失守）/ 无 ATE EOF sentinel（常驻回归探针）/ 无非法进入 ERROR 态。
+三个场景全部通过，未发现新的时序缺陷。
+
+**压力自检**（本次新增的硬要求）：
+没施加压力的 PASS 是假通过。本项目在"注入什么都没测到却报 PASS"上栽过三次，
+所以每个场景都要求活动量 >= 5（seek 次数 / 状态迁移数 / VESTAT 行数）。
+这条自检立刻抓到两次假 PASS：
+  第一版用 harness 的 seekPercents，步距在 runSeekStep 里写死 3 秒，
+  12 个点被拉长到 36 秒，每次 seek 从容完成 —— seek=7 abort=0，压力没施加；
+  第二版改用 UI tap/swipe 拖进度条 —— seek=0，SeekBar 在 adb input 下不响应。
+最终方案：给 seek 步距加 --ei seekStepMs 参数，压力测试传 200ms。
+
+**一个待查的行为差异**：
+seek 风暴下发起 12 次、只执行 8 次，且 abort=0。日志显示
+`VEBENCH seek 5/12` 与 `7/12` 之间没有 `seek stage 1/3`，6/12 整个消失 ——
+播放器在过载时**丢弃请求**，既不抢占（abort=0）也不排队。
+这是时序压力测出的第一个真实行为差异。丢弃本身可能是合理设计（避免无谓的
+中间态 seek），但目前没有任何留痕说明"我丢了一个请求"，上层无从知道。

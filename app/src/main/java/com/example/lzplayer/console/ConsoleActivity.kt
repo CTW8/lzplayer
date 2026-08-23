@@ -92,6 +92,8 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         const val EXTRA_FAULT_HW_CONFIGURE = "faultHwConfigure"
         /** --ei faultHwAfterFrames 100 : 第 N 帧后运行期失败。**最难触发也最该测** */
         const val EXTRA_FAULT_HW_AFTER = "faultHwAfterFrames"
+        /** --ei seekStepMs 200 : seek 序列步距，压力测试用 */
+        const val EXTRA_SEEK_STEP_MS = "seekStepMs"
     }
 
     private lateinit var etSource: EditText
@@ -379,6 +381,12 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             } else {
                 benchArg(true, "faultInject create=$fc configure=$fg afterFrames=$fa")
             }
+        }
+
+        val step = i.getIntExtra(EXTRA_SEEK_STEP_MS, 0)
+        if (step > 0) {
+            kSeekStepMs = step.toLong()
+            benchArg(true, "seekStepMs=$step")
         }
 
         caseName = i.getStringExtra(EXTRA_CASE_NAME)?.trim().orEmpty()
@@ -999,7 +1007,10 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
     /** 收尾代次：换源/重开时递增，作废在途的延时收尾 */
     private var benchGen: Int = 0
     /** seek 序列步距。见 runSeekStep 注释 */
-    private val kSeekStepMs = 3000L
+    /** seek 序列步距，可经 --ei seekStepMs 覆盖。默认 3 秒见 runSeekStep 注释；
+     *  时序压力测试会压到 200ms 以制造 seek 抢占——那条 abort() 路径此前从未
+     *  被真实触发过，而固定 3 秒步距下每次 seek 都从容完成，压不出抢占。 */
+    private var kSeekStepMs = 3000L
     private var autoPlayWhenPrepared = false
     /** intent 带来的片源，等 surface 就绪后再打开(见 handleLaunchIntent) */
     private var pendingIntentSource: String? = null
