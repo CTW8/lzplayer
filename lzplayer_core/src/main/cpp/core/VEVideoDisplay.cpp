@@ -200,10 +200,6 @@ namespace VE {
                           (int) mFrames.back().first->getFrameType(),
                           mFrames.size(), (int) m_IsStarted);
                 }
-                // 重建续播时显示端先 park、解码器后出帧, 唤醒是否触发靠这行判定。
-                // 与 EOS 那个 bug 同源: 停摆条件多、唤醒条件单一
-                ALOGW("VEVideoDisplay::onQueueFrame size=%zu started=%d",
-                      mFrames.size(), (int) m_IsStarted);
                 if (m_IsStarted && mFrames.size() == 1) {
                     // 队列从空转非空：链条此前已停摆，帧到达即重新拉起。
                     // 链条活着时队列必然非空，不会重复踢
