@@ -1,0 +1,32 @@
+状态机遍历基线   2026-08-23
+复跑: ./scripts/state-matrix.sh
+
+白名单 11 格（来自 VEPlayerDriver 各命令守卫），实测覆盖 10 格：
+
+  接受（10）
+    setDataSource  IDLE
+    prepareAsync   INITIALIZED
+    start          PREPARED / PAUSED / PLAYBACK_COMPLETE
+    stop           PREPARED / STARTED / PAUSED / PLAYBACK_COMPLETE
+    pause          STARTED
+  拒绝（守卫按预期挡住）
+    stop           STOPPED
+    stop           ERROR        （素材缺失那轮顺带验到）
+
+未覆盖 1 格：prepareAsync ← STOPPED
+
+  **这一格在当前产品行为下永远走不到**：从 STOPPED 重开片源时，app 先 reset
+  回 IDLE 再 setDataSource（实测留痕 `setDataSource state 1 -> 2`），
+  而非直接 prepareAsync(64 -> 4)。
+  即代码允许了一条产品实际不使用的路径 —— 不是测试不到位，是白名单比实际需要
+  更宽。留着无害，但应知道它没有被任何真实路径覆盖。
+
+顺带确认的产品行为：
+  STOPPED 态点播放由 UI 层 stoppedNeedsReopen 拦截并提示"需重新打开片源"，
+  native 守卫是第二道防线。stop→play 那个真 bug 修复后的行为符合预期。
+
+方法要点：
+- 判据双向 —— 代码侧白名单 vs 实测 ALOGW 留痕，不预设哪边对；
+- 必须用 UI 驱动而非 intent —— intent 每次都重开播放器把状态冲回 IDLE，
+  那样永远测不到"从 STARTED 发 stop"这类格子（第一版就栽在这里）；
+- PLAYBACK_COMPLETE 相关格子用 1.5 秒极短素材到达，不必等长片播完。

@@ -1,0 +1,25 @@
+VEPlayerDriver::setDataSource state 1 -> 2
+VEPlayerDriver::prepareAsync state 2 -> 4
+VEPlayerDriver::start state 8 -> 16
+VEPlayerDriver::pause state 16 -> 32
+VEPlayerDriver::start state 32 -> 16
+VEPlayerDriver::stop state 16 -> 64
+VEPlayerDriver::stop rejected, currentState=64
+VEPlayerDriver::setDataSource state 1 -> 2
+VEPlayerDriver::prepareAsync state 2 -> 4
+VEPlayerDriver::stop state 8 -> 64
+VEPlayerDriver::stop rejected, currentState=64
+VEPlayerDriver::setDataSource state 1 -> 2
+VEPlayerDriver::prepareAsync state 2 -> 4
+VEPlayerDriver::start state 8 -> 16
+VEPlayerDriver::start state 128 -> 16
+VEPlayerDriver::stop state 128 -> 64
+VEPlayerDriver::stop rejected, currentState=64
+VEPlayerDriver::setDataSource state 1 -> 2
+VEPlayerDriver::prepareAsync state 2 -> 4
+VEPlayerDriver::start state 8 -> 16
+VEPlayerDriver::pause state 16 -> 32
+VEPlayerDriver::stop state 32 -> 64
+VEPlayerDriver::stop rejected, currentState=64
+VEPlayerDriver::setDataSource state 1 -> 2
+VEPlayerDriver::prepareAsync state 2 -> 4
