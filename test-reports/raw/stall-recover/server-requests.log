@@ -1,42 +1,42 @@
-9.009 REQ GET /long-53min.mp4 range=bytes=0- -> 206 bytes=0-963773420/963773421
-9.291 REQ GET /long-53min.mp4 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
-9.366 DONE /long-53min.mp4 sent=2165484/2165484
-9.376 DONE /long-53min.mp4 sent=963773421/963773421
-9.412 REQ GET /long-53min.mp4 range=bytes=48- -> 206 bytes=48-963773420/963773421
-75.337 DONE /long-53min.mp4 sent=963773373/963773373
-77.441 REQ GET /long-53min.mp4 range=bytes=0- -> 206 bytes=0-963773420/963773421
-77.735 DONE /long-53min.mp4 sent=963773421/963773421
-77.736 REQ GET /long-53min.mp4 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
-77.768 DONE /long-53min.mp4 sent=2165484/2165484
-77.816 REQ GET /long-53min.mp4 range=bytes=48- -> 206 bytes=48-963773420/963773421
-140.279 DONE /long-53min.mp4 sent=963773373/963773373
-140.284 REQ GET /long-53min.mp4 range=bytes=236316996- -> 206 bytes=236316996-963773420/963773421
-143.041 REQ GET /long-53min.mp4 range=bytes=573008459- -> 206 bytes=573008459-963773420/963773421
-143.320 DONE /long-53min.mp4 sent=727456425/727456425
-153.131 DONE /long-53min.mp4 sent=390764962/390764962
-155.263 REQ GET /long-53min.mp4?kbps=3600 range=bytes=0- -> 206 bytes=0-963773420/963773421
-155.422 REQ GET /long-53min.mp4?kbps=3600 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
-156.725 ABORT /long-53min.mp4?kbps=3600 sent=655360/963773421
-160.235 DONE /long-53min.mp4?kbps=3600 sent=2165484/2165484
-160.272 REQ GET /long-53min.mp4?kbps=3600 range=bytes=48- -> 206 bytes=48-963773420/963773421
-223.192 ABORT /long-53min.mp4?kbps=3600 sent=28311552/963773373
-223.962 REQ GET /long-53min.mp4?kbps=1440 range=bytes=0- -> 206 bytes=0-963773420/963773421
-224.335 REQ GET /long-53min.mp4?kbps=1440 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
-226.150 ABORT /long-53min.mp4?kbps=1440 sent=393216/963773421
-236.367 DONE /long-53min.mp4?kbps=1440 sent=2165484/2165484
-236.431 REQ GET /long-53min.mp4?kbps=1440 range=bytes=48- -> 206 bytes=48-963773420/963773421
-292.142 ABORT /long-53min.mp4?kbps=1440 sent=10027008/963773373
-292.197 TTFB /long-53min.mp4?ttfb=2 delay 2.0s
-294.200 REQ GET /long-53min.mp4?ttfb=2 range=bytes=0- -> 206 bytes=0-963773420/963773421
-294.312 TTFB /long-53min.mp4?ttfb=2 delay 2.0s
-294.567 DONE /long-53min.mp4?ttfb=2 sent=963773421/963773421
-296.318 REQ GET /long-53min.mp4?ttfb=2 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
-296.338 DONE /long-53min.mp4?ttfb=2 sent=2165484/2165484
-296.409 TTFB /long-53min.mp4?ttfb=2 delay 2.0s
-298.415 REQ GET /long-53min.mp4?ttfb=2 range=bytes=48- -> 206 bytes=48-963773420/963773421
-338.886 DONE /long-53min.mp4?ttfb=2 sent=963773373/963773373
-340.749 REQ GET /long-53min.mp4?kbps=2000 range=bytes=0- -> 206 bytes=0-963773420/963773421
-341.023 REQ GET /long-53min.mp4?kbps=2000 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
-342.590 ABORT /long-53min.mp4?kbps=2000 sent=458752/963773421
-349.687 DONE /long-53min.mp4?kbps=2000 sent=2165484/2165484
-349.744 REQ GET /long-53min.mp4?kbps=2000 range=bytes=48- -> 206 bytes=48-963773420/963773421
+14.097 REQ GET /long-53min.mp4 range=bytes=0- -> 206 bytes=0-963773420/963773421
+14.148 REQ GET /long-53min.mp4 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
+14.181 DONE /long-53min.mp4 sent=2165484/2165484
+14.283 REQ GET /long-53min.mp4 range=bytes=48- -> 206 bytes=48-963773420/963773421
+14.418 DONE /long-53min.mp4 sent=963773421/963773421
+80.740 DONE /long-53min.mp4 sent=963773373/963773373
+82.874 REQ GET /long-53min.mp4 range=bytes=0- -> 206 bytes=0-963773420/963773421
+83.074 REQ GET /long-53min.mp4 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
+83.187 DONE /long-53min.mp4 sent=963773421/963773421
+83.188 DONE /long-53min.mp4 sent=2165484/2165484
+83.236 REQ GET /long-53min.mp4 range=bytes=48- -> 206 bytes=48-963773420/963773421
+145.804 DONE /long-53min.mp4 sent=963773373/963773373
+145.808 REQ GET /long-53min.mp4 range=bytes=236316996- -> 206 bytes=236316996-963773420/963773421
+148.682 DONE /long-53min.mp4 sent=727456425/727456425
+148.684 REQ GET /long-53min.mp4 range=bytes=573008459- -> 206 bytes=573008459-963773420/963773421
+158.404 DONE /long-53min.mp4 sent=390764962/390764962
+160.534 REQ GET /long-53min.mp4?kbps=3600 range=bytes=0- -> 206 bytes=0-963773420/963773421
+160.688 REQ GET /long-53min.mp4?kbps=3600 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
+161.996 ABORT /long-53min.mp4?kbps=3600 sent=655360/963773421
+165.501 DONE /long-53min.mp4?kbps=3600 sent=2165484/2165484
+165.535 REQ GET /long-53min.mp4?kbps=3600 range=bytes=48- -> 206 bytes=48-963773420/963773421
+227.873 ABORT /long-53min.mp4?kbps=3600 sent=28049408/963773373
+228.760 REQ GET /long-53min.mp4?kbps=1440 range=bytes=0- -> 206 bytes=0-963773420/963773421
+229.134 REQ GET /long-53min.mp4?kbps=1440 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
+230.950 ABORT /long-53min.mp4?kbps=1440 sent=393216/963773421
+241.168 DONE /long-53min.mp4?kbps=1440 sent=2165484/2165484
+241.224 REQ GET /long-53min.mp4?kbps=1440 range=bytes=48- -> 206 bytes=48-963773420/963773421
+297.304 ABORT /long-53min.mp4?kbps=1440 sent=10092544/963773373
+297.433 TTFB /long-53min.mp4?ttfb=2 delay 2.0s
+299.441 REQ GET /long-53min.mp4?ttfb=2 range=bytes=0- -> 206 bytes=0-963773420/963773421
+299.865 DONE /long-53min.mp4?ttfb=2 sent=963773421/963773421
+299.867 TTFB /long-53min.mp4?ttfb=2 delay 2.0s
+301.868 REQ GET /long-53min.mp4?ttfb=2 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
+301.894 DONE /long-53min.mp4?ttfb=2 sent=2165484/2165484
+301.967 TTFB /long-53min.mp4?ttfb=2 delay 2.0s
+303.973 REQ GET /long-53min.mp4?ttfb=2 range=bytes=48- -> 206 bytes=48-963773420/963773421
+344.296 DONE /long-53min.mp4?ttfb=2 sent=963773373/963773373
+346.442 REQ GET /long-53min.mp4?kbps=2000 range=bytes=0- -> 206 bytes=0-963773420/963773421
+346.714 REQ GET /long-53min.mp4?kbps=2000 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
+348.283 ABORT /long-53min.mp4?kbps=2000 sent=458752/963773421
+355.377 DONE /long-53min.mp4?kbps=2000 sent=2165484/2165484
+355.416 REQ GET /long-53min.mp4?kbps=2000 range=bytes=48- -> 206 bytes=48-963773420/963773421

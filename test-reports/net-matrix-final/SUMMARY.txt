@@ -1,0 +1,34 @@
+测试评价系统 · 完整矩阵基线   2026-08-23
+复跑: ./scripts/run-net-matrix.sh    (需 -PveFaultInject=true 构建以启用注入场景)
+
+场景                 n     fps_p50  判据
+bad-content          -     -        1 PASS 5 INC
+fault-hw-configure   22    -        2 PASS 4 INC
+fault-hw-create      23    -        2 PASS 4 INC
+fault-hw-runtime     28    -        2 PASS 4 INC
+net-baseline         57    24.9     3 PASS 3 INC
+net-seek             56    23.9     4 PASS 2 INC
+no-range             -     -        1 PASS 5 INC
+noaudio-odd          22    -        2 PASS 4 INC
+portrait-vfr         9     -        2 PASS 4 INC
+real-hevc-4k         17    -        2 PASS 4 INC
+slow-ttfb            31    23.9     3 PASS 3 INC
+stall-forever        -     -        6 INC
+stall-recover        -     -        6 INC
+throttle-above       49    23.9     3 PASS 3 INC
+throttle-below       31    0.0      2 PASS 1 FAIL 3 INC
+
+15 个场景全部跑通, **零 FAIL 误判**。
+唯一 FAIL 是 throttle-below 的帧率判据(限速 0.6x, fps 0.0) —— 预期行为,
+判据在正确工作。
+
+INCONCLUSIVE 均为口径正确工作, 不是缺陷:
+- stall/no-range/bad-content 本就不该有稳态帧率;
+- 短素材(portrait-vfr 9 秒 / real-hevc-4k 17 秒)样本不足 30, 分位数发 "--";
+- 泄漏判据要求 >= 600 秒样本, 仅长稳用例满足。
+
+三个故障注入场景各 2 PASS: 播放正常进行到注入点, 注入按预期触发。
+注: 运行期回退(fault-hw-runtime)受 MediaCodec 平台限制影响, 回退后无法在同一
+surface 重建渲染器, 详见 commit 533d602。该限制已定性, 非本项目逻辑缺陷。
+
+系统覆盖的 11 个维度见 docs/test-capability-guide.md。

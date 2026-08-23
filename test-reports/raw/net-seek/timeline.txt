@@ -1,329 +1,332 @@
-08-22 04:14:40.950 18020 18020 W LZConsole: VEBENCH ok seekPercents=5, 25, 60
-08-22 04:14:40.950 18020 18020 W LZConsole: VEBENCH ok playSeconds=60
-08-22 04:14:40.951 18020 18020 W LZConsole: VEBENCH ok caseName=net-seek
-08-22 04:14:40.952 18020 18020 W LZConsole: VEBENCH armed steady=60000ms seeks=3
-08-22 04:14:42.905 18020 18057 I VEPlayer: VESTAT t=1 fps=18.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=17 apark=50 vstarve=1 astarve=1 aq=468 vq=267 fq=6 syncWorstMs=-0.7 cpu=-9999.0 rssMb=344.8 fd=182
-08-22 04:14:43.911 18020 18057 I VEPlayer: VESTAT t=2 fps=24.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=17 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.7 cpu=54.6 rssMb=344.9 fd=182
-08-22 04:14:43.911 18020 18057 I VEPlayer: VERENDER t=2 uploadMs=2.40 drawMs=0.30 swapMs=1.80 threadCpuMs=-9999.00 inCpuMs=-9999.00 gapMs=-9999.00
-08-22 04:14:43.911 18020 18057 I VEPlayer: VEGAUGE t=2 who=vdec cpu=15.4 instrumented=14.8 gap=0.6
-08-22 04:14:43.911 18020 18057 I VEPlayer: VEGAUGE t=2 who=adec cpu=5.5 instrumented=4.3 gap=1.2
-08-22 04:14:43.911 18020 18057 I VEPlayer: VEGAUGE t=2 who=demux cpu=2.4 instrumented=1.6 gap=0.9
-08-22 04:14:44.914 18020 18057 I VEPlayer: VESTAT t=3 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=15 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.5 cpu=57.8 rssMb=345.8 fd=182
-08-22 04:14:44.914 18020 18057 I VEPlayer: VERENDER t=3 uploadMs=2.50 drawMs=0.30 swapMs=2.20 threadCpuMs=6.07 inCpuMs=5.02 gapMs=1.04
-08-22 04:14:44.914 18020 18057 I VEPlayer: VEGAUGE t=3 who=vdec cpu=14.4 instrumented=13.8 gap=0.6
-08-22 04:14:44.914 18020 18057 I VEPlayer: VEGAUGE t=3 who=adec cpu=6.0 instrumented=4.7 gap=1.3
-08-22 04:14:44.914 18020 18057 I VEPlayer: VEGAUGE t=3 who=demux cpu=2.4 instrumented=1.4 gap=1.0
-08-22 04:14:45.917 18020 18057 I VEPlayer: VESTAT t=4 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.2 cpu=57.8 rssMb=347.0 fd=182
-08-22 04:14:45.917 18020 18057 I VEPlayer: VERENDER t=4 uploadMs=2.70 drawMs=0.30 swapMs=2.20 threadCpuMs=6.03 inCpuMs=4.99 gapMs=1.04
-08-22 04:14:45.917 18020 18057 I VEPlayer: VEGAUGE t=4 who=vdec cpu=15.3 instrumented=14.6 gap=0.7
-08-22 04:14:45.917 18020 18057 I VEPlayer: VEGAUGE t=4 who=adec cpu=6.0 instrumented=4.7 gap=1.3
-08-22 04:14:45.917 18020 18057 I VEPlayer: VEGAUGE t=4 who=demux cpu=2.2 instrumented=1.2 gap=1.0
-08-22 04:14:46.921 18020 18057 I VEPlayer: VESTAT t=5 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=14 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.2 cpu=61.8 rssMb=348.3 fd=182
-08-22 04:14:46.921 18020 18057 I VEPlayer: VERENDER t=5 uploadMs=2.90 drawMs=0.30 swapMs=2.20 threadCpuMs=6.39 inCpuMs=5.38 gapMs=1.01
-08-22 04:14:46.921 18020 18057 I VEPlayer: VEGAUGE t=5 who=vdec cpu=16.3 instrumented=15.7 gap=0.6
-08-22 04:14:46.921 18020 18057 I VEPlayer: VEGAUGE t=5 who=adec cpu=6.1 instrumented=4.7 gap=1.3
-08-22 04:14:46.921 18020 18057 I VEPlayer: VEGAUGE t=5 who=demux cpu=2.3 instrumented=1.3 gap=1.1
-08-22 04:14:47.923 18020 18057 I VEPlayer: VESTAT t=6 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.0 cpu=58.8 rssMb=348.8 fd=182
-08-22 04:14:47.923 18020 18057 I VEPlayer: VERENDER t=6 uploadMs=3.20 drawMs=0.30 swapMs=2.40 threadCpuMs=6.54 inCpuMs=5.49 gapMs=1.05
-08-22 04:14:47.923 18020 18057 I VEPlayer: VEGAUGE t=6 who=vdec cpu=14.7 instrumented=14.1 gap=0.6
-08-22 04:14:47.923 18020 18057 I VEPlayer: VEGAUGE t=6 who=adec cpu=6.0 instrumented=4.7 gap=1.3
-08-22 04:14:47.923 18020 18057 I VEPlayer: VEGAUGE t=6 who=demux cpu=2.2 instrumented=1.1 gap=1.0
-08-22 04:14:48.927 18020 18057 I VEPlayer: VESTAT t=7 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=15 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.8 cpu=48.9 rssMb=352.2 fd=182
-08-22 04:14:48.927 18020 18057 I VEPlayer: VERENDER t=7 uploadMs=3.10 drawMs=0.30 swapMs=2.40 threadCpuMs=4.46 inCpuMs=3.62 gapMs=0.84
-08-22 04:14:48.927 18020 18057 I VEPlayer: VEGAUGE t=7 who=vdec cpu=14.3 instrumented=13.7 gap=0.6
-08-22 04:14:48.927 18020 18057 I VEPlayer: VEGAUGE t=7 who=adec cpu=5.6 instrumented=4.4 gap=1.2
-08-22 04:14:48.927 18020 18057 I VEPlayer: VEGAUGE t=7 who=demux cpu=2.0 instrumented=1.1 gap=0.9
-08-22 04:14:49.930 18020 18057 I VEPlayer: VESTAT t=8 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=14 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.6 cpu=43.8 rssMb=352.6 fd=180
-08-22 04:14:49.930 18020 18057 I VEPlayer: VERENDER t=8 uploadMs=2.80 drawMs=0.30 swapMs=2.20 threadCpuMs=3.59 inCpuMs=2.94 gapMs=0.65
-08-22 04:14:49.930 18020 18057 I VEPlayer: VEGAUGE t=8 who=vdec cpu=12.1 instrumented=11.6 gap=0.5
-08-22 04:14:49.930 18020 18057 I VEPlayer: VEGAUGE t=8 who=adec cpu=4.9 instrumented=3.9 gap=1.0
-08-22 04:14:49.930 18020 18057 I VEPlayer: VEGAUGE t=8 who=demux cpu=1.6 instrumented=0.9 gap=0.8
-08-22 04:14:50.934 18020 18057 I VEPlayer: VESTAT t=9 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=15 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.8 cpu=45.8 rssMb=350.2 fd=179
-08-22 04:14:50.934 18020 18057 I VEPlayer: VERENDER t=9 uploadMs=2.60 drawMs=0.30 swapMs=2.20 threadCpuMs=3.80 inCpuMs=3.13 gapMs=0.68
-08-22 04:14:50.935 18020 18057 I VEPlayer: VEGAUGE t=9 who=vdec cpu=13.0 instrumented=12.5 gap=0.5
-08-22 04:14:50.935 18020 18057 I VEPlayer: VEGAUGE t=9 who=adec cpu=5.4 instrumented=4.3 gap=1.1
-08-22 04:14:50.935 18020 18057 I VEPlayer: VEGAUGE t=9 who=demux cpu=1.9 instrumented=1.1 gap=0.9
-08-22 04:14:51.939 18020 18057 I VEPlayer: VESTAT t=10 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.6 cpu=45.8 rssMb=350.5 fd=179
-08-22 04:14:51.939 18020 18057 I VEPlayer: VERENDER t=10 uploadMs=2.50 drawMs=0.30 swapMs=2.20 threadCpuMs=3.88 inCpuMs=3.11 gapMs=0.77
-08-22 04:14:51.939 18020 18057 I VEPlayer: VEGAUGE t=10 who=vdec cpu=13.2 instrumented=12.7 gap=0.6
-08-22 04:14:51.939 18020 18057 I VEPlayer: VEGAUGE t=10 who=adec cpu=5.1 instrumented=4.0 gap=1.1
-08-22 04:14:51.939 18020 18057 I VEPlayer: VEGAUGE t=10 who=demux cpu=1.8 instrumented=1.0 gap=0.8
-08-22 04:14:52.943 18020 18057 I VEPlayer: VESTAT t=11 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.1 cpu=54.8 rssMb=354.6 fd=179
-08-22 04:14:52.943 18020 18057 I VEPlayer: VERENDER t=11 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=2.93 inCpuMs=2.36 gapMs=0.57
-08-22 04:14:52.943 18020 18057 I VEPlayer: VEGAUGE t=11 who=vdec cpu=25.1 instrumented=24.7 gap=0.4
-08-22 04:14:52.943 18020 18057 I VEPlayer: VEGAUGE t=11 who=adec cpu=4.8 instrumented=3.8 gap=1.0
-08-22 04:14:52.943 18020 18057 I VEPlayer: VEGAUGE t=11 who=demux cpu=1.7 instrumented=0.9 gap=0.8
-08-22 04:14:53.947 18020 18057 I VEPlayer: VESTAT t=12 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-2.7 cpu=71.7 rssMb=348.7 fd=179
-08-22 04:14:53.948 18020 18057 I VEPlayer: VERENDER t=12 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=4.77 inCpuMs=3.92 gapMs=0.85
-08-22 04:14:53.948 18020 18057 I VEPlayer: VEGAUGE t=12 who=vdec cpu=38.4 instrumented=38.0 gap=0.4
-08-22 04:14:53.948 18020 18057 I VEPlayer: VEGAUGE t=12 who=adec cpu=4.6 instrumented=3.6 gap=0.9
-08-22 04:14:53.948 18020 18057 I VEPlayer: VEGAUGE t=12 who=demux cpu=1.7 instrumented=0.9 gap=0.7
-08-22 04:14:54.951 18020 18057 I VEPlayer: VESTAT t=13 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.2 cpu=60.7 rssMb=348.6 fd=179
-08-22 04:14:54.951 18020 18057 I VEPlayer: VERENDER t=13 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=4.37 inCpuMs=3.59 gapMs=0.78
-08-22 04:14:54.951 18020 18057 I VEPlayer: VEGAUGE t=13 who=vdec cpu=28.3 instrumented=27.8 gap=0.5
-08-22 04:14:54.951 18020 18057 I VEPlayer: VEGAUGE t=13 who=adec cpu=4.6 instrumented=3.6 gap=1.0
-08-22 04:14:54.951 18020 18057 I VEPlayer: VEGAUGE t=13 who=demux cpu=1.6 instrumented=0.8 gap=0.8
-08-22 04:14:55.954 18020 18057 I VEPlayer: VESTAT t=14 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.9 cpu=60.8 rssMb=344.9 fd=179
-08-22 04:14:55.954 18020 18057 I VEPlayer: VERENDER t=14 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.67 inCpuMs=3.85 gapMs=0.82
-08-22 04:14:55.954 18020 18057 I VEPlayer: VEGAUGE t=14 who=vdec cpu=28.3 instrumented=27.7 gap=0.5
-08-22 04:14:55.954 18020 18057 I VEPlayer: VEGAUGE t=14 who=adec cpu=4.5 instrumented=3.6 gap=0.9
-08-22 04:14:55.954 18020 18057 I VEPlayer: VEGAUGE t=14 who=demux cpu=1.6 instrumented=0.9 gap=0.7
-08-22 04:14:56.957 18020 18057 I VEPlayer: VESTAT t=15 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.1 cpu=58.8 rssMb=346.6 fd=179
-08-22 04:14:56.957 18020 18057 I VEPlayer: VERENDER t=15 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.39 inCpuMs=3.63 gapMs=0.76
-08-22 04:14:56.957 18020 18057 I VEPlayer: VEGAUGE t=15 who=vdec cpu=26.0 instrumented=25.5 gap=0.5
-08-22 04:14:56.958 18020 18057 I VEPlayer: VEGAUGE t=15 who=adec cpu=4.6 instrumented=3.6 gap=1.0
-08-22 04:14:56.958 18020 18057 I VEPlayer: VEGAUGE t=15 who=demux cpu=1.5 instrumented=0.8 gap=0.7
-08-22 04:14:57.961 18020 18057 I VEPlayer: VESTAT t=16 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.7 cpu=60.8 rssMb=345.1 fd=179
-08-22 04:14:57.961 18020 18057 I VEPlayer: VERENDER t=16 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.50 inCpuMs=3.72 gapMs=0.78
-08-22 04:14:57.961 18020 18057 I VEPlayer: VEGAUGE t=16 who=vdec cpu=27.7 instrumented=27.2 gap=0.5
-08-22 04:14:57.961 18020 18057 I VEPlayer: VEGAUGE t=16 who=adec cpu=4.7 instrumented=3.7 gap=1.0
-08-22 04:14:57.961 18020 18057 I VEPlayer: VEGAUGE t=16 who=demux cpu=1.5 instrumented=0.8 gap=0.7
-08-22 04:14:58.965 18020 18057 I VEPlayer: VESTAT t=17 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-2.0 cpu=59.8 rssMb=346.5 fd=179
-08-22 04:14:58.965 18020 18057 I VEPlayer: VERENDER t=17 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.61 inCpuMs=3.75 gapMs=0.86
-08-22 04:14:58.965 18020 18057 I VEPlayer: VEGAUGE t=17 who=vdec cpu=26.9 instrumented=26.4 gap=0.5
-08-22 04:14:58.965 18020 18057 I VEPlayer: VEGAUGE t=17 who=adec cpu=4.6 instrumented=3.7 gap=0.9
-08-22 04:14:58.965 18020 18057 I VEPlayer: VEGAUGE t=17 who=demux cpu=1.6 instrumented=0.9 gap=0.7
-08-22 04:14:59.970 18020 18057 I VEPlayer: VESTAT t=18 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=48 vstarve=0 astarve=0 aq=468 vq=266 fq=6 syncWorstMs=-1.6 cpu=58.8 rssMb=348.1 fd=179
-08-22 04:14:59.970 18020 18057 I VEPlayer: VERENDER t=18 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.80 inCpuMs=3.96 gapMs=0.85
-08-22 04:14:59.970 18020 18057 I VEPlayer: VEGAUGE t=18 who=vdec cpu=24.5 instrumented=24.0 gap=0.5
-08-22 04:14:59.970 18020 18057 I VEPlayer: VEGAUGE t=18 who=adec cpu=5.0 instrumented=3.9 gap=1.1
-08-22 04:14:59.970 18020 18057 I VEPlayer: VEGAUGE t=18 who=demux cpu=1.7 instrumented=0.9 gap=0.8
-08-22 04:15:00.976 18020 18057 I VEPlayer: VESTAT t=19 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=468 vq=266 fq=6 syncWorstMs=-1.7 cpu=57.7 rssMb=346.9 fd=179
-08-22 04:15:00.976 18020 18057 I VEPlayer: VERENDER t=19 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=3.93 inCpuMs=3.19 gapMs=0.74
-08-22 04:15:00.976 18020 18057 I VEPlayer: VEGAUGE t=19 who=vdec cpu=25.2 instrumented=24.8 gap=0.4
-08-22 04:15:00.976 18020 18057 I VEPlayer: VEGAUGE t=19 who=adec cpu=4.8 instrumented=3.9 gap=0.9
-08-22 04:15:00.976 18020 18057 I VEPlayer: VEGAUGE t=19 who=demux cpu=1.6 instrumented=0.8 gap=0.8
-08-22 04:15:01.979 18020 18057 I VEPlayer: VESTAT t=20 fps=23.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-2.1 cpu=57.6 rssMb=345.5 fd=179
-08-22 04:15:01.980 18020 18057 I VEPlayer: VERENDER t=20 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.82 inCpuMs=3.97 gapMs=0.86
-08-22 04:15:01.980 18020 18057 I VEPlayer: VEGAUGE t=20 who=vdec cpu=23.5 instrumented=23.0 gap=0.5
-08-22 04:15:01.980 18020 18057 I VEPlayer: VEGAUGE t=20 who=adec cpu=5.0 instrumented=3.9 gap=1.1
-08-22 04:15:01.980 18020 18057 I VEPlayer: VEGAUGE t=20 who=demux cpu=1.6 instrumented=0.9 gap=0.7
-08-22 04:15:02.983 18020 18057 I VEPlayer: VESTAT t=21 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-2.5 cpu=58.8 rssMb=345.5 fd=179
-08-22 04:15:02.983 18020 18057 I VEPlayer: VERENDER t=21 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=5.01 inCpuMs=4.15 gapMs=0.86
-08-22 04:15:02.983 18020 18057 I VEPlayer: VEGAUGE t=21 who=vdec cpu=24.9 instrumented=24.4 gap=0.5
-08-22 04:15:02.983 18020 18057 I VEPlayer: VEGAUGE t=21 who=adec cpu=4.7 instrumented=3.7 gap=0.9
-08-22 04:15:02.983 18020 18057 I VEPlayer: VEGAUGE t=21 who=demux cpu=1.6 instrumented=0.9 gap=0.8
-08-22 04:15:03.988 18020 18057 I VEPlayer: VESTAT t=22 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-2.1 cpu=59.7 rssMb=345.2 fd=181
-08-22 04:15:03.988 18020 18057 I VEPlayer: VERENDER t=22 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.85 inCpuMs=3.96 gapMs=0.89
-08-22 04:15:03.988 18020 18057 I VEPlayer: VEGAUGE t=22 who=vdec cpu=26.7 instrumented=26.3 gap=0.5
-08-22 04:15:03.988 18020 18057 I VEPlayer: VEGAUGE t=22 who=adec cpu=5.0 instrumented=3.9 gap=1.0
-08-22 04:15:03.988 18020 18057 I VEPlayer: VEGAUGE t=22 who=demux cpu=1.7 instrumented=0.9 gap=0.8
-08-22 04:15:04.994 18020 18057 I VEPlayer: VESTAT t=23 fps=23.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.0 cpu=67.5 rssMb=340.6 fd=178
-08-22 04:15:04.994 18020 18057 I VEPlayer: VERENDER t=23 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=4.62 inCpuMs=3.79 gapMs=0.83
-08-22 04:15:04.994 18020 18057 I VEPlayer: VEGAUGE t=23 who=vdec cpu=30.9 instrumented=30.4 gap=0.5
-08-22 04:15:04.994 18020 18057 I VEPlayer: VEGAUGE t=23 who=adec cpu=4.8 instrumented=3.8 gap=1.0
-08-22 04:15:04.994 18020 18057 I VEPlayer: VEGAUGE t=23 who=demux cpu=1.6 instrumented=0.9 gap=0.8
-08-22 04:15:05.999 18020 18057 I VEPlayer: VESTAT t=24 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-2.9 cpu=59.8 rssMb=343.3 fd=178
-08-22 04:15:05.999 18020 18057 I VEPlayer: VERENDER t=24 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=4.31 inCpuMs=3.47 gapMs=0.83
-08-22 04:15:05.999 18020 18057 I VEPlayer: VEGAUGE t=24 who=vdec cpu=26.6 instrumented=26.1 gap=0.5
-08-22 04:15:05.999 18020 18057 I VEPlayer: VEGAUGE t=24 who=adec cpu=4.8 instrumented=3.9 gap=1.0
-08-22 04:15:05.999 18020 18057 I VEPlayer: VEGAUGE t=24 who=demux cpu=1.6 instrumented=0.9 gap=0.7
-08-22 04:15:07.003 18020 18057 I VEPlayer: VESTAT t=25 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-4.7 cpu=54.8 rssMb=344.0 fd=178
-08-22 04:15:07.003 18020 18057 I VEPlayer: VERENDER t=25 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=4.32 inCpuMs=3.53 gapMs=0.79
-08-22 04:15:07.003 18020 18057 I VEPlayer: VEGAUGE t=25 who=vdec cpu=21.9 instrumented=21.3 gap=0.5
-08-22 04:15:07.003 18020 18057 I VEPlayer: VEGAUGE t=25 who=adec cpu=4.8 instrumented=3.8 gap=1.0
-08-22 04:15:07.003 18020 18057 I VEPlayer: VEGAUGE t=25 who=demux cpu=1.7 instrumented=0.9 gap=0.8
-08-22 04:15:08.005 18020 18057 I VEPlayer: VESTAT t=26 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.6 cpu=57.8 rssMb=341.0 fd=178
-08-22 04:15:08.005 18020 18057 I VEPlayer: VERENDER t=26 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=4.77 inCpuMs=3.94 gapMs=0.83
-08-22 04:15:08.005 18020 18057 I VEPlayer: VEGAUGE t=26 who=vdec cpu=21.7 instrumented=21.2 gap=0.5
-08-22 04:15:08.005 18020 18057 I VEPlayer: VEGAUGE t=26 who=adec cpu=5.1 instrumented=4.1 gap=1.0
-08-22 04:15:08.005 18020 18057 I VEPlayer: VEGAUGE t=26 who=demux cpu=1.7 instrumented=0.9 gap=0.8
-08-22 04:15:09.008 18020 18057 I VEPlayer: VESTAT t=27 fps=24.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=4 syncWorstMs=-1.4 cpu=54.8 rssMb=341.2 fd=177
-08-22 04:15:09.008 18020 18057 I VEPlayer: VERENDER t=27 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=4.43 inCpuMs=3.64 gapMs=0.79
-08-22 04:15:09.008 18020 18057 I VEPlayer: VEGAUGE t=27 who=vdec cpu=20.1 instrumented=19.6 gap=0.5
-08-22 04:15:09.008 18020 18057 I VEPlayer: VEGAUGE t=27 who=adec cpu=4.9 instrumented=3.9 gap=1.0
-08-22 04:15:09.008 18020 18057 I VEPlayer: VEGAUGE t=27 who=demux cpu=1.6 instrumented=0.9 gap=0.8
-08-22 04:15:10.011 18020 18057 I VEPlayer: VESTAT t=28 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=4 syncWorstMs=-1.3 cpu=54.8 rssMb=341.9 fd=179
-08-22 04:15:10.011 18020 18057 I VEPlayer: VERENDER t=28 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=4.03 inCpuMs=3.29 gapMs=0.75
-08-22 04:15:10.011 18020 18057 I VEPlayer: VEGAUGE t=28 who=vdec cpu=22.6 instrumented=22.2 gap=0.5
-08-22 04:15:10.012 18020 18057 I VEPlayer: VEGAUGE t=28 who=adec cpu=5.4 instrumented=4.3 gap=1.1
-08-22 04:15:10.012 18020 18057 I VEPlayer: VEGAUGE t=28 who=demux cpu=1.8 instrumented=0.9 gap=0.8
-08-22 04:15:11.014 18020 18057 I VEPlayer: VESTAT t=29 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-1.7 cpu=61.8 rssMb=340.6 fd=178
-08-22 04:15:11.014 18020 18057 I VEPlayer: VERENDER t=29 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.23 inCpuMs=3.40 gapMs=0.83
-08-22 04:15:11.015 18020 18057 I VEPlayer: VEGAUGE t=29 who=vdec cpu=27.6 instrumented=27.1 gap=0.5
-08-22 04:15:11.015 18020 18057 I VEPlayer: VEGAUGE t=29 who=adec cpu=5.4 instrumented=4.3 gap=1.1
-08-22 04:15:11.015 18020 18057 I VEPlayer: VEGAUGE t=29 who=demux cpu=1.8 instrumented=0.9 gap=0.9
-08-22 04:15:12.017 18020 18057 I VEPlayer: VESTAT t=30 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-1.7 cpu=57.8 rssMb=344.1 fd=177
-08-22 04:15:12.017 18020 18057 I VEPlayer: VERENDER t=30 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=5.31 inCpuMs=4.44 gapMs=0.87
-08-22 04:15:12.017 18020 18057 I VEPlayer: VEGAUGE t=30 who=vdec cpu=24.2 instrumented=23.7 gap=0.5
-08-22 04:15:12.017 18020 18057 I VEPlayer: VEGAUGE t=30 who=adec cpu=4.8 instrumented=3.9 gap=0.9
-08-22 04:15:12.017 18020 18057 I VEPlayer: VEGAUGE t=30 who=demux cpu=1.6 instrumented=0.8 gap=0.8
-08-22 04:15:13.020 18020 18057 I VEPlayer: VESTAT t=31 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-2.0 cpu=56.8 rssMb=343.1 fd=178
-08-22 04:15:13.021 18020 18057 I VEPlayer: VERENDER t=31 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=4.67 inCpuMs=3.82 gapMs=0.85
-08-22 04:15:13.021 18020 18057 I VEPlayer: VEGAUGE t=31 who=vdec cpu=26.0 instrumented=25.5 gap=0.5
-08-22 04:15:13.021 18020 18057 I VEPlayer: VEGAUGE t=31 who=adec cpu=4.7 instrumented=3.7 gap=1.0
-08-22 04:15:13.021 18020 18057 I VEPlayer: VEGAUGE t=31 who=demux cpu=1.5 instrumented=0.8 gap=0.7
-08-22 04:15:14.024 18020 18057 I VEPlayer: VESTAT t=32 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=6 syncWorstMs=-1.3 cpu=56.8 rssMb=344.3 fd=178
-08-22 04:15:14.024 18020 18057 I VEPlayer: VERENDER t=32 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=4.38 inCpuMs=3.58 gapMs=0.80
-08-22 04:15:14.024 18020 18057 I VEPlayer: VEGAUGE t=32 who=vdec cpu=23.9 instrumented=23.3 gap=0.6
-08-22 04:15:14.024 18020 18057 I VEPlayer: VEGAUGE t=32 who=adec cpu=4.9 instrumented=3.8 gap=1.0
-08-22 04:15:14.024 18020 18057 I VEPlayer: VEGAUGE t=32 who=demux cpu=1.6 instrumented=0.9 gap=0.8
-08-22 04:15:15.027 18020 18057 I VEPlayer: VESTAT t=33 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=6 syncWorstMs=-1.8 cpu=54.9 rssMb=344.7 fd=178
-08-22 04:15:15.027 18020 18057 I VEPlayer: VERENDER t=33 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=3.95 inCpuMs=3.19 gapMs=0.76
-08-22 04:15:15.027 18020 18057 I VEPlayer: VEGAUGE t=33 who=vdec cpu=23.5 instrumented=23.0 gap=0.5
-08-22 04:15:15.027 18020 18057 I VEPlayer: VEGAUGE t=33 who=adec cpu=4.9 instrumented=3.9 gap=1.0
-08-22 04:15:15.027 18020 18057 I VEPlayer: VEGAUGE t=33 who=demux cpu=1.7 instrumented=0.9 gap=0.8
-08-22 04:15:16.030 18020 18057 I VEPlayer: VESTAT t=34 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=6 syncWorstMs=-1.3 cpu=54.8 rssMb=342.0 fd=178
-08-22 04:15:16.030 18020 18057 I VEPlayer: VERENDER t=34 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.39 inCpuMs=3.55 gapMs=0.84
-08-22 04:15:16.030 18020 18057 I VEPlayer: VEGAUGE t=34 who=vdec cpu=23.4 instrumented=22.8 gap=0.5
-08-22 04:15:16.030 18020 18057 I VEPlayer: VEGAUGE t=34 who=adec cpu=4.8 instrumented=3.7 gap=1.1
-08-22 04:15:16.030 18020 18057 I VEPlayer: VEGAUGE t=34 who=demux cpu=1.6 instrumented=0.8 gap=0.7
-08-22 04:15:17.033 18020 18057 I VEPlayer: VESTAT t=35 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=6 syncWorstMs=-1.6 cpu=58.8 rssMb=342.1 fd=178
-08-22 04:15:17.033 18020 18057 I VEPlayer: VERENDER t=35 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.55 inCpuMs=3.73 gapMs=0.82
-08-22 04:15:17.033 18020 18057 I VEPlayer: VEGAUGE t=35 who=vdec cpu=24.4 instrumented=23.8 gap=0.6
-08-22 04:15:17.033 18020 18057 I VEPlayer: VEGAUGE t=35 who=adec cpu=5.0 instrumented=3.9 gap=1.1
-08-22 04:15:17.033 18020 18057 I VEPlayer: VEGAUGE t=35 who=demux cpu=1.7 instrumented=0.9 gap=0.8
-08-22 04:15:18.036 18020 18057 I VEPlayer: VESTAT t=36 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=6 syncWorstMs=-1.7 cpu=54.8 rssMb=344.3 fd=178
-08-22 04:15:18.036 18020 18057 I VEPlayer: VERENDER t=36 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.50 inCpuMs=3.70 gapMs=0.80
-08-22 04:15:18.036 18020 18057 I VEPlayer: VEGAUGE t=36 who=vdec cpu=21.4 instrumented=20.9 gap=0.5
-08-22 04:15:18.036 18020 18057 I VEPlayer: VEGAUGE t=36 who=adec cpu=4.8 instrumented=3.8 gap=1.0
-08-22 04:15:18.036 18020 18057 I VEPlayer: VEGAUGE t=36 who=demux cpu=1.7 instrumented=1.0 gap=0.7
-08-22 04:15:19.040 18020 18057 I VEPlayer: VESTAT t=37 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=48 vstarve=0 astarve=0 aq=468 vq=266 fq=6 syncWorstMs=-1.4 cpu=59.8 rssMb=344.2 fd=178
-08-22 04:15:19.040 18020 18057 I VEPlayer: VERENDER t=37 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.92 inCpuMs=4.09 gapMs=0.84
-08-22 04:15:19.040 18020 18057 I VEPlayer: VEGAUGE t=37 who=vdec cpu=24.7 instrumented=24.2 gap=0.5
-08-22 04:15:19.040 18020 18057 I VEPlayer: VEGAUGE t=37 who=adec cpu=5.2 instrumented=4.1 gap=1.1
-08-22 04:15:19.040 18020 18057 I VEPlayer: VEGAUGE t=37 who=demux cpu=1.9 instrumented=1.0 gap=0.8
-08-22 04:15:20.043 18020 18057 I VEPlayer: VESTAT t=38 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=46 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-2.0 cpu=53.8 rssMb=345.2 fd=178
-08-22 04:15:20.043 18020 18057 I VEPlayer: VERENDER t=38 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.29 inCpuMs=3.52 gapMs=0.77
-08-22 04:15:20.043 18020 18057 I VEPlayer: VEGAUGE t=38 who=vdec cpu=22.0 instrumented=21.4 gap=0.5
-08-22 04:15:20.043 18020 18057 I VEPlayer: VEGAUGE t=38 who=adec cpu=4.8 instrumented=3.8 gap=1.0
-08-22 04:15:20.043 18020 18057 I VEPlayer: VEGAUGE t=38 who=demux cpu=1.6 instrumented=0.9 gap=0.7
-08-22 04:15:21.046 18020 18057 I VEPlayer: VESTAT t=39 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.8 cpu=57.9 rssMb=346.0 fd=178
-08-22 04:15:21.046 18020 18057 I VEPlayer: VERENDER t=39 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=5.01 inCpuMs=4.14 gapMs=0.87
-08-22 04:15:21.046 18020 18057 I VEPlayer: VEGAUGE t=39 who=vdec cpu=22.6 instrumented=22.1 gap=0.5
-08-22 04:15:21.046 18020 18057 I VEPlayer: VEGAUGE t=39 who=adec cpu=5.3 instrumented=4.2 gap=1.1
-08-22 04:15:21.046 18020 18057 I VEPlayer: VEGAUGE t=39 who=demux cpu=1.8 instrumented=1.0 gap=0.8
-08-22 04:15:22.052 18020 18057 I VEPlayer: VESTAT t=40 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=48 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.9 cpu=56.7 rssMb=345.2 fd=178
-08-22 04:15:22.053 18020 18057 I VEPlayer: VERENDER t=40 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.67 inCpuMs=3.84 gapMs=0.82
-08-22 04:15:22.053 18020 18057 I VEPlayer: VEGAUGE t=40 who=vdec cpu=22.0 instrumented=21.4 gap=0.5
-08-22 04:15:22.053 18020 18057 I VEPlayer: VEGAUGE t=40 who=adec cpu=4.8 instrumented=3.8 gap=1.0
-08-22 04:15:22.053 18020 18057 I VEPlayer: VEGAUGE t=40 who=demux cpu=1.6 instrumented=0.9 gap=0.8
-08-22 04:15:23.056 18020 18057 I VEPlayer: VESTAT t=41 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.9 cpu=55.7 rssMb=346.0 fd=178
-08-22 04:15:23.056 18020 18057 I VEPlayer: VERENDER t=41 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.80 inCpuMs=3.96 gapMs=0.84
-08-22 04:15:23.056 18020 18057 I VEPlayer: VEGAUGE t=41 who=vdec cpu=20.6 instrumented=20.0 gap=0.5
-08-22 04:15:23.056 18020 18057 I VEPlayer: VEGAUGE t=41 who=adec cpu=5.1 instrumented=4.1 gap=1.1
-08-22 04:15:23.056 18020 18057 I VEPlayer: VEGAUGE t=41 who=demux cpu=1.7 instrumented=0.9 gap=0.8
-08-22 04:15:24.060 18020 18057 I VEPlayer: VESTAT t=42 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.9 cpu=53.8 rssMb=343.6 fd=178
-08-22 04:15:24.061 18020 18057 I VEPlayer: VERENDER t=42 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=4.27 inCpuMs=3.49 gapMs=0.78
-08-22 04:15:24.061 18020 18057 I VEPlayer: VEGAUGE t=42 who=vdec cpu=20.8 instrumented=20.2 gap=0.6
-08-22 04:15:24.061 18020 18057 I VEPlayer: VEGAUGE t=42 who=adec cpu=4.7 instrumented=3.7 gap=1.0
-08-22 04:15:24.061 18020 18057 I VEPlayer: VEGAUGE t=42 who=demux cpu=1.6 instrumented=0.9 gap=0.7
-08-22 04:15:25.065 18020 18057 I VEPlayer: VESTAT t=43 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.6 cpu=64.6 rssMb=343.5 fd=178
-08-22 04:15:25.065 18020 18057 I VEPlayer: VERENDER t=43 uploadMs=2.20 drawMs=0.30 swapMs=2.20 threadCpuMs=5.24 inCpuMs=4.32 gapMs=0.92
-08-22 04:15:25.065 18020 18057 I VEPlayer: VEGAUGE t=43 who=vdec cpu=27.9 instrumented=27.4 gap=0.5
-08-22 04:15:25.065 18020 18057 I VEPlayer: VEGAUGE t=43 who=adec cpu=5.2 instrumented=4.0 gap=1.1
-08-22 04:15:25.066 18020 18057 I VEPlayer: VEGAUGE t=43 who=demux cpu=1.8 instrumented=0.9 gap=0.9
-08-22 04:15:26.070 18020 18057 I VEPlayer: VESTAT t=44 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-0.9 cpu=67.7 rssMb=343.7 fd=180
-08-22 04:15:26.070 18020 18057 I VEPlayer: VERENDER t=44 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=6.40 inCpuMs=5.37 gapMs=1.03
-08-22 04:15:26.070 18020 18057 I VEPlayer: VEGAUGE t=44 who=vdec cpu=25.8 instrumented=25.4 gap=0.5
-08-22 04:15:26.070 18020 18057 I VEPlayer: VEGAUGE t=44 who=adec cpu=6.1 instrumented=4.8 gap=1.3
-08-22 04:15:26.070 18020 18057 I VEPlayer: VEGAUGE t=44 who=demux cpu=1.9 instrumented=0.9 gap=1.0
-08-22 04:15:27.075 18020 18057 I VEPlayer: VESTAT t=45 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-2.8 cpu=63.7 rssMb=346.8 fd=181
-08-22 04:15:27.075 18020 18057 I VEPlayer: VERENDER t=45 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=5.56 inCpuMs=4.65 gapMs=0.91
-08-22 04:15:27.075 18020 18057 I VEPlayer: VEGAUGE t=45 who=vdec cpu=24.9 instrumented=24.4 gap=0.5
-08-22 04:15:27.075 18020 18057 I VEPlayer: VEGAUGE t=45 who=adec cpu=5.5 instrumented=4.3 gap=1.2
-08-22 04:15:27.075 18020 18057 I VEPlayer: VEGAUGE t=45 who=demux cpu=1.8 instrumented=0.9 gap=0.9
-08-22 04:15:28.080 18020 18057 I VEPlayer: VESTAT t=46 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.0 cpu=68.6 rssMb=346.7 fd=181
-08-22 04:15:28.080 18020 18057 I VEPlayer: VERENDER t=46 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=6.41 inCpuMs=5.38 gapMs=1.04
-08-22 04:15:28.080 18020 18057 I VEPlayer: VEGAUGE t=46 who=vdec cpu=25.7 instrumented=25.1 gap=0.5
-08-22 04:15:28.080 18020 18057 I VEPlayer: VEGAUGE t=46 who=adec cpu=6.0 instrumented=4.8 gap=1.3
-08-22 04:15:28.080 18020 18057 I VEPlayer: VEGAUGE t=46 who=demux cpu=1.9 instrumented=0.9 gap=1.0
-08-22 04:15:29.085 18020 18057 I VEPlayer: VESTAT t=47 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.4 cpu=68.7 rssMb=344.1 fd=181
-08-22 04:15:29.085 18020 18057 I VEPlayer: VERENDER t=47 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=6.41 inCpuMs=5.36 gapMs=1.05
-08-22 04:15:29.085 18020 18057 I VEPlayer: VEGAUGE t=47 who=vdec cpu=27.4 instrumented=26.9 gap=0.5
-08-22 04:15:29.085 18020 18057 I VEPlayer: VEGAUGE t=47 who=adec cpu=5.8 instrumented=4.5 gap=1.2
-08-22 04:15:29.086 18020 18057 I VEPlayer: VEGAUGE t=47 who=demux cpu=1.8 instrumented=0.8 gap=1.0
-08-22 04:15:30.089 18020 18057 I VEPlayer: VESTAT t=48 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-1.5 cpu=68.7 rssMb=343.8 fd=181
-08-22 04:15:30.089 18020 18057 I VEPlayer: VERENDER t=48 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=6.48 inCpuMs=5.37 gapMs=1.10
-08-22 04:15:30.089 18020 18057 I VEPlayer: VEGAUGE t=48 who=vdec cpu=27.8 instrumented=27.2 gap=0.5
-08-22 04:15:30.089 18020 18057 I VEPlayer: VEGAUGE t=48 who=adec cpu=5.7 instrumented=4.4 gap=1.3
-08-22 04:15:30.090 18020 18057 I VEPlayer: VEGAUGE t=48 who=demux cpu=1.8 instrumented=0.9 gap=1.0
-08-22 04:15:31.093 18020 18057 I VEPlayer: VESTAT t=49 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-2.1 cpu=66.7 rssMb=344.0 fd=180
-08-22 04:15:31.095 18020 18057 I VEPlayer: VERENDER t=49 uploadMs=2.30 drawMs=0.30 swapMs=2.20 threadCpuMs=6.04 inCpuMs=4.99 gapMs=1.05
-08-22 04:15:31.095 18020 18057 I VEPlayer: VEGAUGE t=49 who=vdec cpu=25.8 instrumented=25.3 gap=0.5
-08-22 04:15:31.095 18020 18057 I VEPlayer: VEGAUGE t=49 who=adec cpu=5.7 instrumented=4.4 gap=1.2
-08-22 04:15:31.095 18020 18057 I VEPlayer: VEGAUGE t=49 who=demux cpu=1.8 instrumented=0.9 gap=0.9
-08-22 04:15:32.101 18020 18057 I VEPlayer: VESTAT t=50 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=48 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-1.8 cpu=65.7 rssMb=344.1 fd=180
-08-22 04:15:32.102 18020 18057 I VEPlayer: VERENDER t=50 uploadMs=2.40 drawMs=0.30 swapMs=2.20 threadCpuMs=6.30 inCpuMs=5.18 gapMs=1.12
-08-22 04:15:32.102 18020 18057 I VEPlayer: VEGAUGE t=50 who=vdec cpu=23.5 instrumented=23.0 gap=0.5
-08-22 04:15:32.102 18020 18057 I VEPlayer: VEGAUGE t=50 who=adec cpu=6.0 instrumented=4.7 gap=1.3
-08-22 04:15:32.103 18020 18057 I VEPlayer: VEGAUGE t=50 who=demux cpu=1.9 instrumented=0.9 gap=1.0
-08-22 04:15:33.108 18020 18057 I VEPlayer: VESTAT t=51 fps=24.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=5 syncWorstMs=-1.3 cpu=67.3 rssMb=343.9 fd=179
-08-22 04:15:33.108 18020 18057 I VEPlayer: VERENDER t=51 uploadMs=2.40 drawMs=0.30 swapMs=2.20 threadCpuMs=6.42 inCpuMs=5.30 gapMs=1.12
-08-22 04:15:33.109 18020 18057 I VEPlayer: VEGAUGE t=51 who=vdec cpu=25.2 instrumented=24.7 gap=0.5
-08-22 04:15:33.109 18020 18057 I VEPlayer: VEGAUGE t=51 who=adec cpu=5.9 instrumented=4.6 gap=1.2
-08-22 04:15:33.109 18020 18057 I VEPlayer: VEGAUGE t=51 who=demux cpu=1.8 instrumented=0.9 gap=1.0
-08-22 04:15:34.115 18020 18057 I VEPlayer: VESTAT t=52 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=5 syncWorstMs=-1.7 cpu=68.6 rssMb=344.1 fd=177
-08-22 04:15:34.115 18020 18057 I VEPlayer: VERENDER t=52 uploadMs=2.40 drawMs=0.30 swapMs=2.20 threadCpuMs=6.66 inCpuMs=5.54 gapMs=1.12
-08-22 04:15:34.115 18020 18057 I VEPlayer: VEGAUGE t=52 who=vdec cpu=26.2 instrumented=25.7 gap=0.5
-08-22 04:15:34.115 18020 18057 I VEPlayer: VEGAUGE t=52 who=adec cpu=6.1 instrumented=4.8 gap=1.3
-08-22 04:15:34.115 18020 18057 I VEPlayer: VEGAUGE t=52 who=demux cpu=1.9 instrumented=0.9 gap=1.0
-08-22 04:15:35.118 18020 18057 I VEPlayer: VESTAT t=53 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=4 syncWorstMs=-1.8 cpu=65.7 rssMb=344.3 fd=177
-08-22 04:15:35.119 18020 18057 I VEPlayer: VERENDER t=53 uploadMs=2.40 drawMs=0.30 swapMs=2.20 threadCpuMs=6.22 inCpuMs=5.14 gapMs=1.08
-08-22 04:15:35.119 18020 18057 I VEPlayer: VEGAUGE t=53 who=vdec cpu=26.3 instrumented=25.8 gap=0.5
-08-22 04:15:35.119 18020 18057 I VEPlayer: VEGAUGE t=53 who=adec cpu=6.0 instrumented=4.7 gap=1.4
-08-22 04:15:35.119 18020 18057 I VEPlayer: VEGAUGE t=53 who=demux cpu=1.9 instrumented=0.9 gap=1.0
-08-22 04:15:36.121 18020 18057 I VEPlayer: VESTAT t=54 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=4 syncWorstMs=-0.9 cpu=66.8 rssMb=344.2 fd=178
-08-22 04:15:36.121 18020 18057 I VEPlayer: VERENDER t=54 uploadMs=2.40 drawMs=0.30 swapMs=2.20 threadCpuMs=6.41 inCpuMs=5.35 gapMs=1.06
-08-22 04:15:36.121 18020 18057 I VEPlayer: VEGAUGE t=54 who=vdec cpu=25.9 instrumented=25.4 gap=0.5
-08-22 04:15:36.122 18020 18057 I VEPlayer: VEGAUGE t=54 who=adec cpu=5.9 instrumented=4.7 gap=1.3
-08-22 04:15:36.122 18020 18057 I VEPlayer: VEGAUGE t=54 who=demux cpu=1.9 instrumented=0.9 gap=1.0
-08-22 04:15:37.124 18020 18057 I VEPlayer: VESTAT t=55 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-1.6 cpu=60.8 rssMb=344.1 fd=180
-08-22 04:15:37.124 18020 18057 I VEPlayer: VERENDER t=55 uploadMs=2.40 drawMs=0.30 swapMs=2.20 threadCpuMs=5.49 inCpuMs=4.50 gapMs=0.99
-08-22 04:15:37.124 18020 18057 I VEPlayer: VEGAUGE t=55 who=vdec cpu=24.9 instrumented=24.4 gap=0.6
-08-22 04:15:37.124 18020 18057 I VEPlayer: VEGAUGE t=55 who=adec cpu=5.3 instrumented=4.2 gap=1.2
-08-22 04:15:37.124 18020 18057 I VEPlayer: VEGAUGE t=55 who=demux cpu=1.6 instrumented=0.8 gap=0.9
-08-22 04:15:38.128 18020 18057 I VEPlayer: VESTAT t=56 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-1.4 cpu=62.8 rssMb=344.7 fd=179
-08-22 04:15:38.128 18020 18057 I VEPlayer: VERENDER t=56 uploadMs=2.40 drawMs=0.30 swapMs=2.20 threadCpuMs=6.03 inCpuMs=5.04 gapMs=0.99
-08-22 04:15:38.128 18020 18057 I VEPlayer: VEGAUGE t=56 who=vdec cpu=25.7 instrumented=25.1 gap=0.5
-08-22 04:15:38.128 18020 18057 I VEPlayer: VEGAUGE t=56 who=adec cpu=5.6 instrumented=4.4 gap=1.2
-08-22 04:15:38.129 18020 18057 I VEPlayer: VEGAUGE t=56 who=demux cpu=1.8 instrumented=0.9 gap=0.9
-08-22 04:15:39.130 18020 18057 I VEPlayer: VESTAT t=57 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-1.0 cpu=65.8 rssMb=344.6 fd=179
-08-22 04:15:39.131 18020 18057 I VEPlayer: VERENDER t=57 uploadMs=2.40 drawMs=0.30 swapMs=2.20 threadCpuMs=6.40 inCpuMs=5.39 gapMs=1.01
-08-22 04:15:39.131 18020 18057 I VEPlayer: VEGAUGE t=57 who=vdec cpu=24.9 instrumented=24.4 gap=0.5
-08-22 04:15:39.131 18020 18057 I VEPlayer: VEGAUGE t=57 who=adec cpu=6.2 instrumented=4.9 gap=1.4
-08-22 04:15:39.131 18020 18057 I VEPlayer: VEGAUGE t=57 who=demux cpu=2.0 instrumented=1.0 gap=1.0
-08-22 04:15:40.134 18020 18057 I VEPlayer: VESTAT t=58 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-1.3 cpu=62.9 rssMb=344.7 fd=181
-08-22 04:15:40.135 18020 18057 I VEPlayer: VERENDER t=58 uploadMs=2.50 drawMs=0.30 swapMs=2.20 threadCpuMs=6.11 inCpuMs=5.10 gapMs=1.02
-08-22 04:15:40.135 18020 18057 I VEPlayer: VEGAUGE t=58 who=vdec cpu=24.5 instrumented=23.9 gap=0.5
-08-22 04:15:40.135 18020 18057 I VEPlayer: VEGAUGE t=58 who=adec cpu=5.8 instrumented=4.5 gap=1.3
-08-22 04:15:40.135 18020 18057 I VEPlayer: VEGAUGE t=58 who=demux cpu=1.9 instrumented=0.9 gap=1.0
-08-22 04:15:40.977 18020 18020 W LZConsole: VEBENCH seek 1/3 pct=5 target=160937ms
-08-22 04:15:41.620 18020 18057 I VEPlayer: VESTAT t=59 fps=20.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=22 vpark=15 apark=70 vstarve=1 astarve=1 aq=469 vq=267 fq=4 syncWorstMs=-8.2 cpu=71.3 rssMb=346.5 fd=179
-08-22 04:15:41.620 18020 18057 I VEPlayer: VERENDER t=59 uploadMs=2.50 drawMs=0.30 swapMs=2.20 threadCpuMs=6.20 inCpuMs=5.15 gapMs=1.05
-08-22 04:15:41.620 18020 18057 I VEPlayer: VEGAUGE t=59 who=vdec cpu=29.2 instrumented=28.6 gap=0.6
-08-22 04:15:41.620 18020 18057 I VEPlayer: VEGAUGE t=59 who=adec cpu=6.4 instrumented=5.1 gap=1.3
-08-22 04:15:41.620 18020 18057 I VEPlayer: VEGAUGE t=59 who=demux cpu=3.1 instrumented=1.5 gap=1.7
-08-22 04:15:42.624 18020 18057 I VEPlayer: VESTAT t=60 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=5 syncWorstMs=-9.9 cpu=62.7 rssMb=345.4 fd=180
-08-22 04:15:42.624 18020 18057 I VEPlayer: VERENDER t=60 uploadMs=2.50 drawMs=0.30 swapMs=2.20 threadCpuMs=6.10 inCpuMs=5.06 gapMs=1.04
-08-22 04:15:42.624 18020 18057 I VEPlayer: VEGAUGE t=60 who=vdec cpu=26.5 instrumented=25.9 gap=0.5
-08-22 04:15:42.624 18020 18057 I VEPlayer: VEGAUGE t=60 who=adec cpu=5.7 instrumented=4.5 gap=1.2
-08-22 04:15:42.624 18020 18057 I VEPlayer: VEGAUGE t=60 who=demux cpu=2.1 instrumented=1.1 gap=1.0
-08-22 04:15:43.627 18020 18057 I VEPlayer: VERENDER t=61 uploadMs=2.50 drawMs=0.30 swapMs=2.20 threadCpuMs=6.36 inCpuMs=5.30 gapMs=1.05
-08-22 04:15:43.627 18020 18057 I VEPlayer: VEGAUGE t=61 who=vdec cpu=25.5 instrumented=25.0 gap=0.5
-08-22 04:15:43.627 18020 18057 I VEPlayer: VEGAUGE t=61 who=adec cpu=6.0 instrumented=4.7 gap=1.3
-08-22 04:15:43.627 18020 18057 I VEPlayer: VEGAUGE t=61 who=demux cpu=2.1 instrumented=1.1 gap=1.0
-08-22 04:15:43.979 18020 18020 W LZConsole: VEBENCH seek 2/3 pct=25 target=804685ms
-08-22 04:15:44.968 18020 18057 I VEPlayer: VERENDER t=62 uploadMs=2.50 drawMs=0.30 swapMs=2.20 threadCpuMs=5.84 inCpuMs=4.74 gapMs=1.10
-08-22 04:15:44.968 18020 18057 I VEPlayer: VEGAUGE t=62 who=vdec cpu=27.6 instrumented=27.2 gap=0.5
-08-22 04:15:44.968 18020 18057 I VEPlayer: VEGAUGE t=62 who=adec cpu=5.0 instrumented=3.9 gap=1.1
-08-22 04:15:44.968 18020 18057 I VEPlayer: VEGAUGE t=62 who=demux cpu=6.0 instrumented=3.5 gap=2.5
-08-22 04:15:45.976 18020 18057 I VEPlayer: VERENDER t=63 uploadMs=2.50 drawMs=0.30 swapMs=2.20 threadCpuMs=4.97 inCpuMs=4.02 gapMs=0.94
-08-22 04:15:45.976 18020 18057 I VEPlayer: VEGAUGE t=63 who=vdec cpu=23.6 instrumented=23.1 gap=0.5
-08-22 04:15:45.976 18020 18057 I VEPlayer: VEGAUGE t=63 who=adec cpu=5.0 instrumented=4.0 gap=1.0
-08-22 04:15:45.976 18020 18057 I VEPlayer: VEGAUGE t=63 who=demux cpu=1.8 instrumented=0.9 gap=0.8
-08-22 04:15:46.980 18020 18020 W LZConsole: VEBENCH seek 3/3 pct=60 target=1931245ms
-08-22 04:15:46.981 18020 18057 I VEPlayer: VERENDER t=64 uploadMs=2.50 drawMs=0.30 swapMs=2.20 threadCpuMs=7.29 inCpuMs=6.12 gapMs=1.17
-08-22 04:15:46.981 18020 18057 I VEPlayer: VEGAUGE t=64 who=vdec cpu=24.8 instrumented=24.3 gap=0.5
-08-22 04:15:46.981 18020 18057 I VEPlayer: VEGAUGE t=64 who=adec cpu=5.8 instrumented=4.5 gap=1.2
-08-22 04:15:46.981 18020 18057 I VEPlayer: VEGAUGE t=64 who=demux cpu=2.0 instrumented=1.0 gap=1.0
-08-22 04:15:48.305 18020 18057 I VEPlayer: VERENDER t=65 uploadMs=2.50 drawMs=0.30 swapMs=2.20 threadCpuMs=4.66 inCpuMs=3.80 gapMs=0.86
-08-22 04:15:48.305 18020 18057 I VEPlayer: VEGAUGE t=65 who=vdec cpu=36.6 instrumented=36.0 gap=0.6
-08-22 04:15:48.305 18020 18057 I VEPlayer: VEGAUGE t=65 who=adec cpu=5.7 instrumented=4.6 gap=1.1
-08-22 04:15:48.305 18020 18057 I VEPlayer: VEGAUGE t=65 who=demux cpu=3.6 instrumented=2.1 gap=1.5
-08-22 04:15:49.308 18020 18057 I VEPlayer: VERENDER t=66 uploadMs=2.50 drawMs=0.30 swapMs=2.20 threadCpuMs=5.74 inCpuMs=4.75 gapMs=0.99
-08-22 04:15:49.308 18020 18057 I VEPlayer: VEGAUGE t=66 who=vdec cpu=23.6 instrumented=23.1 gap=0.5
-08-22 04:15:49.309 18020 18057 I VEPlayer: VEGAUGE t=66 who=adec cpu=5.6 instrumented=4.4 gap=1.2
-08-22 04:15:49.309 18020 18057 I VEPlayer: VEGAUGE t=66 who=demux cpu=1.8 instrumented=0.9 gap=0.9
-08-22 04:15:49.984 18020 18020 W LZConsole: VEBENCH snapshot=/storage/emulated/0/Android/data/com.example.lzplayer/files/net-seek-snapshot.json complete=true
-08-22 04:15:50.312 18020 18057 I VEPlayer: VERENDER t=67 uplo
+08-23 21:41:01.689 16724 16724 W LZConsole: VEBENCH ok seekPercents=5, 25, 60
+08-23 21:41:01.689 16724 16724 W LZConsole: VEBENCH ok playSeconds=60
+08-23 21:41:01.713 16724 16724 W LZConsole: VEBENCH ok caseName=net-seek
+08-23 21:41:01.714 16724 16724 W LZConsole: VEBENCH armed steady=60000ms seeks=3
+08-23 21:41:03.630 16724 16766 I VEPlayer: VESTAT t=1 fps=18.7 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=16 apark=54 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-7.6 cpu=-9999.0 rssMb=337.3 fd=179
+08-23 21:41:04.638 16724 16766 I VEPlayer: VESTAT t=2 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=16 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-12.1 cpu=50.7 rssMb=338.9 fd=180
+08-23 21:41:04.638 16724 16766 I VEPlayer: VERENDER t=2 uploadMs=1.50 drawMs=0.20 swapMs=1.60 threadCpuMs=-9999.00 inCpuMs=-9999.00 gapMs=-9999.00
+08-23 21:41:04.638 16724 16766 I VEPlayer: VEGAUGE t=2 who=vdec cpu=12.9 instrumented=12.4 gap=0.5
+08-23 21:41:04.638 16724 16766 I VEPlayer: VEGAUGE t=2 who=adec cpu=5.8 instrumented=4.6 gap=1.2
+08-23 21:41:04.638 16724 16766 I VEPlayer: VEGAUGE t=2 who=demux cpu=2.6 instrumented=1.6 gap=0.9
+08-23 21:41:05.644 16724 16766 I VEPlayer: VESTAT t=3 fps=23.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=16 apark=48 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-10.7 cpu=55.6 rssMb=340.6 fd=180
+08-23 21:41:05.645 16724 16766 I VEPlayer: VERENDER t=3 uploadMs=2.50 drawMs=0.30 swapMs=1.80 threadCpuMs=6.70 inCpuMs=5.60 gapMs=1.10
+08-23 21:41:05.645 16724 16766 I VEPlayer: VEGAUGE t=3 who=vdec cpu=13.7 instrumented=13.1 gap=0.6
+08-23 21:41:05.645 16724 16766 I VEPlayer: VEGAUGE t=3 who=adec cpu=6.5 instrumented=5.1 gap=1.3
+08-23 21:41:05.645 16724 16766 I VEPlayer: VEGAUGE t=3 who=demux cpu=2.4 instrumented=1.4 gap=1.1
+08-23 21:41:06.650 16724 16766 I VEPlayer: VESTAT t=4 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=15 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=5 syncWorstMs=-10.7 cpu=55.7 rssMb=341.8 fd=180
+08-23 21:41:06.650 16724 16766 I VEPlayer: VERENDER t=4 uploadMs=2.60 drawMs=0.30 swapMs=2.40 threadCpuMs=5.77 inCpuMs=4.87 gapMs=0.90
+08-23 21:41:06.650 16724 16766 I VEPlayer: VEGAUGE t=4 who=vdec cpu=14.7 instrumented=14.1 gap=0.6
+08-23 21:41:06.650 16724 16766 I VEPlayer: VEGAUGE t=4 who=adec cpu=6.0 instrumented=4.7 gap=1.3
+08-23 21:41:06.650 16724 16766 I VEPlayer: VEGAUGE t=4 who=demux cpu=2.1 instrumented=1.1 gap=1.0
+08-23 21:41:07.653 16724 16766 I VEPlayer: VESTAT t=5 fps=24.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=16 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=4 syncWorstMs=-10.2 cpu=59.7 rssMb=342.7 fd=179
+08-23 21:41:07.654 16724 16766 I VEPlayer: VERENDER t=5 uploadMs=2.90 drawMs=0.30 swapMs=2.40 threadCpuMs=6.45 inCpuMs=5.40 gapMs=1.06
+08-23 21:41:07.654 16724 16766 I VEPlayer: VEGAUGE t=5 who=vdec cpu=15.5 instrumented=14.8 gap=0.7
+08-23 21:41:07.654 16724 16766 I VEPlayer: VEGAUGE t=5 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:07.654 16724 16766 I VEPlayer: VEGAUGE t=5 who=demux cpu=2.1 instrumented=1.1 gap=1.0
+08-23 21:41:08.656 16724 16766 I VEPlayer: VESTAT t=6 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=17 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-10.1 cpu=53.8 rssMb=343.3 fd=178
+08-23 21:41:08.656 16724 16766 I VEPlayer: VERENDER t=6 uploadMs=3.00 drawMs=0.30 swapMs=2.40 threadCpuMs=6.33 inCpuMs=5.27 gapMs=1.06
+08-23 21:41:08.656 16724 16766 I VEPlayer: VEGAUGE t=6 who=vdec cpu=14.3 instrumented=13.7 gap=0.6
+08-23 21:41:08.656 16724 16766 I VEPlayer: VEGAUGE t=6 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:08.656 16724 16766 I VEPlayer: VEGAUGE t=6 who=demux cpu=2.1 instrumented=1.1 gap=1.0
+08-23 21:41:09.659 16724 16766 I VEPlayer: VESTAT t=7 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=14 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-9.6 cpu=54.8 rssMb=343.8 fd=180
+08-23 21:41:09.659 16724 16766 I VEPlayer: VERENDER t=7 uploadMs=3.10 drawMs=0.40 swapMs=2.60 threadCpuMs=6.19 inCpuMs=5.16 gapMs=1.04
+08-23 21:41:09.659 16724 16766 I VEPlayer: VEGAUGE t=7 who=vdec cpu=15.0 instrumented=14.4 gap=0.6
+08-23 21:41:09.659 16724 16766 I VEPlayer: VEGAUGE t=7 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:09.659 16724 16766 I VEPlayer: VEGAUGE t=7 who=demux cpu=2.1 instrumented=1.1 gap=1.0
+08-23 21:41:10.662 16724 16766 I VEPlayer: VESTAT t=8 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=18 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-10.6 cpu=54.8 rssMb=345.2 fd=179
+08-23 21:41:10.662 16724 16766 I VEPlayer: VERENDER t=8 uploadMs=3.20 drawMs=0.40 swapMs=2.60 threadCpuMs=6.33 inCpuMs=5.29 gapMs=1.04
+08-23 21:41:10.662 16724 16766 I VEPlayer: VEGAUGE t=8 who=vdec cpu=15.2 instrumented=14.6 gap=0.6
+08-23 21:41:10.662 16724 16766 I VEPlayer: VEGAUGE t=8 who=adec cpu=6.1 instrumented=4.8 gap=1.3
+08-23 21:41:10.662 16724 16766 I VEPlayer: VEGAUGE t=8 who=demux cpu=2.1 instrumented=1.1 gap=1.0
+08-23 21:41:11.665 16724 16766 I VEPlayer: VESTAT t=9 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=16 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=6 syncWorstMs=-11.9 cpu=55.8 rssMb=345.7 fd=178
+08-23 21:41:11.665 16724 16766 I VEPlayer: VERENDER t=9 uploadMs=3.20 drawMs=0.40 swapMs=2.60 threadCpuMs=6.16 inCpuMs=5.15 gapMs=1.01
+08-23 21:41:11.665 16724 16766 I VEPlayer: VEGAUGE t=9 who=vdec cpu=16.0 instrumented=15.3 gap=0.7
+08-23 21:41:11.665 16724 16766 I VEPlayer: VEGAUGE t=9 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:11.665 16724 16766 I VEPlayer: VEGAUGE t=9 who=demux cpu=2.0 instrumented=1.0 gap=1.0
+08-23 21:41:12.668 16724 16766 I VEPlayer: VESTAT t=10 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=14 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=6 syncWorstMs=-9.5 cpu=54.8 rssMb=346.4 fd=180
+08-23 21:41:12.668 16724 16766 I VEPlayer: VERENDER t=10 uploadMs=3.20 drawMs=0.40 swapMs=2.60 threadCpuMs=6.05 inCpuMs=5.05 gapMs=0.99
+08-23 21:41:12.668 16724 16766 I VEPlayer: VEGAUGE t=10 who=vdec cpu=15.9 instrumented=15.3 gap=0.6
+08-23 21:41:12.668 16724 16766 I VEPlayer: VEGAUGE t=10 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:12.668 16724 16766 I VEPlayer: VEGAUGE t=10 who=demux cpu=2.0 instrumented=1.0 gap=1.0
+08-23 21:41:13.671 16724 16766 I VEPlayer: VESTAT t=11 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=14 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=4 syncWorstMs=-9.7 cpu=70.8 rssMb=347.6 fd=184
+08-23 21:41:13.671 16724 16766 I VEPlayer: VERENDER t=11 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.12 inCpuMs=5.11 gapMs=1.01
+08-23 21:41:13.671 16724 16766 I VEPlayer: VEGAUGE t=11 who=vdec cpu=28.5 instrumented=28.0 gap=0.5
+08-23 21:41:13.671 16724 16766 I VEPlayer: VEGAUGE t=11 who=adec cpu=6.1 instrumented=4.8 gap=1.3
+08-23 21:41:13.671 16724 16766 I VEPlayer: VEGAUGE t=11 who=demux cpu=2.0 instrumented=1.0 gap=1.0
+08-23 21:41:14.674 16724 16766 I VEPlayer: VESTAT t=12 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=5 syncWorstMs=-9.9 cpu=79.7 rssMb=344.8 fd=181
+08-23 21:41:14.674 16724 16766 I VEPlayer: VERENDER t=12 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.06 inCpuMs=5.05 gapMs=1.01
+08-23 21:41:14.674 16724 16766 I VEPlayer: VEGAUGE t=12 who=vdec cpu=44.2 instrumented=43.7 gap=0.5
+08-23 21:41:14.674 16724 16766 I VEPlayer: VEGAUGE t=12 who=adec cpu=5.7 instrumented=4.5 gap=1.2
+08-23 21:41:14.674 16724 16766 I VEPlayer: VEGAUGE t=12 who=demux cpu=1.9 instrumented=1.0 gap=0.9
+08-23 21:41:15.676 16724 16766 I VEPlayer: VESTAT t=13 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-11.0 cpu=67.9 rssMb=341.1 fd=182
+08-23 21:41:15.676 16724 16766 I VEPlayer: VERENDER t=13 uploadMs=3.20 drawMs=0.40 swapMs=2.60 threadCpuMs=5.89 inCpuMs=4.85 gapMs=1.05
+08-23 21:41:15.676 16724 16766 I VEPlayer: VEGAUGE t=13 who=vdec cpu=32.8 instrumented=32.2 gap=0.5
+08-23 21:41:15.676 16724 16766 I VEPlayer: VEGAUGE t=13 who=adec cpu=5.7 instrumented=4.5 gap=1.2
+08-23 21:41:15.676 16724 16766 I VEPlayer: VEGAUGE t=13 who=demux cpu=1.7 instrumented=0.8 gap=0.9
+08-23 21:41:16.679 16724 16766 I VEPlayer: VESTAT t=14 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=11 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=5 syncWorstMs=-9.7 cpu=67.8 rssMb=343.6 fd=182
+08-23 21:41:16.679 16724 16766 I VEPlayer: VERENDER t=14 uploadMs=3.20 drawMs=0.40 swapMs=2.60 threadCpuMs=6.28 inCpuMs=5.28 gapMs=1.01
+08-23 21:41:16.679 16724 16766 I VEPlayer: VEGAUGE t=14 who=vdec cpu=28.2 instrumented=27.7 gap=0.5
+08-23 21:41:16.679 16724 16766 I VEPlayer: VEGAUGE t=14 who=adec cpu=6.0 instrumented=4.7 gap=1.2
+08-23 21:41:16.679 16724 16766 I VEPlayer: VEGAUGE t=14 who=demux cpu=1.8 instrumented=0.8 gap=1.0
+08-23 21:41:17.683 16724 16766 I VEPlayer: VESTAT t=15 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-9.9 cpu=67.7 rssMb=340.4 fd=182
+08-23 21:41:17.683 16724 16766 I VEPlayer: VERENDER t=15 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.48 inCpuMs=5.38 gapMs=1.10
+08-23 21:41:17.683 16724 16766 I VEPlayer: VEGAUGE t=15 who=vdec cpu=29.3 instrumented=28.8 gap=0.5
+08-23 21:41:17.684 16724 16766 I VEPlayer: VEGAUGE t=15 who=adec cpu=5.9 instrumented=4.7 gap=1.2
+08-23 21:41:17.684 16724 16766 I VEPlayer: VEGAUGE t=15 who=demux cpu=1.8 instrumented=0.9 gap=0.9
+08-23 21:41:18.687 16724 16766 I VEPlayer: VESTAT t=16 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-11.6 cpu=66.7 rssMb=340.6 fd=182
+08-23 21:41:18.687 16724 16766 I VEPlayer: VERENDER t=16 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=5.97 inCpuMs=4.99 gapMs=0.98
+08-23 21:41:18.687 16724 16766 I VEPlayer: VEGAUGE t=16 who=vdec cpu=29.9 instrumented=29.4 gap=0.5
+08-23 21:41:18.687 16724 16766 I VEPlayer: VEGAUGE t=16 who=adec cpu=5.8 instrumented=4.6 gap=1.2
+08-23 21:41:18.687 16724 16766 I VEPlayer: VEGAUGE t=16 who=demux cpu=1.7 instrumented=0.8 gap=0.9
+08-23 21:41:19.690 16724 16766 I VEPlayer: VESTAT t=17 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-10.2 cpu=68.8 rssMb=340.2 fd=182
+08-23 21:41:19.690 16724 16766 I VEPlayer: VERENDER t=17 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.35 inCpuMs=5.29 gapMs=1.05
+08-23 21:41:19.690 16724 16766 I VEPlayer: VEGAUGE t=17 who=vdec cpu=29.7 instrumented=29.2 gap=0.5
+08-23 21:41:19.691 16724 16766 I VEPlayer: VEGAUGE t=17 who=adec cpu=6.1 instrumented=4.9 gap=1.2
+08-23 21:41:19.691 16724 16766 I VEPlayer: VEGAUGE t=17 who=demux cpu=1.8 instrumented=0.8 gap=0.9
+08-23 21:41:20.694 16724 16766 I VEPlayer: VESTAT t=18 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-11.0 cpu=66.8 rssMb=340.6 fd=182
+08-23 21:41:20.694 16724 16766 I VEPlayer: VERENDER t=18 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.37 inCpuMs=5.32 gapMs=1.05
+08-23 21:41:20.694 16724 16766 I VEPlayer: VEGAUGE t=18 who=vdec cpu=27.3 instrumented=26.8 gap=0.5
+08-23 21:41:20.694 16724 16766 I VEPlayer: VEGAUGE t=18 who=adec cpu=6.1 instrumented=4.9 gap=1.3
+08-23 21:41:20.694 16724 16766 I VEPlayer: VEGAUGE t=18 who=demux cpu=1.9 instrumented=1.0 gap=1.0
+08-23 21:41:21.697 16724 16766 I VEPlayer: VESTAT t=19 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-13.3 cpu=69.7 rssMb=342.5 fd=182
+08-23 21:41:21.698 16724 16766 I VEPlayer: VERENDER t=19 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.35 inCpuMs=5.27 gapMs=1.08
+08-23 21:41:21.698 16724 16766 I VEPlayer: VEGAUGE t=19 who=vdec cpu=29.7 instrumented=29.2 gap=0.5
+08-23 21:41:21.698 16724 16766 I VEPlayer: VEGAUGE t=19 who=adec cpu=6.1 instrumented=4.9 gap=1.2
+08-23 21:41:21.698 16724 16766 I VEPlayer: VEGAUGE t=19 who=demux cpu=1.8 instrumented=0.9 gap=0.9
+08-23 21:41:22.702 16724 16766 I VEPlayer: VESTAT t=20 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-11.1 cpu=68.8 rssMb=341.0 fd=182
+08-23 21:41:22.702 16724 16766 I VEPlayer: VERENDER t=20 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.07 inCpuMs=5.06 gapMs=1.00
+08-23 21:41:22.702 16724 16766 I VEPlayer: VEGAUGE t=20 who=vdec cpu=27.3 instrumented=26.7 gap=0.5
+08-23 21:41:22.702 16724 16766 I VEPlayer: VEGAUGE t=20 who=adec cpu=6.1 instrumented=4.8 gap=1.3
+08-23 21:41:22.702 16724 16766 I VEPlayer: VEGAUGE t=20 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:23.706 16724 16766 I VEPlayer: VESTAT t=21 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-9.5 cpu=62.7 rssMb=343.8 fd=182
+08-23 21:41:23.706 16724 16766 I VEPlayer: VERENDER t=21 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=4.99 inCpuMs=4.13 gapMs=0.86
+08-23 21:41:23.706 16724 16766 I VEPlayer: VEGAUGE t=21 who=vdec cpu=28.7 instrumented=28.2 gap=0.5
+08-23 21:41:23.706 16724 16766 I VEPlayer: VEGAUGE t=21 who=adec cpu=5.2 instrumented=4.2 gap=1.0
+08-23 21:41:23.706 16724 16766 I VEPlayer: VEGAUGE t=21 who=demux cpu=1.6 instrumented=0.8 gap=0.8
+08-23 21:41:24.711 16724 16766 I VEPlayer: VESTAT t=22 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-9.4 cpu=70.7 rssMb=340.9 fd=182
+08-23 21:41:24.711 16724 16766 I VEPlayer: VERENDER t=22 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.20 inCpuMs=5.16 gapMs=1.04
+08-23 21:41:24.711 16724 16766 I VEPlayer: VEGAUGE t=22 who=vdec cpu=30.0 instrumented=29.5 gap=0.6
+08-23 21:41:24.711 16724 16766 I VEPlayer: VEGAUGE t=22 who=adec cpu=6.3 instrumented=5.0 gap=1.3
+08-23 21:41:24.711 16724 16766 I VEPlayer: VEGAUGE t=22 who=demux cpu=1.8 instrumented=0.9 gap=1.0
+08-23 21:41:25.715 16724 16766 I VEPlayer: VESTAT t=23 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-11.3 cpu=74.7 rssMb=341.1 fd=182
+08-23 21:41:25.715 16724 16766 I VEPlayer: VERENDER t=23 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.65 inCpuMs=5.57 gapMs=1.08
+08-23 21:41:25.715 16724 16766 I VEPlayer: VEGAUGE t=23 who=vdec cpu=33.5 instrumented=33.0 gap=0.5
+08-23 21:41:25.715 16724 16766 I VEPlayer: VEGAUGE t=23 who=adec cpu=6.2 instrumented=5.0 gap=1.2
+08-23 21:41:25.715 16724 16766 I VEPlayer: VEGAUGE t=23 who=demux cpu=1.9 instrumented=1.0 gap=1.0
+08-23 21:41:26.719 16724 16766 I VEPlayer: VESTAT t=24 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-10.2 cpu=78.6 rssMb=336.6 fd=181
+08-23 21:41:26.719 16724 16766 I VEPlayer: VERENDER t=24 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.23 inCpuMs=5.19 gapMs=1.04
+08-23 21:41:26.719 16724 16766 I VEPlayer: VEGAUGE t=24 who=vdec cpu=29.2 instrumented=28.7 gap=0.5
+08-23 21:41:26.719 16724 16766 I VEPlayer: VEGAUGE t=24 who=adec cpu=6.1 instrumented=4.8 gap=1.2
+08-23 21:41:26.719 16724 16766 I VEPlayer: VEGAUGE t=24 who=demux cpu=1.9 instrumented=1.0 gap=1.0
+08-23 21:41:27.724 16724 16766 I VEPlayer: VESTAT t=25 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=48 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-9.7 cpu=67.7 rssMb=336.7 fd=181
+08-23 21:41:27.724 16724 16766 I VEPlayer: VERENDER t=25 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.18 inCpuMs=5.17 gapMs=1.01
+08-23 21:41:27.724 16724 16766 I VEPlayer: VEGAUGE t=25 who=vdec cpu=27.0 instrumented=26.5 gap=0.5
+08-23 21:41:27.724 16724 16766 I VEPlayer: VEGAUGE t=25 who=adec cpu=6.3 instrumented=5.0 gap=1.3
+08-23 21:41:27.725 16724 16766 I VEPlayer: VEGAUGE t=25 who=demux cpu=2.0 instrumented=1.0 gap=1.0
+08-23 21:41:28.729 16724 16766 I VEPlayer: VESTAT t=26 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-10.6 cpu=65.7 rssMb=336.9 fd=181
+08-23 21:41:28.730 16724 16766 I VEPlayer: VERENDER t=26 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.11 inCpuMs=5.06 gapMs=1.05
+08-23 21:41:28.730 16724 16766 I VEPlayer: VEGAUGE t=26 who=vdec cpu=24.5 instrumented=23.9 gap=0.6
+08-23 21:41:28.730 16724 16766 I VEPlayer: VEGAUGE t=26 who=adec cpu=6.1 instrumented=4.8 gap=1.3
+08-23 21:41:28.730 16724 16766 I VEPlayer: VEGAUGE t=26 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:29.734 16724 16766 I VEPlayer: VESTAT t=27 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-11.0 cpu=61.7 rssMb=337.0 fd=181
+08-23 21:41:29.734 16724 16766 I VEPlayer: VERENDER t=27 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.04 inCpuMs=5.02 gapMs=1.02
+08-23 21:41:29.735 16724 16766 I VEPlayer: VEGAUGE t=27 who=vdec cpu=22.1 instrumented=21.6 gap=0.5
+08-23 21:41:29.735 16724 16766 I VEPlayer: VEGAUGE t=27 who=adec cpu=6.3 instrumented=5.0 gap=1.3
+08-23 21:41:29.735 16724 16766 I VEPlayer: VEGAUGE t=27 who=demux cpu=1.8 instrumented=0.8 gap=1.0
+08-23 21:41:30.738 16724 16766 I VEPlayer: VESTAT t=28 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-9.9 cpu=64.7 rssMb=337.2 fd=181
+08-23 21:41:30.738 16724 16766 I VEPlayer: VERENDER t=28 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.29 inCpuMs=5.25 gapMs=1.03
+08-23 21:41:30.739 16724 16766 I VEPlayer: VEGAUGE t=28 who=vdec cpu=24.7 instrumented=24.2 gap=0.5
+08-23 21:41:30.739 16724 16766 I VEPlayer: VEGAUGE t=28 who=adec cpu=6.0 instrumented=4.7 gap=1.3
+08-23 21:41:30.739 16724 16766 I VEPlayer: VEGAUGE t=28 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:31.744 16724 16766 I VEPlayer: VESTAT t=29 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-10.0 cpu=68.6 rssMb=339.6 fd=181
+08-23 21:41:31.744 16724 16766 I VEPlayer: VERENDER t=29 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.37 inCpuMs=5.31 gapMs=1.06
+08-23 21:41:31.744 16724 16766 I VEPlayer: VEGAUGE t=29 who=vdec cpu=27.4 instrumented=27.0 gap=0.5
+08-23 21:41:31.744 16724 16766 I VEPlayer: VEGAUGE t=29 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:31.744 16724 16766 I VEPlayer: VEGAUGE t=29 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:32.749 16724 16766 I VEPlayer: VESTAT t=30 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-10.8 cpu=68.7 rssMb=337.0 fd=179
+08-23 21:41:32.750 16724 16766 I VEPlayer: VERENDER t=30 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.54 inCpuMs=5.48 gapMs=1.06
+08-23 21:41:32.750 16724 16766 I VEPlayer: VEGAUGE t=30 who=vdec cpu=26.6 instrumented=26.2 gap=0.5
+08-23 21:41:32.750 16724 16766 I VEPlayer: VEGAUGE t=30 who=adec cpu=6.2 instrumented=5.0 gap=1.3
+08-23 21:41:32.750 16724 16766 I VEPlayer: VEGAUGE t=30 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:33.756 16724 16766 I VEPlayer: VESTAT t=31 fps=24.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-9.8 cpu=67.5 rssMb=337.0 fd=178
+08-23 21:41:33.757 16724 16766 I VEPlayer: VERENDER t=31 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.23 inCpuMs=5.16 gapMs=1.07
+08-23 21:41:33.757 16724 16766 I VEPlayer: VEGAUGE t=31 who=vdec cpu=27.1 instrumented=26.6 gap=0.5
+08-23 21:41:33.757 16724 16766 I VEPlayer: VEGAUGE t=31 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:33.757 16724 16766 I VEPlayer: VEGAUGE t=31 who=demux cpu=1.8 instrumented=0.8 gap=1.0
+08-23 21:41:34.774 16724 16766 I VEPlayer: VESTAT t=32 fps=24.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=48 vstarve=0 astarve=0 aq=469 vq=266 fq=4 syncWorstMs=-9.6 cpu=67.6 rssMb=340.0 fd=184
+08-23 21:41:34.774 16724 16766 I VEPlayer: VERENDER t=32 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=5.63 inCpuMs=4.67 gapMs=0.96
+08-23 21:41:34.774 16724 16766 I VEPlayer: VEGAUGE t=32 who=vdec cpu=28.9 instrumented=28.4 gap=0.5
+08-23 21:41:34.774 16724 16766 I VEPlayer: VEGAUGE t=32 who=adec cpu=5.5 instrumented=4.4 gap=1.1
+08-23 21:41:34.774 16724 16766 I VEPlayer: VEGAUGE t=32 who=demux cpu=1.8 instrumented=0.9 gap=0.9
+08-23 21:41:35.776 16724 16766 I VEPlayer: VESTAT t=33 fps=23.7 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=4 syncWorstMs=-9.9 cpu=65.1 rssMb=337.3 fd=180
+08-23 21:41:35.776 16724 16766 I VEPlayer: VERENDER t=33 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.40 inCpuMs=5.37 gapMs=1.03
+08-23 21:41:35.776 16724 16766 I VEPlayer: VEGAUGE t=33 who=vdec cpu=27.4 instrumented=26.9 gap=0.5
+08-23 21:41:35.776 16724 16766 I VEPlayer: VEGAUGE t=33 who=adec cpu=5.8 instrumented=4.6 gap=1.2
+08-23 21:41:35.776 16724 16766 I VEPlayer: VEGAUGE t=33 who=demux cpu=1.8 instrumented=0.9 gap=0.9
+08-23 21:41:36.778 16724 16766 I VEPlayer: VESTAT t=34 fps=24.0 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-10.2 cpu=65.9 rssMb=340.7 fd=181
+08-23 21:41:36.778 16724 16766 I VEPlayer: VERENDER t=34 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.47 inCpuMs=5.44 gapMs=1.03
+08-23 21:41:36.778 16724 16766 I VEPlayer: VEGAUGE t=34 who=vdec cpu=28.0 instrumented=27.5 gap=0.5
+08-23 21:41:36.778 16724 16766 I VEPlayer: VEGAUGE t=34 who=adec cpu=6.1 instrumented=4.7 gap=1.3
+08-23 21:41:36.778 16724 16766 I VEPlayer: VEGAUGE t=34 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:37.781 16724 16766 I VEPlayer: VESTAT t=35 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=6 syncWorstMs=-13.5 cpu=65.8 rssMb=340.2 fd=181
+08-23 21:41:37.781 16724 16766 I VEPlayer: VERENDER t=35 uploadMs=3.30 drawMs=0.40 swapMs=2.60 threadCpuMs=6.39 inCpuMs=5.35 gapMs=1.05
+08-23 21:41:37.781 16724 16766 I VEPlayer: VEGAUGE t=35 who=vdec cpu=27.7 instrumented=27.2 gap=0.5
+08-23 21:41:37.781 16724 16766 I VEPlayer: VEGAUGE t=35 who=adec cpu=6.1 instrumented=4.9 gap=1.2
+08-23 21:41:37.781 16724 16766 I VEPlayer: VEGAUGE t=35 who=demux cpu=1.8 instrumented=0.8 gap=1.0
+08-23 21:41:38.783 16724 16766 I VEPlayer: VESTAT t=36 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-10.7 cpu=63.8 rssMb=340.5 fd=181
+08-23 21:41:38.783 16724 16766 I VEPlayer: VERENDER t=36 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.32 inCpuMs=5.34 gapMs=0.98
+08-23 21:41:38.783 16724 16766 I VEPlayer: VEGAUGE t=36 who=vdec cpu=24.3 instrumented=23.7 gap=0.5
+08-23 21:41:38.783 16724 16766 I VEPlayer: VEGAUGE t=36 who=adec cpu=6.3 instrumented=5.0 gap=1.3
+08-23 21:41:38.783 16724 16766 I VEPlayer: VEGAUGE t=36 who=demux cpu=2.0 instrumented=1.0 gap=1.0
+08-23 21:41:39.786 16724 16766 I VEPlayer: VESTAT t=37 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=11 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=5 syncWorstMs=-10.9 cpu=65.8 rssMb=337.9 fd=181
+08-23 21:41:39.786 16724 16766 I VEPlayer: VERENDER t=37 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.26 inCpuMs=5.21 gapMs=1.06
+08-23 21:41:39.786 16724 16766 I VEPlayer: VEGAUGE t=37 who=vdec cpu=25.8 instrumented=25.3 gap=0.5
+08-23 21:41:39.786 16724 16766 I VEPlayer: VEGAUGE t=37 who=adec cpu=6.1 instrumented=4.8 gap=1.3
+08-23 21:41:39.786 16724 16766 I VEPlayer: VEGAUGE t=37 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:40.790 16724 16766 I VEPlayer: VESTAT t=38 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-10.4 cpu=64.8 rssMb=338.1 fd=181
+08-23 21:41:40.790 16724 16766 I VEPlayer: VERENDER t=38 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.34 inCpuMs=5.29 gapMs=1.05
+08-23 21:41:40.790 16724 16766 I VEPlayer: VEGAUGE t=38 who=vdec cpu=25.7 instrumented=25.2 gap=0.5
+08-23 21:41:40.790 16724 16766 I VEPlayer: VEGAUGE t=38 who=adec cpu=6.0 instrumented=4.8 gap=1.3
+08-23 21:41:40.790 16724 16766 I VEPlayer: VEGAUGE t=38 who=demux cpu=1.8 instrumented=0.9 gap=1.0
+08-23 21:41:41.793 16724 16766 I VEPlayer: VESTAT t=39 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-10.1 cpu=64.7 rssMb=338.4 fd=181
+08-23 21:41:41.793 16724 16766 I VEPlayer: VERENDER t=39 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.11 inCpuMs=5.07 gapMs=1.04
+08-23 21:41:41.793 16724 16766 I VEPlayer: VEGAUGE t=39 who=vdec cpu=25.0 instrumented=24.4 gap=0.6
+08-23 21:41:41.793 16724 16766 I VEPlayer: VEGAUGE t=39 who=adec cpu=6.5 instrumented=5.1 gap=1.3
+08-23 21:41:41.793 16724 16766 I VEPlayer: VEGAUGE t=39 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:42.797 16724 16766 I VEPlayer: VESTAT t=40 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-10.4 cpu=63.8 rssMb=338.2 fd=181
+08-23 21:41:42.797 16724 16766 I VEPlayer: VERENDER t=40 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.31 inCpuMs=5.27 gapMs=1.04
+08-23 21:41:42.797 16724 16766 I VEPlayer: VEGAUGE t=40 who=vdec cpu=24.1 instrumented=23.6 gap=0.5
+08-23 21:41:42.797 16724 16766 I VEPlayer: VEGAUGE t=40 who=adec cpu=6.1 instrumented=4.8 gap=1.2
+08-23 21:41:42.797 16724 16766 I VEPlayer: VEGAUGE t=40 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:43.801 16724 16766 I VEPlayer: VESTAT t=41 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-10.6 cpu=64.7 rssMb=339.0 fd=181
+08-23 21:41:43.801 16724 16766 I VEPlayer: VERENDER t=41 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.17 inCpuMs=5.16 gapMs=1.01
+08-23 21:41:43.802 16724 16766 I VEPlayer: VEGAUGE t=41 who=vdec cpu=22.5 instrumented=22.0 gap=0.5
+08-23 21:41:43.802 16724 16766 I VEPlayer: VEGAUGE t=41 who=adec cpu=6.1 instrumented=4.9 gap=1.2
+08-23 21:41:43.802 16724 16766 I VEPlayer: VEGAUGE t=41 who=demux cpu=1.8 instrumented=0.8 gap=1.0
+08-23 21:41:44.805 16724 16766 I VEPlayer: VESTAT t=42 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-10.4 cpu=64.7 rssMb=339.1 fd=181
+08-23 21:41:44.805 16724 16766 I VEPlayer: VERENDER t=42 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.44 inCpuMs=5.38 gapMs=1.06
+08-23 21:41:44.805 16724 16766 I VEPlayer: VEGAUGE t=42 who=vdec cpu=23.4 instrumented=22.8 gap=0.6
+08-23 21:41:44.805 16724 16766 I VEPlayer: VEGAUGE t=42 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:44.806 16724 16766 I VEPlayer: VEGAUGE t=42 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:45.810 16724 16766 I VEPlayer: VESTAT t=43 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-10.6 cpu=70.7 rssMb=339.8 fd=181
+08-23 21:41:45.811 16724 16766 I VEPlayer: VERENDER t=43 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.59 inCpuMs=5.55 gapMs=1.05
+08-23 21:41:45.811 16724 16766 I VEPlayer: VEGAUGE t=43 who=vdec cpu=31.7 instrumented=31.2 gap=0.5
+08-23 21:41:45.811 16724 16766 I VEPlayer: VEGAUGE t=43 who=adec cpu=6.2 instrumented=4.9 gap=1.2
+08-23 21:41:45.811 16724 16766 I VEPlayer: VEGAUGE t=43 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:46.815 16724 16766 I VEPlayer: VESTAT t=44 fps=23.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-9.6 cpu=68.6 rssMb=339.3 fd=181
+08-23 21:41:46.815 16724 16766 I VEPlayer: VERENDER t=44 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.35 inCpuMs=5.29 gapMs=1.05
+08-23 21:41:46.816 16724 16766 I VEPlayer: VEGAUGE t=44 who=vdec cpu=27.4 instrumented=27.0 gap=0.5
+08-23 21:41:46.816 16724 16766 I VEPlayer: VEGAUGE t=44 who=adec cpu=6.6 instrumented=5.2 gap=1.3
+08-23 21:41:46.816 16724 16766 I VEPlayer: VEGAUGE t=44 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:47.820 16724 16766 I VEPlayer: VESTAT t=45 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=48 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-10.6 cpu=65.7 rssMb=339.4 fd=181
+08-23 21:41:47.821 16724 16766 I VEPlayer: VERENDER t=45 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.15 inCpuMs=5.10 gapMs=1.05
+08-23 21:41:47.821 16724 16766 I VEPlayer: VEGAUGE t=45 who=vdec cpu=25.6 instrumented=25.1 gap=0.5
+08-23 21:41:47.821 16724 16766 I VEPlayer: VEGAUGE t=45 who=adec cpu=5.9 instrumented=4.7 gap=1.3
+08-23 21:41:47.821 16724 16766 I VEPlayer: VEGAUGE t=45 who=demux cpu=1.8 instrumented=0.9 gap=0.9
+08-23 21:41:48.826 16724 16766 I VEPlayer: VESTAT t=46 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-12.2 cpu=67.6 rssMb=339.4 fd=181
+08-23 21:41:48.827 16724 16766 I VEPlayer: VERENDER t=46 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.26 inCpuMs=5.24 gapMs=1.01
+08-23 21:41:48.827 16724 16766 I VEPlayer: VEGAUGE t=46 who=vdec cpu=26.0 instrumented=25.6 gap=0.5
+08-23 21:41:48.827 16724 16766 I VEPlayer: VEGAUGE t=46 who=adec cpu=6.1 instrumented=4.9 gap=1.2
+08-23 21:41:48.827 16724 16766 I VEPlayer: VEGAUGE t=46 who=demux cpu=1.8 instrumented=0.9 gap=0.9
+08-23 21:41:49.830 16724 16766 I VEPlayer: VESTAT t=47 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=6 syncWorstMs=-10.6 cpu=68.6 rssMb=342.6 fd=181
+08-23 21:41:49.831 16724 16766 I VEPlayer: VERENDER t=47 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.17 inCpuMs=5.19 gapMs=0.97
+08-23 21:41:49.831 16724 16766 I VEPlayer: VEGAUGE t=47 who=vdec cpu=29.2 instrumented=28.7 gap=0.5
+08-23 21:41:49.831 16724 16766 I VEPlayer: VEGAUGE t=47 who=adec cpu=5.9 instrumented=4.7 gap=1.2
+08-23 21:41:49.831 16724 16766 I VEPlayer: VEGAUGE t=47 who=demux cpu=1.7 instrumented=0.8 gap=0.9
+08-23 21:41:50.835 16724 16766 I VEPlayer: VESTAT t=48 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-11.4 cpu=69.7 rssMb=339.6 fd=181
+08-23 21:41:50.835 16724 16766 I VEPlayer: VERENDER t=48 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.23 inCpuMs=5.21 gapMs=1.01
+08-23 21:41:50.835 16724 16766 I VEPlayer: VEGAUGE t=48 who=vdec cpu=29.0 instrumented=28.6 gap=0.5
+08-23 21:41:50.835 16724 16766 I VEPlayer: VEGAUGE t=48 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:50.835 16724 16766 I VEPlayer: VEGAUGE t=48 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:51.839 16724 16766 I VEPlayer: VESTAT t=49 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-10.4 cpu=67.7 rssMb=339.7 fd=181
+08-23 21:41:51.840 16724 16766 I VEPlayer: VERENDER t=49 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.32 inCpuMs=5.27 gapMs=1.05
+08-23 21:41:51.840 16724 16766 I VEPlayer: VEGAUGE t=49 who=vdec cpu=26.6 instrumented=26.0 gap=0.5
+08-23 21:41:51.840 16724 16766 I VEPlayer: VEGAUGE t=49 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:51.840 16724 16766 I VEPlayer: VEGAUGE t=49 who=demux cpu=1.8 instrumented=0.9 gap=1.0
+08-23 21:41:52.844 16724 16766 I VEPlayer: VESTAT t=50 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-10.5 cpu=66.7 rssMb=340.1 fd=181
+08-23 21:41:52.844 16724 16766 I VEPlayer: VERENDER t=50 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.44 inCpuMs=5.39 gapMs=1.06
+08-23 21:41:52.844 16724 16766 I VEPlayer: VEGAUGE t=50 who=vdec cpu=26.2 instrumented=25.7 gap=0.5
+08-23 21:41:52.844 16724 16766 I VEPlayer: VEGAUGE t=50 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:52.844 16724 16766 I VEPlayer: VEGAUGE t=50 who=demux cpu=1.8 instrumented=0.8 gap=1.0
+08-23 21:41:53.848 16724 16766 I VEPlayer: VESTAT t=51 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-10.8 cpu=67.7 rssMb=339.7 fd=180
+08-23 21:41:53.848 16724 16766 I VEPlayer: VERENDER t=51 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.24 inCpuMs=5.18 gapMs=1.06
+08-23 21:41:53.848 16724 16766 I VEPlayer: VEGAUGE t=51 who=vdec cpu=26.3 instrumented=25.8 gap=0.5
+08-23 21:41:53.848 16724 16766 I VEPlayer: VEGAUGE t=51 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:53.849 16724 16766 I VEPlayer: VEGAUGE t=51 who=demux cpu=1.8 instrumented=0.9 gap=1.0
+08-23 21:41:54.853 16724 16766 I VEPlayer: VESTAT t=52 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-9.7 cpu=64.7 rssMb=342.9 fd=178
+08-23 21:41:54.854 16724 16766 I VEPlayer: VERENDER t=52 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.26 inCpuMs=5.25 gapMs=1.01
+08-23 21:41:54.854 16724 16766 I VEPlayer: VEGAUGE t=52 who=vdec cpu=24.5 instrumented=24.0 gap=0.5
+08-23 21:41:54.854 16724 16766 I VEPlayer: VEGAUGE t=52 who=adec cpu=6.0 instrumented=4.8 gap=1.3
+08-23 21:41:54.854 16724 16766 I VEPlayer: VEGAUGE t=52 who=demux cpu=1.8 instrumented=0.8 gap=0.9
+08-23 21:41:55.860 16724 16766 I VEPlayer: VESTAT t=53 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=267 fq=6 syncWorstMs=-11.9 cpu=65.6 rssMb=340.0 fd=180
+08-23 21:41:55.860 16724 16766 I VEPlayer: VERENDER t=53 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.85 inCpuMs=5.71 gapMs=1.14
+08-23 21:41:55.861 16724 16766 I VEPlayer: VEGAUGE t=53 who=vdec cpu=24.5 instrumented=24.0 gap=0.5
+08-23 21:41:55.861 16724 16766 I VEPlayer: VEGAUGE t=53 who=adec cpu=6.0 instrumented=4.7 gap=1.3
+08-23 21:41:55.861 16724 16766 I VEPlayer: VEGAUGE t=53 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:41:56.864 16724 16766 I VEPlayer: VESTAT t=54 fps=23.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=48 vstarve=0 astarve=0 aq=469 vq=266 fq=5 syncWorstMs=-10.6 cpu=66.5 rssMb=339.9 fd=178
+08-23 21:41:56.865 16724 16766 I VEPlayer: VERENDER t=54 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.37 inCpuMs=5.27 gapMs=1.11
+08-23 21:41:56.865 16724 16766 I VEPlayer: VEGAUGE t=54 who=vdec cpu=26.1 instrumented=25.6 gap=0.5
+08-23 21:41:56.865 16724 16766 I VEPlayer: VEGAUGE t=54 who=adec cpu=6.1 instrumented=4.8 gap=1.3
+08-23 21:41:56.865 16724 16766 I VEPlayer: VEGAUGE t=54 who=demux cpu=1.8 instrumented=0.9 gap=0.9
+08-23 21:41:57.871 16724 16766 I VEPlayer: VESTAT t=55 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=5 syncWorstMs=-11.9 cpu=63.7 rssMb=341.8 fd=181
+08-23 21:41:57.871 16724 16766 I VEPlayer: VERENDER t=55 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.61 inCpuMs=5.51 gapMs=1.10
+08-23 21:41:57.871 16724 16766 I VEPlayer: VEGAUGE t=55 who=vdec cpu=23.6 instrumented=23.1 gap=0.5
+08-23 21:41:57.872 16724 16766 I VEPlayer: VEGAUGE t=55 who=adec cpu=6.0 instrumented=4.7 gap=1.3
+08-23 21:41:57.872 16724 16766 I VEPlayer: VEGAUGE t=55 who=demux cpu=1.7 instrumented=0.8 gap=0.9
+08-23 21:41:58.875 16724 16766 I VEPlayer: VESTAT t=56 fps=23.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=4 syncWorstMs=-10.8 cpu=62.5 rssMb=340.0 fd=179
+08-23 21:41:58.875 16724 16766 I VEPlayer: VERENDER t=56 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=6.38 inCpuMs=5.34 gapMs=1.05
+08-23 21:41:58.875 16724 16766 I VEPlayer: VEGAUGE t=56 who=vdec cpu=22.9 instrumented=22.4 gap=0.5
+08-23 21:41:58.875 16724 16766 I VEPlayer: VEGAUGE t=56 who=adec cpu=6.1 instrumented=4.8 gap=1.2
+08-23 21:41:58.875 16724 16766 I VEPlayer: VEGAUGE t=56 who=demux cpu=1.8 instrumented=0.8 gap=1.0
+08-23 21:41:59.878 16724 16766 I VEPlayer: VESTAT t=57 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=12 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-9.7 cpu=63.9 rssMb=340.1 fd=180
+08-23 21:41:59.878 16724 16766 I VEPlayer: VERENDER t=57 uploadMs=3.50 drawMs=0.40 swapMs=2.60 threadCpuMs=6.36 inCpuMs=5.33 gapMs=1.03
+08-23 21:41:59.878 16724 16766 I VEPlayer: VEGAUGE t=57 who=vdec cpu=25.9 instrumented=25.3 gap=0.6
+08-23 21:41:59.878 16724 16766 I VEPlayer: VEGAUGE t=57 who=adec cpu=6.2 instrumented=4.9 gap=1.3
+08-23 21:41:59.878 16724 16766 I VEPlayer: VEGAUGE t=57 who=demux cpu=1.9 instrumented=0.9 gap=1.0
+08-23 21:42:00.882 16724 16766 I VEPlayer: VESTAT t=58 fps=23.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=13 apark=47 vstarve=0 astarve=0 aq=469 vq=265 fq=5 syncWorstMs=-12.6 cpu=60.8 rssMb=340.1 fd=182
+08-23 21:42:00.882 16724 16766 I VEPlayer: VERENDER t=58 uploadMs=3.50 drawMs=0.40 swapMs=2.60 threadCpuMs=6.51 inCpuMs=5.46 gapMs=1.04
+08-23 21:42:00.882 16724 16766 I VEPlayer: VEGAUGE t=58 who=vdec cpu=22.8 instrumented=22.3 gap=0.6
+08-23 21:42:00.882 16724 16766 I VEPlayer: VEGAUGE t=58 who=adec cpu=5.7 instrumented=4.6 gap=1.2
+08-23 21:42:00.882 16724 16766 I VEPlayer: VEGAUGE t=58 who=demux cpu=1.7 instrumented=0.8 gap=0.9
+08-23 21:42:01.738 16724 16724 W LZConsole: VEBENCH seek 1/3 pct=5 target=160937ms
+08-23 21:42:01.891 16724 16766 I VEPlayer: VESTAT t=59 fps=20.8 dropLate=0 dropOvf=0 dropStale=0 dropSeek=22 vpark=12 apark=46 vstarve=1 astarve=0 aq=469 vq=267 fq=1 syncWorstMs=-9.9 cpu=75.2 rssMb=341.1 fd=179
+08-23 21:42:01.891 16724 16766 I VEPlayer: VERENDER t=59 uploadMs=3.50 drawMs=0.40 swapMs=2.60 threadCpuMs=6.12 inCpuMs=5.05 gapMs=1.07
+08-23 21:42:01.892 16724 16766 I VEPlayer: VEGAUGE t=59 who=vdec cpu=33.8 instrumented=33.1 gap=0.7
+08-23 21:42:01.892 16724 16766 I VEPlayer: VEGAUGE t=59 who=adec cpu=8.3 instrumented=6.6 gap=1.7
+08-23 21:42:01.892 16724 16766 I VEPlayer: VEGAUGE t=59 who=demux cpu=3.8 instrumented=1.8 gap=2.0
+08-23 21:42:02.894 16724 16766 I VEPlayer: VESTAT t=60 fps=21.9 dropLate=0 dropOvf=0 dropStale=0 dropSeek=0 vpark=11 apark=47 vstarve=0 astarve=0 aq=469 vq=266 fq=4 syncWorstMs=-2.5 cpu=58.8 rssMb=341.1 fd=179
+08-23 21:42:02.895 16724 16766 I VEPlayer: VERENDER t=60 uploadMs=3.50 drawMs=0.40 swapMs=2.60 threadCpuMs=5.67 inCpuMs=4.69 gapMs=0.97
+08-23 21:42:02.895 16724 16766 I VEPlayer: VEGAUGE t=60 who=vdec cpu=23.3 instrumented=22.8 gap=0.5
+08-23 21:42:02.895 16724 16766 I VEPlayer: VEGAUGE t=60 who=adec cpu=5.0 instrumented=4.0 gap=1.0
+08-23 21:42:02.895 16724 16766 I VEPlayer: VEGAUGE t=60 who=demux cpu=1.6 instrumented=0.8 gap=0.8
+08-23 21:42:03.899 16724 16766 I VEPlayer: VERENDER t=61 uploadMs=3.50 drawMs=0.40 swapMs=2.60 threadCpuMs=6.54 inCpuMs=5.43 gapMs=1.11
+08-23 21:42:03.899 16724 16766 I VEPlayer: VEGAUGE t=61 who=vdec cpu=24.9 instrumented=24.4 gap=0.5
+08-23 21:42:03.899 16724 16766 I VEPlayer: VEGAUGE t=61 who=adec cpu=6.0 instrumented=4.7 gap=1.2
+08-23 21:42:03.899 16724 16766 I VEPlayer: VEGAUGE t=61 who=demux cpu=1.8 instrumented=0.9 gap=0.9
+08-23 21:42:04.739 16724 16724 W LZConsole: VEBENCH seek 2/3 pct=25 target=804685ms
+08-23 21:42:05.296 16724 16766 I VEPlayer: VERENDER t=62 uploadMs=3.50 drawMs=0.40 swapMs=2.60 threadCpuMs=6.25 inCpuMs=5.20 gapMs=1.05
+08-23 21:42:05.296 16724 16766 I VEPlayer: VEGAUGE t=62 who=vdec cpu=28.0 instrumented=27.5 gap=0.5
+08-23 21:42:05.296 16724 16766 I VEPlayer: VEGAUGE t=62 who=adec cpu=5.0 instrumented=4.0 gap=1.0
+08-23 21:42:05.296 16724 16766 I VEPlayer: VEGAUGE t=62 who=demux cpu=5.6 instrumented=3.4 gap=2.2
+08-23 21:42:06.299 16724 16766 I VEPlayer: VERENDER t=63 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=5.26 inCpuMs=4.31 gapMs=0.95
+08-23 21:42:06.299 16724 16766 I VEPlayer: VEGAUGE t=63 who=vdec cpu=27.6 instrumented=27.1 gap=0.5
+08-23 21:42:06.299 16724 16766 I VEPlayer: VEGAUGE t=63 who=adec cpu=5.0 instrumented=4.0 gap=1.0
+08-23 21:42:06.299 16724 16766 I VEPlayer: VEGAUGE t=63 who=demux cpu=1.6 instrumented=0.8 gap=0.8
+08-23 21:42:07.302 16724 16766 I VEPlayer: VERENDER t=64 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=5.82 inCpuMs=4.84 gapMs=0.98
+08-23 21:42:07.302 16724 16766 I VEPlayer: VEGAUGE t=64 who=vdec cpu=25.5 instrumented=25.0 gap=0.5
+08-23 21:42:07.302 16724 16766 I VEPlayer: VEGAUGE t=64 who=adec cpu=6.0 instrumented=4.8 gap=1.2
+08-23 21:42:07.302 16724 16766 I VEPlayer: VEGAUGE t=64 who=demux cpu=2.1 instrumented=1.2 gap=0.9
+08-23 21:42:07.740 16724 16724 W LZConsole: VEBENCH seek 3/3 pct=60 target=1931245ms
+08-23 21:42:08.674 16724 16766 I VEPlayer: VERENDER t=65 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=5.71 inCpuMs=4.66 gapMs=1.05
+08-23 21:42:08.674 16724 16766 I VEPlayer: VEGAUGE t=65 who=vdec cpu=31.1 instrumented=30.6 gap=0.5
+08-23 21:42:08.674 16724 16766 I VEPlayer: VEGAUGE t=65 who=adec cpu=5.4 instrumented=4.3 gap=1.0
+08-23 21:42:08.674 16724 16766 I VEPlayer: VEGAUGE t=65 who=demux cpu=4.2 instrumented=2.4 gap=1.8
+08-23 21:42:09.678 16724 16766 I VEPlayer: VERENDER t=66 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=5.25 inCpuMs=4.39 gapMs=0.86
+08-23 21:42:09.678 16724 16766 I VEPlayer: VEGAUGE t=66 who=vdec cpu=26.5 instrumented=25.9 gap=0.5
+08-23 21:42:09.678 16724 16766 I VEPlayer: VEGAUGE t=66 who=adec cpu=5.3 instrumented=4.2 gap=1.0
+08-23 21:42:09.678 16724 16766 I VEPlayer: VEGAUGE t=66 who=demux cpu=1.5 instrumented=0.8 gap=0.7
+08-23 21:42:10.683 16724 16766 I VEPlayer: VERENDER t=67 uploadMs=3.40 drawMs=0.40 swapMs=2.60 threadCpuMs=5.93 inCpuMs=4.90 gapMs=1.02
+08-23 21:42:10.683 16724 16766 I VEPlayer: VEGAUGE t=67 who=vdec cpu=23.4 instrumented=22.9 gap=0.5
+08-23 21:42:10.683 16724 16766 I VEPlayer: VEGAUGE t=67 who=adec cpu=6.2 instrumented=4.9 gap=1.2
+08-23 21:42:10.683 16724 16766 I VEPlayer: VEGAUGE t=67 who=demux cpu=2.0 instrumented=1.0 gap=1.0
+08-23 21:42:10.747 16724 16724 W LZConsole: VEBENCH snapshot=/storage/emulated/0/Android/data/com.example.lzplayer/files/net-seek-snapshot.json complete=true

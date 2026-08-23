@@ -1,4 +1,4 @@
-08-22 04:22:11.234 20797 20797 W LZConsole: VEBENCH ok playSeconds=20
-08-22 04:22:11.234 20797 20797 W LZConsole: VEBENCH ok caseName=bad-content
-08-22 04:22:11.235 20797 20797 W LZConsole: VEBENCH armed steady=20000ms seeks=0
-08-22 04:22:31.286 20797 20797 W LZConsole: VEBENCH snapshot=/storage/emulated/0/Android/data/com.example.lzplayer/files/bad-content-snapshot.json complete=true
+08-23 21:48:31.384 19427 19427 W LZConsole: VEBENCH ok playSeconds=20
+08-23 21:48:31.406 19427 19427 W LZConsole: VEBENCH ok caseName=bad-content
+08-23 21:48:31.407 19427 19427 W LZConsole: VEBENCH armed steady=20000ms seeks=0
+08-23 21:48:51.456 19427 19427 W LZConsole: VEBENCH snapshot=/storage/emulated/0/Android/data/com.example.lzplayer/files/bad-content-snapshot.json complete=true

@@ -1,5 +1,5 @@
-9.009 REQ GET /long-53min.mp4 range=bytes=0- -> 206 bytes=0-963773420/963773421
-9.291 REQ GET /long-53min.mp4 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
-9.366 DONE /long-53min.mp4 sent=2165484/2165484
-9.376 DONE /long-53min.mp4 sent=963773421/963773421
-9.412 REQ GET /long-53min.mp4 range=bytes=48- -> 206 bytes=48-963773420/963773421
+14.097 REQ GET /long-53min.mp4 range=bytes=0- -> 206 bytes=0-963773420/963773421
+14.148 REQ GET /long-53min.mp4 range=bytes=961607937- -> 206 bytes=961607937-963773420/963773421
+14.181 DONE /long-53min.mp4 sent=2165484/2165484
+14.283 REQ GET /long-53min.mp4 range=bytes=48- -> 206 bytes=48-963773420/963773421
+14.418 DONE /long-53min.mp4 sent=963773421/963773421
