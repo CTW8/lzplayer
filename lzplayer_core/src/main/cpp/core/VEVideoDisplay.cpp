@@ -257,6 +257,8 @@ namespace VE {
         params.set("frameWidth", mDeclaredFrameWidth);
         params.set("frameHeight", mDeclaredFrameHeight);
         m_pVideoRender = VEVideoRenderFactory::create(params, mRenderPolicy, &mUsedVulkan);
+        ALOGW("VEVideoDisplay::onPrepare this=%p render=%p win=%p",
+              (void *) this, (void *) m_pVideoRender.get(), (void *) mWin);
         if (m_pVideoRender) {
             m_pVideoRender->setPerfStats(mPerfStats);
         }
@@ -401,7 +403,8 @@ namespace VE {
 
         if (m_pVideoRender == nullptr) {
             // surface 尚未就绪，丢掉这一帧(回执照发)；渲染链由 onSurfaceChanged 重新拉起
-            ALOGW("VEVideoDisplay::%s - renderer not ready, drop frame", __FUNCTION__);
+            ALOGW("VEVideoDisplay::%s - renderer not ready, drop frame (this=%p)",
+                  __FUNCTION__, (void *) this);
             consumeFront();
             return UNKNOWN_ERROR;
         }
