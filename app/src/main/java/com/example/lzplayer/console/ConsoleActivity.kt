@@ -561,12 +561,35 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
 
     private fun refreshGauges() {
         val s = latestStats
-        val posSec = s.positionMs / 1000.0
-        val fps = if (posSec > 1.0) s.renderedFrames / posSec else -1.0
+        val raw = runCatching { org.json.JSONObject(player?.statsJsonRaw ?: "{}") }.getOrNull()
+
+        // **帧率必须用瞬时值(上屏间隔 p50 换算), 不能用 累计帧数 ÷ 播放位置。**
+        //
+        // 原实现 `renderedFrames / positionMs` 在**循环播放时必然算错**:
+        // 分子是累计渲染帧数(一直累加), 分母是当前播放位置(每次循环回到 0),
+        // 分子累积、分母重置 —— 实测 11.3 秒素材循环 4 次后分子约 1350、
+        // 分母仅 11.3, 算出的帧率是真实值的数倍; 位置刚回零时分母极小,
+        // 数值更会爆炸。而极短素材(1.5 秒)下 posSec 长期 < 1.0 直接返回 -1、
+        // 显示 "--", 表现为"播放正常却没有帧率"。
+        //
+        // 上屏间隔 p50 是逐帧样本的分位数, 与播放位置无关, 不受循环影响。
+        // 用**相邻两次刷新之间的渲染帧数差 ÷ 实际间隔** = 真吞吐，
+        // 与 native 侧 VESTAT 的 fps 同一口径。
+        //
+        // 试过两种错的做法：
+        //   累计帧数 ÷ 播放位置  —— 循环时分子累积、分母重置，必然算错；
+        //   1000 / presentIntervalMs.p50 —— 间隔分布右偏（循环 seek 造成长间隔
+        //     把中位数抬高），实测面板 23.8 而 VESTAT 真实吞吐 29.8，偏低 6 帧。
+        // 吞吐是计数除以时间，不受分布形状影响，这才是"帧率"该有的定义。
+        val nowMs = android.os.SystemClock.elapsedRealtime()
+        val dFrames = s.renderedFrames - lastRenderedFrames
+        val dtSec = (nowMs - lastFpsSampleMs) / 1000.0
+        val fps = if (lastFpsSampleMs > 0 && dtSec > 0.3 && dFrames >= 0)
+            dFrames / dtSec else -1.0
+        lastRenderedFrames = s.renderedFrames
+        lastFpsSampleMs = nowMs
         setGauge("fps", if (fps >= 0) "%.1f".format(fps) else "--",
             if (fps >= 0) R.color.con_ok else R.color.con_ink_faint)
-
-        val raw = runCatching { org.json.JSONObject(player?.statsJsonRaw ?: "{}") }.getOrNull()
         // 只显示"迟到被丢"这一类。四类混成一个数既会把正常当缺陷，
         // 也会把真丢帧藏起来——stale 与 seekCatchup 属正常
         val late = raw?.optLong("dropLate", 0) ?: 0
@@ -1006,6 +1029,9 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
     private var caseName: String = ""
     /** 收尾代次：换源/重开时递增，作废在途的延时收尾 */
     private var benchGen: Int = 0
+    /// 上次算帧率时的累计渲染帧数与时刻，用于求吞吐差值
+    private var lastRenderedFrames: Long = 0
+    private var lastFpsSampleMs: Long = 0
     /** seek 序列步距。见 runSeekStep 注释 */
     /** seek 序列步距，可经 --ei seekStepMs 覆盖。默认 3 秒见 runSeekStep 注释；
      *  时序压力测试会压到 200ms 以制造 seek 抢占——那条 abort() 路径此前从未
