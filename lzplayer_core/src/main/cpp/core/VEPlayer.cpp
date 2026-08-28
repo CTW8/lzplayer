@@ -988,9 +988,17 @@ namespace VE {
         // 输出会逼近并越过 768，而 snprintf 是**静默截断**——结果是一个缺
         // 右花括号的 JSON，Java 侧直接抛解析异常，现象却是"面板忽然全空"，
         // 极难定位。改成 std::string 拼接，长度不再是隐患。
+        // 抽成局部变量: decodePath 与 decoder 同值双写, 不重复求值
+        const char *decodePathStr = mVideoHardware ? "hardware" : (mMediaInfo && mMediaInfo->hasVideo() ? "software" : "-");
         char buf[1024];
         snprintf(buf, sizeof(buf),
-                 "{\"state\":\"%s\",\"decoder\":\"%s\",\"codec\":\"%s\","
+                 // decodePath 与 decoder 同值双写: 前者与 VEStartupTrace 的
+                 // 命名一致(报告判据读它), 后者是面板已在用的键。
+                 // 此前 stats 只有 decoder、startup 只有 decodePath, 两处命名
+                 // 不一致 —— 报告生成器靠 `st.get(...) or startup.get(...)`
+                 // 兜底才没出错, 但那掩盖了不一致本身
+                 "{\"state\":\"%s\",\"decoder\":\"%s\",\"decodePath\":\"%s\","
+                 "\"codec\":\"%s\","
                  "\"audioBackend\":\"%s\",\"avOffsetMs\":%lld,"
                  "\"renderedFrames\":%lld,\"droppedFrames\":%lld,"
                  "\"audioQueue\":%d,\"videoQueue\":%d,\"bufferedMs\":%lld,"
@@ -998,7 +1006,7 @@ namespace VE {
                  "\"positionMs\":%lld,\"durationMs\":%lld,"
                  "\"audioUnderruns\":%lld,",
                  stateName,
-                 mVideoHardware ? "hardware" : (mMediaInfo && mMediaInfo->hasVideo() ? "software" : "-"),
+                 decodePathStr, decodePathStr,
                  videoCodecName, audioBackend,
                  static_cast<long long>(avOffsetUs / 1000),
                  static_cast<long long>(rendered), static_cast<long long>(dropped),
