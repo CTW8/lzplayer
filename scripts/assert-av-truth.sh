@@ -42,11 +42,14 @@ sleep 6
 echo "采样 $SAMPLES 次（截屏 + 同刻位置）"
 : > "$OUT/samples.txt"
 for i in $(seq 1 "$SAMPLES"); do
-    # 先截屏再读位置：两者之间的间隔越小越好，顺序固定便于解释残余偏差
+    # **记录截屏前后的真实时刻**。screencap 本身耗数百毫秒, 用固定间隔估算
+    # 墙钟会让分母偏小、比值系统性偏高(第一版实测 1.25)。
+    # 取前后时刻的中点作为"这张截屏对应的时刻", 残余不确定度 = 截屏耗时的一半。
+    t0=$(python3 -c 'import time;print("%.3f"%time.time())')
     adb exec-out screencap -p > "$SP/avt-$i.png" 2>/dev/null
-    pos=$(adb shell "cat /sdcard/Android/data/$PKG/files/*.json" 2>/dev/null | head -c 4000)
-    echo "$i" >> "$OUT/samples.txt"
-    sleep 1.5
+    t1=$(python3 -c 'import time;print("%.3f"%time.time())')
+    echo "$i $t0 $t1" >> "$OUT/samples.txt"
+    sleep 1.2
 done
 
 adb shell "pkill -f 'logcat -f /sdcard/avt'" >/dev/null 2>&1
@@ -88,10 +91,22 @@ def decode_band(path):
     band_y = int(y0 + (y1 - y0) * 0.055)
     bits = []
     for b in range(8):
-        # 8 块均分视频宽度，取每块中心
+        # 8 块均分视频宽度。取块内 3x3 邻域均值而非单点 —— 单点会被压缩伪影
+        # 或缩放插值带偏, 而色块内部是均匀的
         x = int(W * (b + 0.5) / 8.0)
-        px = im.getpixel((min(W - 1, x), min(H - 1, band_y)))
-        bits.append(1 if sum(px) > 380 else 0)
+        acc, cnt = 0, 0
+        for dx in (-4, 0, 4):
+            for dy in (-3, 0, 3):
+                px = im.getpixel((min(W - 1, max(0, x + dx)),
+                                  min(H - 1, max(0, band_y + dy))))
+                acc += sum(px); cnt += 1
+        avg = acc / float(cnt)
+        # **中间灰度视为解码失败**: 色带非黑即白, 落在中间说明采样点没对准
+        # 色带(起播过渡期、画面切换瞬间都会这样)。实测四次里有一次算出
+        # +7017ms 漂移, 就是这类失败被当成有效帧号污染了统计
+        if 200 < avg < 500:
+            return None
+        bits.append(1 if avg > 380 else 0)
     return sum(bit << i for i, bit in enumerate(bits))
 
 # 播放器自报的位置（从 logcat 的进度回调取，与截屏时刻最接近的一条）
@@ -139,14 +154,44 @@ if len(vals) >= 2:
     # 跨多次绕回时总量要逐段累加, 不能直接首尾相减
     span_frames = sum((b[1] - a[1]) % 256 for a, b in zip(vals, vals[1:]))
     span_sec = span_frames / 25.0
-    wall = (vals[-1][0] - vals[0][0]) * 1.5
-    print("  屏幕推进 %d 帧 = %.1f 秒，实际经过约 %.1f 秒" %
-          (span_frames, span_sec, wall))
+    # 用实测时刻而非固定间隔。每张截屏取前后时刻中点
+    stamps = {}
+    sp_file = os.path.join(out, "samples.txt")
+    if os.path.exists(sp_file):
+        for line in io.open(sp_file):
+            parts = line.split()
+            if len(parts) == 3:
+                stamps[int(parts[0])] = (float(parts[1]) + float(parts[2])) / 2.0
+    if vals[0][0] in stamps and vals[-1][0] in stamps:
+        wall = stamps[vals[-1][0]] - stamps[vals[0][0]]
+        wall_src = "实测"
+    else:
+        wall = (vals[-1][0] - vals[0][0]) * 1.2
+        wall_src = "估算"
+    print("  屏幕推进 %d 帧 = %.2f 秒，墙钟经过 %.2f 秒（%s）" %
+          (span_frames, span_sec, wall, wall_src))
+    # 毫秒级偏差: 屏幕推进的时长与墙钟之差。**正=画面跑快了, 负=画面滞后**
+    drift_ms = (span_sec - wall) * 1000.0
+    print("  累计漂移 %+.0f ms（%.1f ms/秒）" %
+          (drift_ms, drift_ms / wall if wall else 0))
     # 墙钟用固定 1.5 秒估算, 而 screencap 本身耗数百毫秒 —— 真实间隔更长,
     # 分母偏小使比值系统性偏高。实测 1.25 属此原因, 不是播放器偏差。
     # 要精确比对需记录每次截屏的真实时刻, 那是下一步的事。
-    print("  比值 %.2f（1.0 = 同步推进；当前墙钟为估算，偏高属正常）" %
-          (span_sec / wall if wall else 0))
+    ratio = span_sec / wall if wall else 0
+    # **容差按分辨率推导, 不拍脑袋定。**
+    # 帧号分辨率 40ms(25fps), 首尾各有 ±1 帧量化误差 → ±80ms;
+    # 截屏耗时的一半是残余时刻不确定度, 首尾各一次 → 再加约 ±100ms。
+    # 合计约 ±180ms 除以窗口时长即为相对容差。3 秒窗口下约 ±6%,
+    # 窗口越长容差越紧 —— 这比固定 ±3% 更诚实: 实测 3 秒窗口的比值散布在
+    # 0.986~1.031, 用固定 3% 会把正常抖动判成 FAIL。
+    # 两项误差相互独立, 按**平方和**合成而非直接相加 —— 直接相加是最坏情况
+    # 假设(两项同时取最大且同向), 会把容差撑到 11%, 那样几乎测不出问题。
+    import math
+    tol = math.sqrt(0.08 ** 2 + 0.10 ** 2) / wall if wall else 0.05
+    tol = max(0.02, min(0.10, tol))
+    verdict = "PASS" if abs(ratio - 1.0) <= tol else "FAIL"
+    print("  推进比值 %.3f  %s（容差 ±%.1f%%，按帧号分辨率与截屏耗时推导）"
+          % (ratio, verdict, tol * 100))
 else:
     print("  样本不足，无法判定")
 PY
