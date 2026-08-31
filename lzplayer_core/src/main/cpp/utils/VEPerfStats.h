@@ -214,6 +214,18 @@ namespace VE {
         std::atomic<int64_t> dropStale{0};
         std::atomic<int64_t> dropSeekCatchup{0};
 
+        /// 只清队列峰值，不动直方图与计数器。
+        ///
+        /// seek 专用：峰值是"只涨不落"的累计量，seek 前触达的高水位会一直
+        /// 挂到 seek 之后，让 post_seek 段的峰值失去意义。而整个 reset()
+        /// 会把 videoDecodeUs 那批直方图一并清掉 —— 那些**跨 seek 仍然有效**，
+        /// 清了整段跑分就没有解码耗时分布了。
+        void resetQueuePeaks() {
+            audioQueuePeak.store(0, std::memory_order_relaxed);
+            videoQueuePeak.store(0, std::memory_order_relaxed);
+            frameQueuePeak.store(0, std::memory_order_relaxed);
+        }
+
         void reset() {
             videoDecodeUs.reset();
             audioDecodeUs.reset();
@@ -410,7 +422,8 @@ namespace VE {
                       " dropStale=%" PRId64 " dropSeek=%" PRId64
                       " vpark=%" PRId64 " apark=%" PRId64
                       " vstarve=%" PRId64 " astarve=%" PRId64
-                      " aq=%d vq=%d fq=%d syncWorstMs=%.1f cpu=%.1f "
+                      " aq=%d vq=%d fq=%d vqPeak=%d aqPeak=%d "
+                      "syncWorstMs=%.1f cpu=%.1f "
                       "rssMb=%.1f fd=%d",
                       ++mSec,
                       static_cast<double>(present - mPresent) / elapsed,
@@ -422,7 +435,15 @@ namespace VE {
                       s.audioCreditPark.load(std::memory_order_relaxed) - mAPark,
                       s.videoStarve.load(std::memory_order_relaxed) - mVStarve,
                       s.audioStarve.load(std::memory_order_relaxed) - mAStarve,
-                      aq, vq, fq, worstMs, sampleCpuPercent(elapsed),
+                      aq, vq, fq,
+                      // 峰值(只涨不落, seek 与 EOS 复位处会清零)。与上面的
+                      // aq/vq **不是一回事**: 那两个是瞬时深度。
+                      // 逐秒发出来才判得了"seek 后峰值是否归零" —— 只放进
+                      // 快照 JSON 的话拿到的是整段跑完的单个终值, 回答不了
+                      // "seek 那一刻有没有清"。
+                      s.videoQueuePeak.load(std::memory_order_relaxed),
+                      s.audioQueuePeak.load(std::memory_order_relaxed),
+                      worstMs, sampleCpuPercent(elapsed),
                       rssMb, fdCount);
                 // 渲染三段分解。单独一行而不是并进 VESTAT: 它只在软解路径
                 // 有样本(硬解走 releaseOutputBuffer, 不经 GLES 渲染器),

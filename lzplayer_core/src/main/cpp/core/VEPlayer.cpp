@@ -2174,4 +2174,12 @@ namespace VE {
         // 排队等待的操作(合并后的 seek/reset/release)现在补做
         processPendingActions();
     }
-}
+}        // 队列峰值只涨不落，seek 前的高水位不清会一直挂到 seek 之后，
+        // post_seek 段的峰值就永远等于"整段跑下来的最大值"。
+        //
+        // **只清峰值，不调 mPerfStats->reset()**：后者会把解码耗时那批直方图
+        // 一并清空，而它们跨 seek 仍然有效。teardown 路径里那次 reset() 的
+        // 注释写的是"seek 会让队列骤降骤升"，但它在拆解流程里，seek 走不到 ——
+        // 登记里"已在 seek 路径 reset"就是照那条注释写的，实测峰值全程单调
+        // (两次 seek 前后 51→52→63 只涨不落)。
+        if (mPerfStats) { mPerfStats->resetQueuePeaks(); }
