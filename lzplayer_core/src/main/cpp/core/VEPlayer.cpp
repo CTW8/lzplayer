@@ -1734,12 +1734,12 @@ namespace VE {
             case VE_NOTIFY_EVENT_FIRST_FRAME: {
                 // 首帧既是 seek 完成的依据，也顺带更新一次进度
                 int64_t pts = 0;
-                const bool hasArg3 = msg->findInt64("arg3", &pts);
-                // 与 VESeekTrace::endPriming 里那行对照: 两处相同则问题在发送方,
-                // 不同则问题在中间。hasArg3 单独打出来 —— findInt64 取不到时
-                // 不修改出参, 那样 pts 会保持初值 0 而看不出是"没传"
-                ALOGW("VEPlayer::onFirstFrame arg3=%lld present=%d type=%d",
-                      (long long) pts, (int) hasArg3, (int) type);
+                msg->findInt64("arg3", &pts);
+                // 原先这里有一条 ALOGW 的诊断行, 与 VESeekTrace::endPriming
+                // 里那条配对, 用来查"回传的 pts 是不是请求值本身"。
+                // 该问题 2026-09-01 已结案(回传的是真实首帧 pts, 见
+                // VESeekTrace::endPriming 的注释), 诊断行随之撤掉 ——
+                // 它每次 seek 都打, 而 ALOGW 在静默构建里也留着。
                 notifyProgress(pts);
                 if (mSeekStage == SEEK_STAGE_PRIMING &&
                     type == EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER) {

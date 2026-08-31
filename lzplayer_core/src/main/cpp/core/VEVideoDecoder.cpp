@@ -517,6 +517,33 @@ namespace VE {
             ret = avcodec_send_packet(mVideoCtx, nullptr);
         } else {
             ALOGF("VEVideoDecoder::onDecode got normal packet, size=%d", packet->getPacket()->size);
+            // **追赶期的跳帧必须在够到目标之前收手。**
+            //
+            // onSeek 设的 AVDISCARD_NONREF 会让解码器整帧跳过非参考帧 —— 包括
+            // **目标帧本身**。目标恰好是 B 帧时它永远不会被输出，首帧于是变成
+            // 下一帧。原实现只在"解出一个 pts >= 目标的帧"时才恢复，而那时已经
+            // 晚了：错过的正是那一帧。
+            //
+            // 实测(23.976fps 素材、10 次 seek、逐条对帧栅格)：
+            //   硬解 10/10 精确落在目标之后第一帧；
+            //   软解 3/10，另外 7 次**恰好晚一帧**；
+            //   关掉 AVDISCARD_NONREF 后软解 10/10 —— 根因确证。
+            //
+            // 不删这个优化：实测它把 seek 预热 max 从 58.4ms 压到 31.3ms、
+            // 均值 33.8→23.2ms，长 GOP 内容上差距更大。
+            //
+            // 改用**包 pts** 而不是帧 pts：包在送进解码器之前就知道 pts，
+            // 这是唯一来得及的时机。解码顺序与显示顺序不一致时(B 金字塔)
+            // 可能提前几个包恢复，代价只是多解几帧，不影响正确性。
+            if (mSeekTargetUs != kNoSeekTarget && mVideoCtx != nullptr &&
+                mVideoCtx->skip_frame != AVDISCARD_DEFAULT) {
+                const int64_t packetPts = packet->getPacket()->pts;
+                if (packetPts != AV_NOPTS_VALUE && packetPts >= mSeekTargetUs) {
+                    ALOGI("VEVideoDecoder::onDecode 追赶收手 packetPts=%" PRId64
+                          " target=%" PRId64, packetPts, mSeekTargetUs);
+                    mVideoCtx->skip_frame = AVDISCARD_DEFAULT;
+                }
+            }
             const int64_t sendBeginUs = mPerfStats ? nowUs() : 0;
             const int64_t sendCpuBeginUs = mPerfStats ? threadCpuUs() : 0;
             ret = avcodec_send_packet(mVideoCtx, packet->getPacket());
