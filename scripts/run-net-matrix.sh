@@ -23,6 +23,12 @@ trap cleanup EXIT
 mkdir -p "$OUT"
 adb devices | grep -q "device$" || { echo "无设备"; exit 1; }
 
+# 坏内容素材就地生成(体积小、可重现)，不进版本库 —— assets/serving 已 gitignore
+[ -f assets/serving/corrupt-random.mp4 ] || \
+    head -c 400000 /dev/urandom > assets/serving/corrupt-random.mp4
+[ -f assets/serving/corrupt-truncated.mp4 ] || \
+    head -c 300000 assets/serving/real-hevc-1080p.mp4 > assets/serving/corrupt-truncated.mp4
+
 pkill -f media-server.py 2>/dev/null
 ./scripts/media-server.py 8188 assets/serving > /tmp/net-matrix-server.log 2>&1 &
 SRV_PID=$!
@@ -51,13 +57,25 @@ run_case slow-ttfb       "$BASE/long-53min.mp4?ttfb=2"                 40 ""
 # 断流点按**已送出字节**而非秒：与限速叠加时按秒定永远撞不上播放窗口。
 # 0.25MB 落在 moov 读完之后的主数据早期
 run_case stall-recover   "$BASE/long-53min.mp4?kbps=2000&stall=6@0.25" 60 ""
-run_case stall-forever   "$BASE/long-53min.mp4?kbps=2000&stall=300@0.25" 45 ""
+# 永久断流：IO 超时后 demux open 失败是**正确行为**(不能永远挂着)，
+# 所以它是期望失败的场景，不该用正常播放判据去判。
+EXPECT=error run_case stall-forever "$BASE/long-53min.mp4?kbps=2000&stall=300@0.25" 45 ""
 # no-range 用 60s 素材而不是 11s 的 real-hevc-1080p: 后者稳态样本 n=27 < 30,
 # 帧率分位数全 `--`、判据只能是 INCONCLUSIVE —— 一个测不出结论的用例
 # 与"通过"在汇总表里长得一样。probe-visual 是 60s 且 **moov 在文件尾**,
 # 正好逼出无 Range 时"必须先把整个文件拖完才拿得到 moov"的最坏路径。
 run_case no-range        "$BASE/probe-visual.mp4?norange=1"             60 "70,20"
-run_case bad-content     "$BASE/badcontent.png"                        20 ""
+# **badcontent.png 不是坏内容。** 一张有效 PNG 会被 FFmpeg 的 png_pipe 当成
+# 单帧视频正常解封装、解码、渲染(实测 renderedFrames=1)，然后 EOS 正常完成。
+# 此前把它的终态 16 -> 128 读成"进了 STATE_ERROR、错误链路首次被真实错误穿过"
+# 是**读反了状态码**: VEPlayerDriver 的枚举是 STATE_ERROR=0、IDLE=1、
+# PLAYBACK_COMPLETE=128，16 -> 128 其实是"正常播放完成"。
+# 这个用例保留，但它验的是"图片文件按单帧视频播放"，不是错误链路。
+run_case image-as-media  "$BASE/badcontent.png"                        20 ""
+# 真正的坏内容才验得到错误链路。两种坏法分开：随机字节(连容器都认不出)与
+# 截断的真实 mp4(容器头对、数据不全) —— 走的不是同一条失败路径。
+EXPECT=error run_case bad-random     "$BASE/corrupt-random.mp4"        20 ""
+EXPECT=error run_case bad-truncated  "$BASE/corrupt-truncated.mp4"     20 ""
 # 真实轴素材：每条都是合成矩阵没有的维度
 run_case portrait-vfr    "$BASE/portrait-vfr-a.mp4"                    20 ""
 run_case real-hevc-4k    "$BASE/real-hevc-4k.mp4"                      20 ""

@@ -56,6 +56,7 @@ echo "   素材=$ASSET 软解=$SOFTWARE 稳态=${PLAY_SECONDS}s seek=${SEEK_PERC
   echo "software=$SOFTWARE"
   echo "playSeconds=$PLAY_SECONDS"
   echo "seekPercents=${SEEK_PERCENTS:-}"
+  echo "expect=${EXPECT:-}"
   echo "speeds=${SPEEDS:-}"
   echo "tracks=${TRACKS:-}"
   echo "device=$(adb shell getprop ro.product.model | tr -d '\r')"

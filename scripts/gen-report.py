@@ -132,7 +132,12 @@ def build(raw_dir):
         except Exception:
             asset = {}
     if not asset.get("streams"):
-        missing_env.append("asset.json(素材指纹)")
+        # 期望失败的场景(坏内容)本来就 probe 不出流信息 —— 那正是它要验的东西。
+        # 一律拒绝出报告的话，唯一能验证错误链路的用例反而永远出不了报告。
+        if env.get("expect") == "error":
+            asset = {"streams": [], "probe_failed": True}
+        else:
+            missing_env.append("asset.json(素材指纹)")
 
     snap = {}
     sp = os.path.join(raw_dir, "snapshot.json")
@@ -191,8 +196,41 @@ def build(raw_dir):
         crit.append({"criterion": name, "verdict": verdict,
                      "measured": measured, "cross_check": cross})
 
+    # 有些用例**期望失败**(坏内容、永久断流)。对它们套"解码路径符合预期"
+    # "稳态帧率达标"这类正常播放判据，FAIL 才是对的结果 —— 判据被套错场景
+    # 已经在 throttle-below 上栽过一次(见下面限速那段)，这里不再重演。
+    # 期望由用例显式声明(EXPECT=error)，不靠用例名猜。
+    expect_error = env.get("expect") == "error"
+    if expect_error:
+        # 唯一该判的是错误链路本身：既要有 ON_ERROR 上报，终态也要是
+        # STATE_ERROR。**两个都要**：只看状态码会漏掉"状态对了但上层没收到
+        # 通知"，只看通知会漏掉"报了错却停在别的状态"。
+        #
+        # 状态码取自 VEPlayerDriver 的枚举，注意 STATE_ERROR=0、IDLE=1、
+        # PLAYBACK_COMPLETE=128 —— 这三个此前被读反过，把
+        # "STARTED -> STATE_ERROR" 记成了"静默退回 IDLE"，又把
+        # "STARTED -> PLAYBACK_COMPLETE" 记成了"进了错误态"。
+        lg2 = os.path.join(raw_dir, "logcat-stream.txt")
+        n_err, last_state = 0, None
+        if os.path.exists(lg2):
+            t2 = io.open(lg2, errors="ignore").read()
+            n_err = t2.count("VE_PLAYER_NOTIFY_EVENT_ON_ERROR")
+            tr = re.findall(r"state (\d+) -> (\d+)", t2)
+            if tr:
+                last_state = int(tr[-1][1])
+        ok_err = n_err >= 1 and last_state == 0
+        add("错误链路穿过（期望失败的场景）",
+            "PASS" if ok_err else "FAIL",
+            "ON_ERROR=%d 终态=%s" % (n_err, last_state),
+            "期望 ON_ERROR>=1 且终态=0(STATE_ERROR)；"
+            "IDLE 是 1、PLAYBACK_COMPLETE 是 128，别读混")
+        add("解码路径符合预期", "INCONCLUSIVE",
+            "本场景期望失败，正常播放判据不适用", "EXPECT=error")
+
     dp = st.get("decodePath") or startup.get("decodePath")
-    if dp is None:
+    if expect_error:
+        pass
+    elif dp is None:
         add("解码路径符合预期", "INCONCLUSIVE", "decodePath 缺失", "—")
     else:
         want = "hardware" if hw else "software"
@@ -228,7 +266,10 @@ def build(raw_dir):
     throttled_below = (kbps is not None and total_bps > 0
                        and kbps * 1000 < total_bps * 0.95)
 
-    if not steady_fps.get("n") or fr is None:
+    if expect_error:
+        add("稳态帧率达标", "INCONCLUSIVE",
+            "本场景期望失败，不该有稳态", "EXPECT=error")
+    elif not steady_fps.get("n") or fr is None:
         add("稳态帧率达标", "INCONCLUSIVE",
             "n=%s" % steady_fps.get("n"), "素材帧率=%s" % fr)
     elif steady_fps.get("p50") is None:
