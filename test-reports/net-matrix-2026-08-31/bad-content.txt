@@ -1,0 +1,62 @@
+==========================================================================
+跑分报告  用例 bad-content
+==========================================================================
+
+[1] 环境指纹
+    device         2211133G
+    os             16
+    build          BP2A.250605.031.A3
+    asset          http://127.0.0.1:8188/badcontent.png
+    software       true
+    playSeconds    20
+    seekPercents   
+    veQuietLog     unknown(见构建命令)
+    veTraceFrame   unknown(见构建命令)
+    素材流         video png 1386x970 25/1 Nones
+
+[2] 判据（缺交叉校验来源的标 INCONCLUSIVE，不计入通过）
+    PASS         解码路径符合预期
+                 实测: decodePath=software
+                 交叉: intent software=true
+    INCONCLUSIVE 稳态帧率达标
+                 实测: n=None
+                 交叉: 素材帧率=25.0
+    INCONCLUSIVE 无 credit 记账失守
+                 实测: dropOvf 无样本
+                 交叉: —
+    INCONCLUSIVE rssMb 无泄漏
+                 实测: 稳态样本 0 秒 < 600，斜率不可靠(实证: 5min 与 30min 相差 11 倍)
+                 交叉: 需更长样本
+    INCONCLUSIVE fd 无泄漏
+                 实测: 稳态样本 0 秒 < 600，斜率不可靠(实证: 5min 与 30min 相差 11 倍)
+                 交叉: 需更长样本
+    INCONCLUSIVE seek 追踪有记录
+                 实测: seekTrace.count=0
+                 交叉: 发起 0 次
+
+[3] 分段统计（窗口不混算：seek 后追帧会污染稳态）
+    段落样本数: {'startup': 0, 'steady': 0, 'post_seek': 0}
+    seek 所在秒(实测自 VEBENCH 日志时刻): 无 —— seek 未发生或日志已滚掉
+
+[4] 列的采样时刻（同一个量在不同时刻采样，含义可能完全不同）
+    fps          本秒实际上屏帧数（presentInterval 样本数差值）
+    dropLate     本秒新增，迟到丢帧。阈值 100ms，即落后 3 帧才丢
+    dropOvf      本秒新增，credit 记账失守。出现即 bug
+    dropStale    本秒新增，flush/seek 后的在途旧帧。正常
+    dropSeek     本秒新增，精准 seek 追帧丢弃。属 seek 成本，非缺陷
+    vpark        本秒新增，视频解码器 credit 用尽次数。判断上下游瓶颈的关键
+    apark        本秒新增，音频解码器 credit 用尽次数
+    vstarve      本秒新增，视频上游饥饿次数
+    astarve      本秒新增，音频上游饥饿次数
+    aq           瞬时深度（非峰值）。-1 = 该轨不存在
+    vq           瞬时深度（非峰值）。-1 = 该轨不存在
+    fq           瞬时深度。-1 = 硬解不走 VEVideoDisplay
+    syncWorstMs  本秒最差同步余量，在 renderFrame 之前采样。负=已迟到；-9999 = 本秒无帧上屏（哨兵，非 0）
+    cpu          进程 CPU，单核归一（100 = 吃满一核）。-9999 = 未采到
+    rssMb        进程驻留内存。**判泄漏看斜率不看绝对值**——绝对值受素材分辨率与缓存配置影响很大（32MB 环形缓存 + 解码缓冲即占大头）
+    fd           打开的文件描述符数。与 RSS 是两种独立故障，只看 RSS 会漏掉 fd 泄漏
+
+[5] 逐秒时间线（0 行）
+           t      fps dropLate    vpark    apark       aq       vq       fq syncWorstMs      cpu
+
+p50/p95 为 '--' 表示样本数 < 30，不是 0。
