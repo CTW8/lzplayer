@@ -1,13 +1,39 @@
 # high-perf-player 进度
 
-> 最后更新: 2026-08-08
+> 最后更新: 2026-08-31
 > 总体状态: Doing
 >
 > 口径说明：六个阶段的代码实施已全部完成且 `./gradlew assembleDebug` 全工程通过，但**均未做真机回归**，因此一律停留在 Doing 段（标注"实现完成 + 构建通过，真机回归未做"），不标 Done。真机回归（见 Todo 第 1 项）是唯一阻塞六个阶段一并转 Done 的事项。
 
 ## Done
 
-（无）
+- [x] **Phase 2 运行期硬解 fallback 的排查结项：`AMediaCodec_setOutputSurface` 在错误态
+      恒返 -10000 属平台限制，本项目侧无代码可修** (2026-08-23，commit `533d602`)
+  - **为什么记在这里**：这条路径属 Phase 2（MediaCodec 硬解 + Surface 零拷贝，见 Doing 段
+    Phase 2 的 `setOutputSurface 处理 surface 变化` 与 `VE_INFO_DECODER_FALLBACK` 两条），
+    **自 Phase 2 起从未执行过一次**；2026-08-23 的故障注入首次让它跑起来。
+    此前它在 features/ 里**没有任何登记**，只存在于代码注释、commit `533d602`
+    与 `docs/test-system.html` 的缺陷表（标"平台限制"）。
+  - **结论**：一个 `ANativeWindow` 同时只能有一个 API 连接方；MediaCodec 直出时已
+    `native_window_api_connect` 独占。codec 进错误态后 `AMediaCodec_stop` 失败、
+    连接不释放，回退重建的 GLES 渲染器再连同一 surface 得到
+    `native_window_api_connect failed (already connected)` /
+    `eglCreateWindowSurface error 3003`，每帧走 "renderer not ready" 被丢，首帧永不上屏，
+    seek 预热超时被上层复位 —— 表现为"回退成功却中断播放"。
+    **`setOutputSurface(nullptr)` 与 `flush` 后重试实测均返回 -10000**，
+    连接收不回来。**这是 MediaCodec 错误态的固有限制，不是本项目的代码缺陷。**
+  - **已落地的部分（有价值，保留）**：`destroyCodec()` 在 delete 前显式
+    `flush + setOutputSurface(nullptr)` 解绑，不依赖 `stop` 是否成功 ——
+    **非错误态下这条路径是有效的**，只有错误态收不回。
+  - **同一轮顺带修掉的真缺陷**（它们不是平台限制）：重建的显示端未进 seek 遍历致首帧标记
+    永不置位（`ddc1485`，改 `VEPlayer.cpp` + `VEVideoDisplay.cpp`）、重建后未下发 surface
+    （`0214d3f`，必要但不充分）。
+  - **仍需确认（不要当已修）**：`b225157` 记的"运行期 fallback 后状态机退回 IDLE"与
+    `80bc089` 记的"回退通知与致命错误共用同一事件"—— **`80bc089` 是一笔无文件改动的定位记录**，
+    未见对应修复提交，本轮未核到修复代码，**状态不明**。
+  - **收口方式说明**：本条按 **Done 结项**（结论已确定、无剩余可执行动作），
+    **不留在 Todo 空挂**；剩下的架构级改法（解码输出到 `SurfaceTexture` 中转，
+    使 surface 连接不由 codec 独占）另记为 Todo 项，**尚未立项，需用户决定是否单开 feature**。
 
 ## Doing
 
@@ -77,6 +103,11 @@
 - [ ] 测试素材准备：多音轨 mkv、内嵌 / 外挂字幕、VP9/AV1（白名单外）素材、限速 HTTP 服务器、长 GOP 1080p、损坏文件。
 - [ ] Phase 4 可选项：`VE_LOG_HOT` 编译期日志裁剪、音频解码与渲染合并 looper（原计划即标注为可选）。
 - [ ] 代码提交（CLAUDE.md 要求提交前需用户明确同意；当前全部改动未提交）。
+- [ ] **（2026-08-31 新增，未立项）运行期硬解 fallback 的完整验证 —— 需架构改动**：
+      硬解输出改走 `SurfaceTexture` 中转而非直出窗口，使 `ANativeWindow` 的 API 连接
+      不被 codec 独占，错误态下也能交给新渲染器。**这是上面那条平台限制的唯一出路**，
+      改动面涉及 Phase 2 的零拷贝上屏路径与 vulkan-renderer，**建议单开 feature 再动**，
+      在此之前"运行期 fallback 后能继续播放"这一条**不得声称已验证**。
 
 ## 构建与注意事项
 
