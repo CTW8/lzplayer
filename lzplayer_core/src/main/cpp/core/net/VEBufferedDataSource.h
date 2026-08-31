@@ -19,14 +19,25 @@ namespace VE {
     /// 经 readAt 消费。这样 FFmpeg 的 read 回调大多数时候是内存拷贝，
     /// 不会因为一次网络往返把整条 demux 链路挂住。
     ///
-    /// 卡顿判定唯一发生在这一层：缓冲跌破低水位就报 BUFFERING_START，
-    /// 回到恢复水位再报 END——上层(播放器)据此暂停/恢复数据面。
+    /// 卡顿判定唯一发生在这一层，上层(播放器)据此暂停/恢复数据面。
+    ///
+    /// ⚠ **实际策略与下面 Config 的字段名并不一致，别照字段名理解**：
+    ///   BUFFERING_START 在 `readAt` **已经被迫阻塞**的那一刻才发(缓冲在所需
+    ///     偏移处已经干了)，**没有任何余量** —— 不是"跌破低水位"就预警；
+    ///   BUFFERING_END 才是真的按水位发(resumeWaterBytes，由预取线程发出)。
+    /// 见 startWaterBytes / lowWaterBytes 两个字段的说明。
     class VEBufferedDataSource : public IDataSource {
     public:
         struct Config {
             size_t cacheBytes = 32 * 1024 * 1024;   ///< 环形缓存容量
-            size_t startWaterBytes = 2 * 1024 * 1024;  ///< 起播水位
-            size_t lowWaterBytes = 256 * 1024;      ///< 跌破进入卡顿
+            /// ⚠ **未实现，全工程零引用。** 保留是为了记住设计意图，
+            /// 不是因为它在生效 —— 当前**没有起播水位**这回事，demux 读得到
+            /// 就开始播。把它当成"已经攒够 2MB 才起播"会得出错误结论。
+            size_t startWaterBytes = 2 * 1024 * 1024;
+            /// ⚠ **未实现，全工程零引用。** 当前 BUFFERING_START 是在 readAt
+            /// 被迫阻塞时才发的，即"已经饿了"而不是"快饿了"，零预警余量。
+            /// 实现它会让卡顿事件变多(提前上报)，属行为变更，需先定夺。
+            size_t lowWaterBytes = 256 * 1024;
             size_t resumeWaterBytes = 1024 * 1024;  ///< 回到此值恢复
             /// 前向未命中时最多等预取赶多远；超过就重定位(Range 重开)
             int64_t forwardSkipMax = 512 * 1024;
