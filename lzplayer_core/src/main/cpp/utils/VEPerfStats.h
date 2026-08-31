@@ -214,6 +214,32 @@ namespace VE {
         std::atomic<int64_t> dropStale{0};
         std::atomic<int64_t> dropSeekCatchup{0};
 
+        /// seek 请求记账。恒等式：
+        ///     requested + internal = 执行 + merged + dropped
+        /// （执行次数 = VESeekTrace 的入库条数，含被中止的那些）
+        /// 对不上就说明还有一条"请求消失"的路径没被记下来 —— 这正是本组计数
+        /// 要防的东西。
+        ///
+        /// 此前三处请求消失里只有一处有留痕：状态守卫有 ALOGW，而队尾合并直接
+        /// 覆盖旧目标、dropQueuedSeeks 整段擦除，两者都不留任何痕迹。于是
+        /// "发了 10 次 seek 只做了 1 次"与"seek 很快"在报告里无从区分。
+        ///
+        /// **计数打在各自的发起点，不打在 startSeek**：startSeek 既被外部请求
+        /// 调用，也被内部流程调用(软解回退续播 / 切轨 / 起播 / 循环回片头)，
+        /// 而 processPendingActions 还会把排队的请求**重放**一次进来 ——
+        /// 打在 startSeek 会把重放重复计数，也分不出内外。
+        ///
+        /// 分内外是为了留一条**播放器之外**的交叉校验：requested 必须等于
+        /// 上层实际发起的次数(harness 的 seekPercents)，只有内部三个数互相
+        /// 加减是自洽的废话。
+        ///
+        /// 各自的动作也不同：merged 高是拖动进度条时的**正常**合并；
+        /// dropped > 0 说明请求因 stop/超时被丢掉、上层以为做了其实没做。
+        std::atomic<int64_t> seekRequested{0};   ///< 外部请求(onSeek)
+        std::atomic<int64_t> seekInternal{0};    ///< 内部发起的全链 seek
+        std::atomic<int64_t> seekMerged{0};
+        std::atomic<int64_t> seekDropped{0};
+
         /// 只清队列峰值，不动直方图与计数器。
         ///
         /// seek 专用：峰值是"只涨不落"的累计量，seek 前触达的高水位会一直
@@ -255,6 +281,10 @@ namespace VE {
             dropOverflow.store(0, std::memory_order_relaxed);
             dropStale.store(0, std::memory_order_relaxed);
             dropSeekCatchup.store(0, std::memory_order_relaxed);
+            seekRequested.store(0, std::memory_order_relaxed);
+            seekInternal.store(0, std::memory_order_relaxed);
+            seekMerged.store(0, std::memory_order_relaxed);
+            seekDropped.store(0, std::memory_order_relaxed);
         }
 
         /// 逐秒时间线发射器。每秒往 logcat 打一条固定格式的 key=value 行。
@@ -592,6 +622,12 @@ namespace VE {
             appendI64("dropOverflow", dropOverflow.load(std::memory_order_relaxed));
             appendI64("dropStale", dropStale.load(std::memory_order_relaxed));
             appendI64("dropSeekCatchup", dropSeekCatchup.load(std::memory_order_relaxed));
+            // 逐秒 VESTAT 不带这三个: seek 是稀疏事件, 每秒重复同一个数没有
+            // 信息量, 而 VESTAT 那行已经很长。放快照 JSON 里按整段核对恒等式
+            appendI64("seekRequested", seekRequested.load(std::memory_order_relaxed));
+            appendI64("seekInternal", seekInternal.load(std::memory_order_relaxed));
+            appendI64("seekMerged", seekMerged.load(std::memory_order_relaxed));
+            appendI64("seekDropped", seekDropped.load(std::memory_order_relaxed));
             appendI64("videoCreditPark", videoCreditPark.load(std::memory_order_relaxed));
             appendI64("audioCreditPark", audioCreditPark.load(std::memory_order_relaxed));
             appendI64("videoStarve", videoStarve.load(std::memory_order_relaxed));

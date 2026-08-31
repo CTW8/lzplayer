@@ -257,9 +257,12 @@ def build(raw_dir):
     if m_kbps:
         kbps = int(m_kbps.group(1))
     total_bps = 0
-    for st in asset.get("streams", []):
+    # 循环变量**不能叫 st** —— 外层的 st 是 stats 字典，被遮蔽后后面所有
+    # 读 st 的判据都会拿到"最后一条流"，实测把 seek 记账判据静默变成了
+    # INCONCLUSIVE(数据其实齐全)。判据工具自己的哑火与被测代码的 bug 同等重要。
+    for _stream in asset.get("streams", []):
         try:
-            total_bps += int(st.get("bit_rate") or 0)
+            total_bps += int(_stream.get("bit_rate") or 0)
         except (TypeError, ValueError):
             pass
     # 限速是否在瓶颈之下：留 5% 余量，贴着码率的限速两边都说不准
@@ -418,6 +421,45 @@ def build(raw_dir):
             + ("" if not bad else "；越界: %s" % bad[:3]),
             "素材帧率 %.2f → 帧间隔 %.1fms；关键帧 %d 个"
             % (fps_nom, interval, len(kf)))
+
+    # ---- seek 请求记账恒等式 ----
+    #
+    # requested = 执行 + merged + dropped。对不上就说明还有第四条"请求消失"
+    # 的路径没被记下来 —— 而请求消失恰恰是最难发现的一类缺陷：它与
+    # "seek 很快"在报告里长得一模一样。
+    #
+    # 交叉校验来源是**播放器之外的**：harness 自己发了多少次 seek，记在
+    # env 的 seekPercents 里。播放器自报的 requested 必须与它相等 ——
+    # 只用播放器内部三个数互相加减是自洽的废话，加上这一条才有意义。
+    sr = st.get("seekRequested")
+    if sr is None:
+        add("seek 请求记账自洽", "INCONCLUSIVE",
+            "快照无 seekRequested（native 未采集）", "需 VEPerfStats 的三个计数")
+    elif n_seek == 0:
+        add("seek 请求记账自洽", "INCONCLUSIVE",
+            "本用例未发起 seek", "需带 seekPercents 的用例")
+    else:
+        merged = st.get("seekMerged") or 0
+        dropped = st.get("seekDropped") or 0
+        done = seek.get("count") or 0
+        # 环形缓冲上限 10：执行超过 10 次时 count 会封顶，恒等式只在未封顶时
+        # 可判 —— 封顶了就说不清差额是"丢了"还是"被环形挤掉了"
+        if done >= 10 and sr > 10:
+            add("seek 请求记账自洽", "INCONCLUSIVE",
+                "执行 %d 次已达环形上限，差额无法归属" % done,
+                "requested=%d merged=%d dropped=%d" % (sr, merged, dropped))
+        else:
+            internal = st.get("seekInternal") or 0
+            ok_id = (sr + internal == done + merged + dropped)
+            ok_x = (sr == n_seek)
+            add("seek 请求记账自洽",
+                "PASS" if (ok_id and ok_x) else "FAIL",
+                "外部 %d + 内部 %d = 执行 %d + merged %d + dropped %d  %s"
+                % (sr, internal, done, merged, dropped,
+                   "恒等式成立" if ok_id else "**对不上，还有一条请求消失的路径没记**"),
+                "harness 实发 %d 次 %s" % (
+                    n_seek, "与外部请求数相符" if ok_x
+                    else "**与播放器自报的外部请求数不符**"))
 
     # ---- seek 后队列峰值归零(perf-metrics 步骤2 遗留验收项) ----
     #
