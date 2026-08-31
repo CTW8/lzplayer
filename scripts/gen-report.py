@@ -208,15 +208,70 @@ def build(raw_dir):
                 fr = float(a) / float(b)
             except Exception:
                 pass
+    # 限速注入的取值：写在素材 URL 的 query 里(kbps=1440)，是本用例期望值的
+    # 一部分。**不能对所有场景套同一条"帧率达标"判据** —— throttle-below 的
+    # 全部意义就是帧率应该塌下去，拿达标去判它，PASS 才是错的。
+    # 08-22 那次 FAIL 一直靠人工覆盖，后来样本数掉到门槛下变成 INCONCLUSIVE
+    # 把问题藏了起来，就是这条缺陷的代价。
+    asset_url = env.get("asset", "")
+    kbps = None
+    m_kbps = re.search(r"[?&]kbps=(\d+)", asset_url)
+    if m_kbps:
+        kbps = int(m_kbps.group(1))
+    total_bps = 0
+    for st in asset.get("streams", []):
+        try:
+            total_bps += int(st.get("bit_rate") or 0)
+        except (TypeError, ValueError):
+            pass
+    # 限速是否在瓶颈之下：留 5% 余量，贴着码率的限速两边都说不准
+    throttled_below = (kbps is not None and total_bps > 0
+                       and kbps * 1000 < total_bps * 0.95)
+
     if not steady_fps.get("n") or fr is None:
         add("稳态帧率达标", "INCONCLUSIVE",
             "n=%s" % steady_fps.get("n"), "素材帧率=%s" % fr)
-    else:
-        ok = steady_fps.get("p50") is not None and steady_fps["p50"] >= fr * 0.95
-        add("稳态帧率达标", "PASS" if ok else ("INCONCLUSIVE"
-            if steady_fps.get("p50") is None else "FAIL"),
-            "稳态 p50=%s (n=%d)" % (steady_fps.get("p50"), steady_fps["n"]),
+    elif steady_fps.get("p50") is None:
+        # 判据名要跟着场景走，否则汇总表上"稳态帧率达标 INCONCLUSIVE"会被读成
+        # "帧率没测出来"，而 throttle-below 根本不该用这条判据
+        add("限速降级符合预期（帧率应下降）" if throttled_below else "稳态帧率达标",
+            "INCONCLUSIVE",
+            "稳态 p50=None (n=%d < 30，分位数不成立)" % steady_fps["n"],
             "素材 r_frame_rate=%.2f" % fr)
+    elif throttled_below:
+        # 期望反过来：限速到瓶颈之下时帧率**必须**下降。仍然满帧说明限速
+        # 根本没生效 —— 那这个用例什么都没测到，比 FAIL 更该被拦下来
+        degraded = steady_fps["p50"] < fr * 0.9
+        add("限速降级符合预期（帧率应下降）", "PASS" if degraded else "FAIL",
+            "稳态 p50=%.1f (n=%d)" % (steady_fps["p50"], steady_fps["n"]),
+            "限速 %dkbps < 素材码率 %.0fkbps；仍满帧则是注入未生效"
+            % (kbps, total_bps / 1000.0))
+    else:
+        ok = steady_fps["p50"] >= fr * 0.95
+        add("稳态帧率达标", "PASS" if ok else "FAIL",
+            "稳态 p50=%s (n=%d)" % (steady_fps.get("p50"), steady_fps["n"]),
+            "素材 r_frame_rate=%.2f%s" % (
+                fr, "；限速 %dkbps 在码率之上，不应降级" % kbps if kbps else ""))
+
+    # ---- buffering 事件成对 ----
+    #
+    # 网络场景唯一能直接判"卡顿处理是否自洽"的东西：每次 START 都该有对应的
+    # END。只多一个 END 或只多一个 START 都是 bug —— 本项目修过的五个网络
+    # bug 里就有两个是这个形状(事件乱序、恢复信号来自被自己暂停的路径)。
+    # 允许差 1：用例收尾时最后一次 buffering 可能还在途中。
+    lg = os.path.join(raw_dir, "logcat-stream.txt")
+    n_start = n_end = 0
+    if os.path.exists(lg):
+        txt = io.open(lg, errors="ignore").read()
+        n_start = txt.count("buffering, pausing data flow")
+        n_end = txt.count("buffering done, resuming")
+    if n_start == 0 and n_end == 0:
+        add("buffering 事件成对", "INCONCLUSIVE",
+            "本用例未发生 buffering", "本地素材或带宽充足时没有样本，不是缺陷")
+    else:
+        add("buffering 事件成对", "PASS" if abs(n_start - n_end) <= 1 else "FAIL",
+            "START=%d END=%d" % (n_start, n_end),
+            "允许差 1（收尾时最后一次可能在途中）")
 
     ovf = stats.get("steady", {}).get("dropOvf", {})
     if not ovf.get("n"):
@@ -266,6 +321,98 @@ def build(raw_dir):
     else:
         add("seek 追踪有记录", "PASS" if seek["count"] >= min(n_seek, 10) else "FAIL",
             "count=%d" % seek["count"], "发起 %d 次(环形上限 10)" % n_seek)
+
+    # ---- seek 精度判据：与素材的真实帧栅格对照 ----
+    #
+    # 口径：精准 seek 的实现是"定位到目标前的关键帧 → 解码 → 丢弃到目标",
+    # 所以**首帧应落在请求位置之后的第一个真实帧上**, 即
+    #     accuracyMs ∈ [0, 帧间隔)          且
+    #     请求位置 + accuracyMs 恰好落在帧栅格上
+    #
+    # 第二条才是有力的那条: 只看区间的话, 一个把请求值原样回传的实现
+    # (accuracy 恒 0) 也能通过。落在帧栅格上则要求那个数与素材的真实
+    # 帧率对得起来 —— 这是 VESeekTrace 里"回传的 pts 是不是请求值本身"
+    # 那条怀疑的判别式。
+    #
+    # **不用 keyframes.txt 直接算期望落点**: 关键帧只决定解码从哪开始,
+    # 决定首帧位置的是帧栅格。keyframes 在这里只用于确认"请求位置之前
+    # 确实有关键帧"(即这次 seek 真的需要追帧), 作为场景有效性的旁证。
+    kf = []
+    kp = os.path.join(raw_dir, "keyframes.txt")
+    if os.path.exists(kp):
+        for line in io.open(kp, errors="ignore"):
+            line = line.strip()
+            if line:
+                try:
+                    kf.append(float(line))
+                except ValueError:
+                    pass
+
+    items = [i for i in (seek.get("items") or [])
+             if i.get("accuracyMs") is not None and not i.get("aborted")]
+    fps_nom = fr
+    if not fps_nom:
+        add("seek 精度落在帧栅格上", "INCONCLUSIVE",
+            "素材帧率未知，算不出帧间隔", "需 asset.json 的 r_frame_rate")
+    elif not items:
+        add("seek 精度落在帧栅格上", "INCONCLUSIVE",
+            "无带精度的 seek 记录（%d 条里 0 条）" % len(seek.get("items") or []),
+            "需至少 1 次带首帧的 seek")
+    else:
+        interval = 1000.0 / fps_nom
+        # 容差取帧间隔的 5%: 时间戳在 mp4 里按 time_base 取整, 25fps/30fps
+        # 都不是二进制整除, 逐帧累积的舍入可达零点几毫秒
+        tol = interval * 0.05
+        bad = []
+        for i in items:
+            a = i["accuracyMs"]
+            landed = i["requestedMs"] + a
+            off_grid = abs((landed / interval) - round(landed / interval)) * interval
+            if not (-tol <= a < interval + tol) or off_grid > tol:
+                bad.append((i["requestedMs"], a, off_grid))
+        add("seek 精度落在帧栅格上",
+            "PASS" if not bad else "FAIL",
+            "%d/%d 条满足 accuracy∈[0,%.1fms) 且落在帧栅格上"
+            % (len(items) - len(bad), len(items), interval)
+            + ("" if not bad else "；越界: %s" % bad[:3]),
+            "素材帧率 %.2f → 帧间隔 %.1fms；关键帧 %d 个"
+            % (fps_nom, interval, len(kf)))
+
+    # ---- seek 后队列峰值归零(perf-metrics 步骤2 遗留验收项) ----
+    #
+    # 采样时刻：seek 之后的独立统计窗口(post_seek 段)。峰值是"只涨不落"的
+    # 累计量，seek 时若没被复位，post_seek 段的起点就会继承 seek 之前的高
+    # 水位 —— 表现为"seek 后队列一直很深"，而实际是个没清的计数器。
+    #
+    # **判据不是"post_seek 首样本为 0"**：峰值每秒采一次，而 seek 后队列在
+    # 一秒内就回填了，首样本本来就该 > 0。要求它为 0 会把正确实现判成 FAIL。
+    #
+    # 峰值是只涨不落的累计最大值，所以**序列出现下降就是复位发生过的证据**，
+    # 而全程单调不降就是没复位。这是 1 秒粒度下唯一能证实的形式。
+    peak_cols = [c for c in ("vqPeak", "aqPeak")
+                 if any(isinstance(r.get(c), float) for r in rows)]
+    if not seek_secs:
+        add("seek 后队列峰值复位", "INCONCLUSIVE",
+            "未发起 seek（或 seek 时刻不在日志窗口内）", "需带 seekPercents 的用例")
+    elif not peak_cols:
+        add("seek 后队列峰值复位", "INCONCLUSIVE",
+            "时间线未采集队列峰值列（vqPeak/aqPeak）",
+            "VESTAT 当前只有瞬时深度 vq/aq")
+    else:
+        detail, verdict = [], "FAIL"
+        for c in peak_cols:
+            ser = [(r.get("t"), r[c]) for r in rows if isinstance(r.get(c), float)]
+            drops = [(t, prev, cur) for (_, prev), (t, cur)
+                     in zip(ser, ser[1:]) if cur < prev]
+            if drops:
+                verdict = "PASS"
+                detail.append("%s 下降 %d 次(如 t=%s %g→%g)"
+                              % (c, len(drops), drops[0][0], drops[0][1], drops[0][2]))
+            else:
+                detail.append("%s 全程单调不降(%g→%g)"
+                              % (c, ser[0][1], ser[-1][1]) if ser else "%s 无样本" % c)
+        add("seek 后队列峰值复位", verdict, "；".join(detail),
+            "seek 发生在第 %s 秒；峰值只涨不落，出现下降即证明复位" % seek_secs)
 
     return {
         "env": env, "missing_fingerprint": missing_env,

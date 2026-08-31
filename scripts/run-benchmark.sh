@@ -33,7 +33,10 @@ mkdir -p "$OUT"
 
 # 本机素材路径（gen-test-assets.sh 的默认输出目录），用于 ffprobe 指纹。
 # 指纹取自本机副本而不是设备：ffprobe 在宿主机现成，且两者是同一份文件
-LOCAL_ASSET="assets/generated/$ASSET"
+# 素材可能以设备绝对路径给出(/sdcard/Movies/xxx.mp4), 直接拼前缀会得到
+# assets/generated//sdcard/Movies/xxx.mp4 —— 文件找不到, keyframes.txt 静默
+# 为空, seek 精度判据于是无声地失去交叉校验来源。一律先取 basename。
+LOCAL_ASSET="assets/generated/$(basename "$ASSET")"
 # 取本机副本路径时必须**先去掉 URL query**: 注入场景的 URL 形如
 # xxx.mp4?kbps=1440&stall=6@0.25, basename 会把整串 query 带进文件名,
 # 找不到文件 → 素材指纹为空 → 后续全部失败。实测 12 个场景里 6 个带注入的
@@ -43,7 +46,8 @@ if [ "${ASSET#http}" != "$ASSET" ]; then
 fi
 
 echo "== 用例 $CASE =="
-echo "   素材=$ASSET 软解=$SOFTWARE 稳态=${PLAY_SECONDS}s seek=${SEEK_PERCENTS:-无}"
+echo "   素材=$ASSET 软解=$SOFTWARE 稳态=${PLAY_SECONDS}s seek=${SEEK_PERCENTS:-无}" \
+     "变速=${SPEEDS:-无} 切轨=${TRACKS:-无}"
 
 # —— 环境指纹。报告缺任何一项就该拒绝出报告(7d 验收), 所以这里必须全采到 ——
 {
@@ -52,6 +56,8 @@ echo "   素材=$ASSET 软解=$SOFTWARE 稳态=${PLAY_SECONDS}s seek=${SEEK_PERC
   echo "software=$SOFTWARE"
   echo "playSeconds=$PLAY_SECONDS"
   echo "seekPercents=${SEEK_PERCENTS:-}"
+  echo "speeds=${SPEEDS:-}"
+  echo "tracks=${TRACKS:-}"
   echo "device=$(adb shell getprop ro.product.model | tr -d '\r')"
   echo "os=$(adb shell getprop ro.build.version.release | tr -d '\r')"
   echo "build=$(adb shell getprop ro.build.display.id | tr -d '\r')"
@@ -64,6 +70,17 @@ echo "   素材=$ASSET 软解=$SOFTWARE 稳态=${PLAY_SECONDS}s seek=${SEEK_PERC
   echo "faultHwConfigure=${FAULT_HW_CONFIGURE:-}"
   echo "faultHwAfterFrames=${FAULT_HW_AFTER:-}"
 } > "$OUT/env.txt"
+
+# generated 之外还可能落在 serving/ 或 format/。**回退查找而不是要求调用方
+# 记住素材在哪**: 记错的代价是判据静默失去交叉校验来源, 而不是一个响亮的报错
+if [ ! -f "$LOCAL_ASSET" ]; then
+    for d in assets/serving assets/format assets; do
+        if [ -f "$d/$(basename "${ASSET%%\?*}")" ]; then
+            LOCAL_ASSET="$d/$(basename "${ASSET%%\?*}")"
+            break
+        fi
+    done
+fi
 
 # —— 素材指纹 ——
 if [ -f "$LOCAL_ASSET" ]; then
@@ -98,7 +115,14 @@ case "$ASSET" in
       SRC_URI="$ASSET"; NET=0 ;;
   *)  SRC_URI="$DEV_DIR/$ASSET"; NET=0 ;;
 esac
-CMD="am start -n $ACT -e source $SRC_URI --ez autoplay true --ez software $SOFTWARE"
+# **source 必须单引号包起来。**
+# 宿主机侧给 adb shell 加引号是不够的: adb 把 argv 拼成一个字符串交给
+# **设备侧 shell 重新解析**, URL query 里的 & 在那里仍是裸的后台运行符。
+# 后果不只是丢注入参数, 而是 & 之后的**所有 am 参数一起丢**(autoplay /
+# caseName / playSeconds), 于是不起播、快照没名字, 报告九条全 INCONCLUSIVE。
+# 实测 ?kbps=2000&stall=6@0.25 到服务端只剩 kbps=2000, 状态机停在 8(PREPARED)。
+# 单引号让设备侧 shell 把整个 URL 当字面量。
+CMD="am start -n $ACT -e source '$SRC_URI' --ez autoplay true --ez software $SOFTWARE"
 # 故障注入经环境变量透传(仅 -PveFaultInject=true 构建有效)。
 # 走环境变量而非位置参数: 注入是可选的第 6~8 个维度, 加成位置参数会让
 # 常规调用也得写一串空串
@@ -107,9 +131,12 @@ CMD="am start -n $ACT -e source $SRC_URI --ez autoplay true --ez software $SOFTW
 [ -n "${FAULT_HW_AFTER:-}" ]     && CMD="$CMD --ei faultHwAfterFrames $FAULT_HW_AFTER"
 CMD="$CMD --ei playSeconds $PLAY_SECONDS --es caseName $CASE"
 [ -n "$SEEK_PERCENTS" ] && CMD="$CMD --es seekPercents $SEEK_PERCENTS"
-# 整条命令加引号在设备侧 shell 执行: URL query 里的 & 否则会被当成后台
-# 运行符吃掉, 注入参数静默丢失 —— 实测 ?kbps=2000&stall=6@0.25 只剩
-# kbps=2000, 断流场景连着三次"什么都没测到"却不报错
+# 变速/切轨序列(perf-metrics 9f)。经环境变量而不是位置参数传入 —— 位置参数
+# 已经四个了，再加会让所有现存调用点都得数逗号。
+[ -n "${SPEEDS:-}" ] && CMD="$CMD --es speeds $SPEEDS"
+[ -n "${TRACKS:-}" ] && CMD="$CMD --es tracks $TRACKS"
+# (URL query 里 & 的处理见上面 CMD 构造处的注释: 靠的是给 source 加**单引号**,
+#  不是给整条命令加引号 —— 后者不起作用, 这条曾被误记为已解决)
 # 日志落**设备本地**再一次性拉取, 不用宿主机流式 adb logcat。
 #
 # 两个都要避开的坑:
@@ -135,7 +162,15 @@ echo "$CMD" >> "$OUT/env.txt"
 # 等到快照出现或超时。收尾时刻 = 稳态 + 每个 seek 3s(见 runSeekStep) + 余量
 SEEK_N=$(echo "${SEEK_PERCENTS:-}" | awk -F, '{print NF}')
 [ -z "$SEEK_PERCENTS" ] && SEEK_N=0
-DEADLINE=$(( PLAY_SECONDS + SEEK_N * 3 + 15 ))
+# 变速与切轨序列排在 seek 之后, 各自也按 3 秒一步推进 —— 不把它们算进
+# 截止时间的话, 序列还没走完 harness 就开始收尾, 快照里会少掉后半段样本
+SPEED_N=$(echo "${SPEEDS:-}" | awk -F, '{print NF}')
+[ -z "${SPEEDS:-}" ] && SPEED_N=0
+# 变速序列跑完还会多一步"还原 1.0"(见 ConsoleActivity.runSpeedStep), 也占 3 秒
+[ "$SPEED_N" -gt 0 ] && SPEED_N=$(( SPEED_N + 1 ))
+TRACK_N=$(echo "${TRACKS:-}" | awk -F, '{print NF}')
+[ -z "${TRACKS:-}" ] && TRACK_N=0
+DEADLINE=$(( PLAY_SECONDS + (SEEK_N + SPEED_N + TRACK_N) * 3 + 15 ))
 for _ in $(seq 1 "$DEADLINE"); do
   sleep 1
   adb shell "test -f $APP_FILES/$CASE-snapshot.json" >/dev/null 2>&1 && break
@@ -144,12 +179,19 @@ done
 # 只取收尾快照之前的时间线: 序列收尾后 app 并未退出, 播放还在继续,
 # 那之后的 VESTAT 不属于本用例的采样窗口。混进来会让缺号检测误报 ——
 # 实测 net-53min 收尾于 t=25, 而 t=42 又冒出一条, 中间 17 秒被判缺号。
+#
+# **截断点是"序列结束"而不是 PLAY_SECONDS。** 后者只是稳态段, seek/变速/
+# 切轨三个序列全排在它之后(各 3 秒一步), 拿它当上界会把整个序列期的样本
+# 全部丢掉 —— 报告里 post_seek 段因此**恒为空**, seek 之后的任何判据都
+# 无从做起(实测 playSeconds=12 的用例日志有 t=17, timeline.txt 只到 t=12)。
+# 末尾再留 3 秒: post_seek 观察窗要看最后一次 seek 之后那几秒。
+SEQ_END=$(( PLAY_SECONDS + (SEEK_N + SPEED_N + TRACK_N) * 3 + 3 ))
 adb shell "pkill -f 'logcat -f /sdcard/bench-'" >/dev/null 2>&1
 sleep 1
 adb pull "$DEV_LOG" "$OUT/logcat-stream.txt" >/dev/null 2>&1
 adb shell "rm -f $DEV_LOG" >/dev/null 2>&1
 cat "$OUT/logcat-stream.txt" 2>/dev/null | grep -aE "VESTAT|VERENDER|VEGAUGE|VEBENCH" \
-  | awk -v n="$PLAY_SECONDS" '
+  | awk -v n="$SEQ_END" '
       /VESTAT t=/ { if (match($0, /t=[0-9]+/)) {
                       t = substr($0, RSTART+2, RLENGTH-2) + 0
                       if (t > n) next } }

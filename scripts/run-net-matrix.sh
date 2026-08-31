@@ -52,7 +52,11 @@ run_case slow-ttfb       "$BASE/long-53min.mp4?ttfb=2"                 40 ""
 # 0.25MB 落在 moov 读完之后的主数据早期
 run_case stall-recover   "$BASE/long-53min.mp4?kbps=2000&stall=6@0.25" 60 ""
 run_case stall-forever   "$BASE/long-53min.mp4?kbps=2000&stall=300@0.25" 45 ""
-run_case no-range        "$BASE/real-hevc-1080p.mp4?norange=1"         30 ""
+# no-range 用 60s 素材而不是 11s 的 real-hevc-1080p: 后者稳态样本 n=27 < 30,
+# 帧率分位数全 `--`、判据只能是 INCONCLUSIVE —— 一个测不出结论的用例
+# 与"通过"在汇总表里长得一样。probe-visual 是 60s 且 **moov 在文件尾**,
+# 正好逼出无 Range 时"必须先把整个文件拖完才拿得到 moov"的最坏路径。
+run_case no-range        "$BASE/probe-visual.mp4?norange=1"             60 "70,20"
 run_case bad-content     "$BASE/badcontent.png"                        20 ""
 # 真实轴素材：每条都是合成矩阵没有的维度
 run_case portrait-vfr    "$BASE/portrait-vfr-a.mp4"                    20 ""
