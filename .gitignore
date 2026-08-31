@@ -25,3 +25,10 @@ assets/serving/probe-visual.mp4
 assets/generated/
 assets/format/
 assets/format/av-probe.mp4
+
+# 跑分/矩阵的**中间产物**：logcat 原始流、设备快照、逐秒时间线。
+# 每跑一轮矩阵产生约 17 万行 diff，会把源码改动完全淹没(实测一次收口的
+# 22 个源文件改动被 100 个 raw 文件盖住)。
+# **归档报告 test-reports/<日期>/ 仍然入库** —— 跨轮次对照靠的是它们，
+# 而它们只是纯文本报告，体量可控。
+test-reports/raw/

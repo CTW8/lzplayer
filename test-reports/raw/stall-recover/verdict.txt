@@ -1,2 +1,0 @@
-FAIL 时间线为空 —— 没有任何 VESTAT 行
-FAIL 快照缺失 —— 序列未收尾(app 被杀 / playSeconds 未到)

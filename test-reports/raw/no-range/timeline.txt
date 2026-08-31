@@ -1,4 +1,0 @@
-08-23 21:47:57.758 19095 19095 W LZConsole: VEBENCH ok playSeconds=30
-08-23 21:47:57.781 19095 19095 W LZConsole: VEBENCH ok caseName=no-range
-08-23 21:47:57.782 19095 19095 W LZConsole: VEBENCH armed steady=30000ms seeks=0
-08-23 21:48:27.842 19095 19095 W LZConsole: VEBENCH snapshot=/storage/emulated/0/Android/data/com.example.lzplayer/files/no-range-snapshot.json complete=true
