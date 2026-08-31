@@ -535,6 +535,7 @@ namespace VE {
         // 回到中断前的位置续播。用更宽的超时窗口, 见 kFallbackSeekTimeoutUs
         mState = wasPlaying ? STATE_STARTED : STATE_PAUSED;
         mSeekTimeoutOverrideUs = kFallbackSeekTimeoutUs;
+        if (mPerfStats) { ++mPerfStats->seekInternal; }   // 硬解回退后的续播
         startSeek(resumeMs);
     }
 
@@ -829,6 +830,7 @@ namespace VE {
             mTrackSwitchAwaitingSeek = true;
         }
         // 全链精准 seek 回当前位置：新轨从这里开始出声，视频重解当前 GOP
+        if (mPerfStats) { ++mPerfStats->seekInternal; }   // 切轨的全链 seek
         startSeek(resumeMs);
         notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_TRACK_CHANGED, trackIndex,
                    "audio track changed", nullptr);
@@ -993,6 +995,16 @@ namespace VE {
         return trace->toJson();
     }
 
+    int64_t VEPlayer::renderedVideoFrames() const {
+        // 硬解路径下 mVideoRender 恒为 null(解码器自身即显示端)，
+        // 拿它判"有没有渲染过"会永远得到 0 —— 同一个陷阱这已是第四例。
+        if (mVideoHardware) {
+            auto hw = std::dynamic_pointer_cast<VEMediaCodecVideoDecoder>(mVideoDecoder);
+            return hw ? hw->renderedFrames() : 0;
+        }
+        return mVideoRender ? mVideoRender->renderedFrames() : 0;
+    }
+
     std::string VEPlayer::getSwitchTraceJson() {
         std::shared_ptr<VESeekTrace> speed, track;
         {
@@ -1028,12 +1040,11 @@ namespace VE {
             default: break;
         }
 
-        int64_t rendered = 0, dropped = 0;
+        int64_t rendered = renderedVideoFrames(), dropped = 0;
         if (mVideoHardware) {
             auto hw = std::dynamic_pointer_cast<VEMediaCodecVideoDecoder>(mVideoDecoder);
-            if (hw) { rendered = hw->renderedFrames(); dropped = hw->droppedFrames(); }
+            if (hw) { dropped = hw->droppedFrames(); }
         } else if (mVideoRender) {
-            rendered = mVideoRender->renderedFrames();
             dropped = mVideoRender->droppedFrames();
         }
 
@@ -1126,6 +1137,7 @@ namespace VE {
             // 直接 start 的话 demux/解码器都停在 EOS，会立刻再次"播完"。
             ALOGI("VEPlayer::%s restart from head after completion", __FUNCTION__);
             mState = STATE_STARTED;
+            if (mPerfStats) { ++mPerfStats->seekInternal; }   // 播完后从头重播
             startSeek(0);
             return VE_OK;
         }
@@ -1195,6 +1207,9 @@ namespace VE {
     VEResult VEPlayer::onSeek(std::shared_ptr<AMessage> msg) {
         double timestampMs = 0;
         if (msg->findDouble("timestampMs", &timestampMs)) {
+            // 唯一的外部请求入口。**只在这里计 requested** —— 它是那条
+            // 播放器之外的交叉校验(上层实发多少次)唯一对得上的地方。
+            if (mPerfStats) { ++mPerfStats->seekRequested; }
             startSeek(timestampMs);
         }
         return VE_OK;
@@ -1247,12 +1262,20 @@ namespace VE {
     }
 
     void VEPlayer::dropQueuedSeeks() {
+        // 被擦掉的请求上层**以为已经做了**。原实现零日志零计数，请求就这么
+        // 消失了 —— 三条请求消失的路径里，只有状态守卫那条有 ALOGW。
+        int dropped = 0;
         for (auto it = mPendingActions.begin(); it != mPendingActions.end();) {
             if (it->type == PendingAction::ACTION_SEEK) {
                 it = mPendingActions.erase(it);
+                ++dropped;
             } else {
                 ++it;
             }
+        }
+        if (dropped > 0) {
+            ALOGW("VEPlayer::%s dropped %d queued seek(s)", __FUNCTION__, dropped);
+            if (mPerfStats) { mPerfStats->seekDropped += dropped; }
         }
     }
 
@@ -1670,7 +1693,36 @@ namespace VE {
                 // 先置为 STARTED，seek 流程会据此在结束时恢复播放。
                 ALOGI("VEPlayer::%s looping, seek to head", __FUNCTION__);
                 mState = STATE_STARTED;
+                if (mPerfStats) { ++mPerfStats->seekInternal; }   // 循环回片头
                 startSeek(0);
+                return;
+            }
+
+            // **一帧未出、时钟也从未推进 = 这个文件没有可播的媒体数据。**
+            // 报"正常播放完成"会让上层分不清"文件是坏的"与"播完了"。
+            //
+            // 实测：截断的 mp4 在 free 盒里残留着一份旧 moov，于是流信息解析
+            // 成功、prepare 通过、起播，但 mdat 不在文件里 —— renderedFrames=0、
+            // ON_ERROR=0、终态 PLAYBACK_COMPLETE。
+            //
+            // 判据用**两个条件的或**，缺一不可：
+            //   渲染帧数 > 0    —— 覆盖有画面的情形(一张 PNG 会渲染 1 帧，
+            //                      那是合法的单帧视频，不能误伤)
+            //   媒体时钟推进过  —— 覆盖纯音频(没有视频帧但确实在放)
+            // 只判帧数会把纯音频判成坏文件；只判时钟会漏掉无音轨的视频。
+            const int64_t renderedAtEos = renderedVideoFrames();
+            const int64_t clockUs =
+                    mMediaClock ? (int64_t) mMediaClock->getCurrentMediaTime() : 0;
+            if (renderedAtEos <= 0 && clockUs <= 0) {
+                ALOGE("VEPlayer::%s reached EOS with no output at all "
+                      "(frames=%lld clockUs=%lld) —— 判为无可播媒体",
+                      __FUNCTION__, (long long) renderedAtEos, (long long) clockUs);
+                mState = STATE_ERROR;
+                stopProgressTick();
+                if (mMediaClock) mMediaClock->pause();
+                forEachRole([](Role &r) { r.comp->pause(); });
+                notifyError(VE_PLAYER_ERROR_NO_MEDIA_OUTPUT,
+                            "reached EOS without rendering any frame or advancing clock");
                 return;
             }
 
@@ -2149,8 +2201,13 @@ namespace VE {
     // ---------------------------------------------------------------------
 
     void VEPlayer::startSeek(double timestampMs) {
+        // 这里**不计请求数**：本函数既收外部请求也收内部发起，
+        // 且 processPendingActions 会把排队的请求重放一次进来 ——
+        // 打在这里会把重放重复计数、也分不出内外。
+        // 计数在各自的发起点，见 VEPerfStats::seekRequested 的注释。
         if (mState == STATE_IDLE || mState == STATE_ERROR || mState == STATE_RELEASING) {
             ALOGW("VEPlayer::startSeek ignored in state %d", mState);
+            if (mPerfStats) { ++mPerfStats->seekDropped; }
             return;
         }
 
@@ -2160,6 +2217,12 @@ namespace VE {
             ALOGI("VEPlayer::startSeek queue pending seek to %f", timestampMs);
             if (!mPendingActions.empty() &&
                 mPendingActions.back().type == PendingAction::ACTION_SEEK) {
+                // 覆盖队尾目标 = 前一次排队的请求**永远不会被执行**。
+                // 这是拖动进度条时想要的行为，但必须留痕：不然"发了 10 次
+                // 只做了 1 次"与"seek 很快"在报告里长得一模一样。
+                ALOGI("VEPlayer::startSeek merge pending seek %f -> %f",
+                      mPendingActions.back().seekMs, timestampMs);
+                if (mPerfStats) { ++mPerfStats->seekMerged; }
                 mPendingActions.back().seekMs = timestampMs;
             } else {
                 PendingAction action;

@@ -30,6 +30,11 @@ namespace VE {
 #define VE_PLAYER_ERROR_NETWORK_IO                          (VE_PLAYER_ERROR + 2)
 #define VE_PLAYER_ERROR_NETWORK_TIMEOUT                     (VE_PLAYER_ERROR + 3)
 #define VE_PLAYER_ERROR_UNSUPPORTED_TRACK                   (VE_PLAYER_ERROR + 4)
+/// 到达流尾却一帧未出、时钟也从未推进 —— 文件能解析出流信息但没有可播的
+/// 媒体数据(实测：截断的 mp4，free 盒里残留着一份旧 moov，于是流信息解析
+/// 成功、mdat 却不在文件里)。
+/// 这类文件原先会走"正常播放完成"，上层**分不清"文件是坏的"与"播完了"**。
+#define VE_PLAYER_ERROR_NO_MEDIA_OUTPUT                     (VE_PLAYER_ERROR + 5)
 
 /// 信息类(非错误)：硬解失败已回退软解，链路继续可用
 #define VE_PLAYER_INFO                          0x3000

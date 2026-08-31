@@ -111,6 +111,10 @@ namespace VE {
         /// 合成一个 getter 而不是两个 JNI 方法 —— 两者总是一起看。
         std::string getSwitchTraceJson();
 
+        /// 已渲染的视频帧数。硬解与软解的来源不同(硬解时 mVideoRender 恒为
+        /// null，计数在解码器上)，统一走这里取，别在调用点各判一次。
+        int64_t renderedVideoFrames() const;
+
         /// 测试开关：强制软解 / 强制 OpenSL ES。
         /// 改的是"下次建链"的策略，当前管线不受影响，需重新 prepare 才生效。
         void setForceSoftwareDecoder(bool force);
