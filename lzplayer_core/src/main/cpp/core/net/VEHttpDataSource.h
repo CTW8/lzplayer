@@ -55,6 +55,13 @@ namespace VE {
         /// 读一行(以 CRLF 结束)，用于解析响应头
         bool readLine(std::string *line);
 
+        /// 顺序读回退：从当前流位置向前读并**丢弃**，直到 mStreamPos == target。
+        ///
+        /// 只在服务端忽略 Range(mNoRange)时使用。调用前 mStreamPos 必须已反映
+        /// 连接的真实位置 —— connectAndRequest 里在 mConnected 置位之后调、
+        /// readAt 里在确认 offset > mStreamPos 之后调。
+        VEResult skipForwardTo(int64_t target);
+
         int mSocket = -1;
         SSL *mSsl = nullptr;
         SSL_CTX *mSslCtx = nullptr;
@@ -66,6 +73,10 @@ namespace VE {
         int64_t mStreamPos = 0;
         bool mConnected = false;
         bool mEof = false;
+        /// 服务端忽略了 Range(对 offset>0 的请求回 200 而不是 206)。
+        /// **粘性**：忽略过一次就不会突然又支持，没必要每次重定位都再试一遍
+        /// 并为此多付一个往返。open() 换 URL 时复位。
+        bool mNoRange = false;
 
         /// 中断标志：abort() 从任意线程置位，阻塞读写每轮都检查
         std::atomic<bool> mAbort{false};

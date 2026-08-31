@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
+#include <vector>
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -26,6 +28,10 @@ namespace VE {
         /// 单次 poll 的粒度：abort 最多在这个时间内生效
         constexpr int kPollSliceMs = 200;
         constexpr int kMaxRedirects = 5;
+        /// 顺序读回退时每丢弃这么多字节留一条痕。无 Range 服务端上跳到大文件
+        /// 尾部可能要拖走整个文件, 表现为长时间无输出 —— 这条分支本就是为
+        /// 消灭静默失败而加的, 不能自己再制造一次静默。
+        constexpr int64_t kNoRangeSkipLogBytes = 16 * 1024 * 1024;
 
         void trim(std::string *s) {
             while (!s->empty() && (s->back() == '\r' || s->back() == '\n' ||
@@ -108,6 +114,8 @@ namespace VE {
         mAbort = false;
         mUrl = url;
         mEof = false;
+        // 换 URL 就得重新判定 Range 支持: 粘性只在同一次会话内成立
+        mNoRange = false;
         return connectAndRequest(url, offset, kMaxRedirects);
     }
 
@@ -331,23 +339,26 @@ namespace VE {
             disconnect();
             return VE_PLAYER_ERROR_NETWORK_IO;
         }
-        if (statusCode == 200 && offset > 0) {
-            // 服务端不支持 Range：无法定位，上层只能从头读。
-            //
-            // **但上层并没有"从头读并丢弃到目标位置"的回退路径** —— 设计意图
-            // (见上一行注释与 200 被列入可接受状态码)与实现在这里脱节。
-            // 后果: mp4 解析必然要 offset>0(跳文件尾读 moov), 第一次跳转就撞上
-            // 这条分支, 连接断开、返回 VE_INVALID_OPERATION, 上层静默把状态机
-            // 从 STARTED 退回 IDLE(实测 state 16 -> 0), 既不播放也不上报错误。
-            // 对照 bad-content 场景是明确的 16 -> 128(STATE_ERROR), 那是对的。
-            //
-            // 修法需在上层补顺序读回退(从 0 读并丢弃到目标偏移), 改动面大于
-            // 这一行, 未实施。至少当前应让失败可见而非静默复位。
-            ALOGW("VEHttpDataSource::%s server ignored Range, got full body "
-                  "(offset=%lld) —— 上层无顺序读回退, 将导致静默失败",
-                  __FUNCTION__, (long long) offset);
-            disconnect();
-            return VE_INVALID_OPERATION;
+        // **服务端忽略 Range 时走顺序读回退, 而不是失败。**
+        //
+        // 设计意图一直是"回退顺序播放"(200 被列为可接受状态码, 见上一行注释),
+        // 但此前实现在这里直接 disconnect + 返回 VE_INVALID_OPERATION, 而上层
+        // 没有任何顺序读回退路径 —— 设计意图与实现脱节。后果: mp4 解析必然要
+        // offset>0(跳文件尾读 moov), 第一次跳转就撞上这条分支, 上层静默把状态机
+        // 从 STARTED 退回 IDLE(实测 16 -> 0), 既不播放也不上报错误。
+        // 对照 bad-content 场景是明确的 16 -> 128(STATE_ERROR), 那才是对的形态。
+        //
+        // 回退放在**这一层**而不是上层: IDataSource 的契约是"按偏移取字节",
+        // 用不用得上 Range 是这个契约的实现细节, 没有理由泄漏给 demux 或缓冲层。
+        // 代价是向前跳要下载并丢弃中间字节、向后跳要从 0 重来 —— 那是无 Range
+        // 服务端的固有代价, 不是本实现的选择。
+        const bool ignoredRange = (statusCode == 200 && offset > 0);
+        if (ignoredRange) {
+            // 注意**不能**在 offset == 0 时也置位: 对 `bytes=0-` 回 200 的
+            // 服务器多得是, 那不构成"不支持 Range"的证据。只认这一处铁证。
+            mNoRange = true;
+            ALOGW("VEHttpDataSource::%s server ignored Range (HTTP 200 for "
+                  "offset=%lld), 回退顺序读", __FUNCTION__, (long long) offset);
         }
         if (chunked) {
             // 播放场景的容器基本都带 Content-Length；chunked 需要分块解析，
@@ -357,15 +368,76 @@ namespace VE {
             return VE_INVALID_OPERATION;
         }
 
+        // body 的起始偏移: 206 是请求的 offset, 200 恒为 0(服务端从头给)。
+        // 原来这里一律按 offset 算, 在 200 上会把总长算成 offset+Content-Length
+        // —— 凭空多出一个 offset, 于是 readAt 的 EOF 判据(offset >= 总长)
+        // 永远不成立, 流尾会被当成网络错误。
+        const int64_t bodyStart = (statusCode == 200) ? 0 : offset;
         mContentLength = (rangeTotal >= 0)
                          ? rangeTotal
-                         : (contentLength >= 0 ? offset + contentLength : -1);
-        mStreamPos = offset;
+                         : (contentLength >= 0 ? bodyStart + contentLength : -1);
+        mStreamPos = bodyStart;
         mConnected = true;
         mEof = false;
-        ALOGI("VEHttpDataSource::%s ready, status=%d offset=%lld total=%lld",
+        ALOGI("VEHttpDataSource::%s ready, status=%d offset=%lld body@%lld total=%lld",
               __FUNCTION__, statusCode, static_cast<long long>(offset),
+              static_cast<long long>(bodyStart),
               static_cast<long long>(mContentLength));
+
+        // 连接已就绪、mStreamPos 已反映真实位置, 此刻才能丢弃到目标偏移
+        if (ignoredRange) {
+            const VEResult skipped = skipForwardTo(offset);
+            if (skipped != VE_OK) {
+                disconnect();
+                return skipped;
+            }
+        }
+        return VE_OK;
+    }
+
+    // ---------------------------------------------------------------------
+
+    VEResult VEHttpDataSource::skipForwardTo(int64_t target) {
+        if (target <= mStreamPos) {
+            return VE_OK;
+        }
+        // 丢弃缓冲不必大: 这里的瓶颈是网络往返, 不是拷贝次数
+        std::vector<uint8_t> sink(64 * 1024);
+        const int64_t from = mStreamPos;
+        int64_t lastLogged = mStreamPos;
+        while (mStreamPos < target) {
+            if (mAbort) {
+                return VE_INVALID_OPERATION;
+            }
+            const size_t want = static_cast<size_t>(
+                    std::min<int64_t>(static_cast<int64_t>(sink.size()),
+                                      target - mStreamPos));
+            const ssize_t got = rawRead(sink.data(), want);
+            if (got > 0) {
+                mStreamPos += got;
+            } else if (got == 0) {
+                // 目标在流尾之后。这是**越界请求**而不是网络错误, 置 mEof 让
+                // readAt 把它报成 EOF(返回 0), 不要再报成 -1 ——
+                // 那正是此前"EOF 被当成 EIO"那个 bug 的形状。
+                mEof = true;
+                ALOGW("VEHttpDataSource::%s skip hit EOF at %lld before target %lld",
+                      __FUNCTION__, (long long) mStreamPos, (long long) target);
+                return VE_INVALID_OPERATION;
+            } else {
+                ALOGE("VEHttpDataSource::%s skip read error at %lld",
+                      __FUNCTION__, (long long) mStreamPos);
+                return VE_PLAYER_ERROR_NETWORK_IO;
+            }
+            if (mStreamPos - lastLogged >= kNoRangeSkipLogBytes) {
+                lastLogged = mStreamPos;
+                ALOGW("VEHttpDataSource::%s no-range skip 进行中 %lld / %lld",
+                      __FUNCTION__, (long long) (mStreamPos - from),
+                      (long long) (target - from));
+            }
+        }
+        ALOGI("VEHttpDataSource::%s no-range skip 完成 %lld -> %lld (丢弃 %lld 字节)",
+              __FUNCTION__, (long long) from, (long long) target,
+              (long long) (target - from));
         return VE_OK;
     }
 
@@ -390,15 +462,32 @@ namespace VE {
         if (mContentLength > 0 && offset >= mContentLength) {
             return 0;
         }
-        if (!mConnected || offset != mStreamPos) {
+        if (mNoRange && mConnected && !mEof && offset > mStreamPos) {
+            // 服务端忽略 Range 时**向前**跳不要重连: 重连拿到的还是从 0 开始的
+            // 整个 body, 等于把已经下过的字节再下一遍。就着当前连接丢弃更便宜。
+            // (向后跳没有这个选择, 只能重连从 0 重来, 走下面的分支。)
+            const VEResult skipped = skipForwardTo(offset);
+            if (skipped != VE_OK) {
+                // skipForwardTo 撞到流尾时已置 mEof, 此处按 EOF 报 0 而非 -1
+                return mEof ? 0 : -1;
+            }
+        } else if (!mConnected || offset != mStreamPos) {
             // 不是顺序读：只能重开连接下新的 Range。
             // 上层缓冲层会尽量避免走到这里(见 VEBufferedDataSource)。
+            // 无 Range 服务端上 connectAndRequest 会自行丢弃到 offset。
             ALOGI("VEHttpDataSource::%s reposition %lld -> %lld", __FUNCTION__,
                   static_cast<long long>(mStreamPos), static_cast<long long>(offset));
             disconnect();
+            // 先清 mEof: 下面要靠它区分"这次重连里读到了流尾"和"网络出错"。
+            // 不清的话上一次读留下的 mEof 会让真正的网络错误被报成 EOF。
+            mEof = false;
             const VEResult ret = connectAndRequest(mUrl, offset, kMaxRedirects);
             if (ret != VE_OK) {
-                return -1;
+                // 无 Range 回退时 skipForwardTo 可能撞到流尾并置 mEof。那是
+                // **越界读**不是网络错误, 要报 0 而不是 -1 —— 与本函数开头
+                // 那条长度守卫同一语义。报成 -1 正是此前"EOF 被当成 EIO"
+                // 那个 bug 的形状, 不能在新分支上再犯一次。
+                return mEof ? 0 : -1;
             }
         }
         if (mEof) {
