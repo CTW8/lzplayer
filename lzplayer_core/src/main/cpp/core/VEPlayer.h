@@ -107,6 +107,10 @@ namespace VE {
         /// 最近 10 次 seek 的三阶段耗时与精度 JSON
         std::string getSeekTraceJson();
 
+        /// 变速与切轨的三阶段追踪，一次取回：{"speed":{...},"track":{...}}。
+        /// 合成一个 getter 而不是两个 JNI 方法 —— 两者总是一起看。
+        std::string getSwitchTraceJson();
+
         /// 测试开关：强制软解 / 强制 OpenSL ES。
         /// 改的是"下次建链"的策略，当前管线不受影响，需重新 prepare 才生效。
         void setForceSoftwareDecoder(bool force);
@@ -279,6 +283,10 @@ namespace VE {
 
         VEResult onSelectTrack(const std::shared_ptr<AMessage> &msg);
         VEResult doSelectTrack(int trackIndex, bool deselect);
+
+        /// 切轨追踪的起点/终点(定义与采样时刻见 .cpp)
+        void beginTrackTrace(int trackIndex);
+        void finishTrackTrace(int64_t ptsUs, bool aborted);
         VEResult onAddSubtitle(const std::shared_ptr<AMessage> &msg);
 
         /// 建字幕链(首次选中字幕轨时才创建)
@@ -448,6 +456,19 @@ namespace VE {
         VEPerfStats::Timeline mTimeline;
         /// seek 三阶段耗时与精度，环形缓冲留最近 10 次
         std::shared_ptr<VESeekTrace> mSeekTrace;
+        /// 变速追踪(kind="speed", param=目标速率)。两段有效, 第三段恒为 null,
+        /// 原因见 VESeekTrace::endAtStage2 的注释。
+        std::shared_ptr<VESeekTrace> mSpeedTrace;
+        /// 切轨追踪(kind="track", param=目标轨道号)。三段齐全 ——
+        /// 音轨切换以 switchAudioTrack 末尾的全链 seek 作为第三段,
+        /// 它的终点是真实的 FIRST_FRAME 事件。
+        std::shared_ptr<VESeekTrace> mTrackTrace;
+        /// 切轨的第三段正等着内嵌的那次 seek 完成。**不能用 mTrackTrace 是否
+        /// inFlight 代替**: 字幕轨那几条路径不发起 seek, 已在 stage2 结算完毕。
+        bool mTrackSwitchAwaitingSeek = false;
+        /// 变速的第②段正等音频渲染回 SPEED_APPLIED。无音轨时不设，
+        /// 否则那次记录会挂着等一个永不到来的事件、永远不入库。
+        bool mSpeedAwaitingApply = false;
         /// 下一次流程超时的一次性覆盖值(微秒), 0=用默认。
         /// 回退续播要多做一次建链, 见 kFallbackSeekTimeoutUs
         int64_t mSeekTimeoutOverrideUs = 0;

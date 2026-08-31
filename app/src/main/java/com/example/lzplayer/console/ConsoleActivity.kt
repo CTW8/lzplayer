@@ -80,6 +80,10 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
         /// 手工操作完全一致 —— 自动化不能改变被测对象的默认行为
         /** --es seekPercents 10,50,90 : 起播稳定后按序 seek 到这些百分比 */
         const val EXTRA_SEEK_PERCENTS = "seekPercents"
+        /** --es speeds 0.5,1.5,2.0 : seek 序列之后按序变速（perf-metrics 9f 采集） */
+        const val EXTRA_SPEEDS = "speeds"
+        /** --es tracks 1,0,1 : 变速序列之后按序切轨（perf-metrics 9f 采集） */
+        const val EXTRA_TRACKS = "tracks"
         /** --ei playSeconds 15 : 稳态播多久后收尾 */
         const val EXTRA_PLAY_SECONDS = "playSeconds"
         /** --es caseName fallback-runtime : 报告里的用例名 */
@@ -256,7 +260,8 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
      * ——播完了也是一种正常收尾。
      */
     private fun armBenchmarkFinish() {
-        if (playSeconds < 0 && seekPercents.isEmpty()) return
+        if (playSeconds < 0 && seekPercents.isEmpty() &&
+            speeds.isEmpty() && switchTracks.isEmpty()) return
         val token = ++benchGen
         // 稳态段：playSeconds 没给时用 0，即起播后立刻进 seek 序列
         val steadyMs = (if (playSeconds >= 0) playSeconds else 0) * 1000L
@@ -264,7 +269,8 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             // 代次校验：期间若换源/重开，旧的序列不许接着跑
             if (token == benchGen) runSeekStep(token, 0)
         }, steadyMs)
-        Log.w(TAG, "VEBENCH armed steady=${steadyMs}ms seeks=${seekPercents.size}")
+        Log.w(TAG, "VEBENCH armed steady=${steadyMs}ms seeks=${seekPercents.size} " +
+                "speeds=${speeds.size} tracks=${switchTracks.size}")
     }
 
     /**
@@ -282,7 +288,7 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
     private fun runSeekStep(token: Int, index: Int) {
         if (token != benchGen) return
         if (index >= seekPercents.size) {
-            dumpBenchmarkSnapshot(true)
+            runSpeedStep(token, 0)
             return
         }
         val pct = seekPercents[index]
@@ -296,6 +302,60 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
             Log.w(TAG, "VEBENCH REJECT seek pct=$pct skipped, prepared=$prepared duration=$durationMs")
         }
         etSource.postDelayed({ runSeekStep(token, index + 1) }, kSeekStepMs)
+    }
+
+    /**
+     * 按序变速。与 seek 序列同样的固定间隔推进，理由见 [runSeekStep]。
+     *
+     * 间隔沿用 kSeekStepMs：变速本身只有排队+生效两段（毫秒级），但间隔要够
+     * 长，好让 VESTAT 采到**新速率下的整秒帧率** —— 那是 9f 唯一的独立交叉
+     * 校验来源（帧率应变为 素材帧率 × speed）。少于一秒就采不到。
+     */
+    private fun runSpeedStep(token: Int, index: Int) {
+        if (token != benchGen) return
+        if (index >= speeds.size) {
+            // 变速跑完必须还原 1.0，否则后面的切轨序列在非常速下测，
+            // 两组数字会互相污染。
+            // **还原之后要隔一步再进切轨**：还原本身是一次异步变速，它的
+            // 生效回执与切轨重叠的话，两条链路的耗时会互相掺进去。
+            if (speeds.isNotEmpty()) {
+                player?.setPlaySpeed(1.0f)
+                Log.w(TAG, "VEBENCH speed restore 1.0")
+                etSource.postDelayed({ runTrackStep(token, 0) }, kSeekStepMs)
+            } else {
+                runTrackStep(token, 0)
+            }
+            return
+        }
+        val sp = speeds[index]
+        if (prepared) {
+            player?.setPlaySpeed(sp)
+            Log.w(TAG, "VEBENCH speed ${index + 1}/${speeds.size} value=$sp")
+        } else {
+            Log.w(TAG, "VEBENCH REJECT speed=$sp skipped, prepared=$prepared")
+        }
+        etSource.postDelayed({ runSpeedStep(token, index + 1) }, kSeekStepMs)
+    }
+
+    /**
+     * 按序切轨。轨道号取自 intent，**不做存在性推算** —— 素材有几条音轨要由
+     * 调用方按 ffprobe 结果给定。猜一个不存在的轨道号会被 native 拒绝，
+     * 那在报告里与"切轨很快"无从区分。
+     */
+    private fun runTrackStep(token: Int, index: Int) {
+        if (token != benchGen) return
+        if (index >= switchTracks.size) {
+            dumpBenchmarkSnapshot(true)
+            return
+        }
+        val t = switchTracks[index]
+        if (prepared) {
+            player?.selectTrack(t)
+            Log.w(TAG, "VEBENCH track ${index + 1}/${switchTracks.size} index=$t")
+        } else {
+            Log.w(TAG, "VEBENCH REJECT track=$t skipped, prepared=$prepared")
+        }
+        etSource.postDelayed({ runTrackStep(token, index + 1) }, kSeekStepMs)
     }
 
     private fun dumpBenchmarkSnapshot(complete: Boolean) {
@@ -312,9 +372,12 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
                 append("\"preferVulkan\":").append(preferVulkan).append(',')
                 append("\"playSeconds\":").append(playSeconds).append(',')
                 append("\"seekPercents\":\"").append(seekPercents.joinToString(",")).append("\",")
+                append("\"speeds\":\"").append(speeds.joinToString(",")).append("\",")
+                append("\"tracks\":\"").append(switchTracks.joinToString(",")).append("\",")
                 append("\"startup\":").append(orNull(p.startupTraceJson)).append(',')
                 append("\"stats\":").append(orNull(p.statsJsonRaw)).append(',')
-                append("\"seekTrace\":").append(orNull(p.seekTraceJson))
+                append("\"seekTrace\":").append(orNull(p.seekTraceJson)).append(',')
+                append("\"switchTrace\":").append(orNull(p.switchTraceJson))
                 append('}')
             }
             tmp.writeText(json)
@@ -358,6 +421,32 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
                 benchArg(true, "seekPercents=${seekPercents.joinToString()}")
             }
         }
+        speeds = emptyList()
+        if (i.hasExtra(EXTRA_SPEEDS)) {
+            val raw = i.getStringExtra(EXTRA_SPEEDS).orEmpty()
+            val parsed = raw.split(",").mapNotNull { it.trim().toFloatOrNull() }
+            // native 的合法区间是 [0.5, 2.0]，越界会被直接拒绝且不入库 ——
+            // 在这里先挡住并留痕，免得报告上看起来"变速做了但没记录"
+            if (parsed.size != raw.split(",").size || parsed.any { it < 0.5f || it > 2.0f }) {
+                benchArg(false, "speeds 非法: \"$raw\"（须为 [0.5,2.0] 内的逗号分隔小数）")
+            } else {
+                speeds = parsed
+                benchArg(true, "speeds=${speeds.joinToString()}")
+            }
+        }
+
+        switchTracks = emptyList()
+        if (i.hasExtra(EXTRA_TRACKS)) {
+            val raw = i.getStringExtra(EXTRA_TRACKS).orEmpty()
+            val parsed = raw.split(",").mapNotNull { it.trim().toIntOrNull() }
+            if (parsed.size != raw.split(",").size || parsed.any { it < 0 }) {
+                benchArg(false, "tracks 非法: \"$raw\"（须为非负整数的逗号分隔列表）")
+            } else {
+                switchTracks = parsed
+                benchArg(true, "tracks=${switchTracks.joinToString()}")
+            }
+        }
+
         playSeconds = -1
         if (i.hasExtra(EXTRA_PLAY_SECONDS)) {
             // 缺省值取 -1 而不是 0: 0 是"立刻收尾"这个合法值, 与"没给"不同
@@ -1037,6 +1126,8 @@ class ConsoleActivity : AppCompatActivity(), SurfaceHolder.Callback, IVEPlayerLi
      *  时序压力测试会压到 200ms 以制造 seek 抢占——那条 abort() 路径此前从未
      *  被真实触发过，而固定 3 秒步距下每次 seek 都从容完成，压不出抢占。 */
     private var kSeekStepMs = 3000L
+    private var speeds: List<Float> = emptyList()
+    private var switchTracks: List<Int> = emptyList()
     private var autoPlayWhenPrepared = false
     /** intent 带来的片源，等 surface 就绪后再打开(见 handleLaunchIntent) */
     private var pendingIntentSource: String? = null

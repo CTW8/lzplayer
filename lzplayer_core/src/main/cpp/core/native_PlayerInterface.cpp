@@ -309,6 +309,15 @@ namespace VE {
         return env->NewStringUTF(json.c_str());
     }
 
+    jstring nativeGetSwitchTrace(JNIEnv *env, jobject obj, jlong handle) {
+        VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
+        if (vePlayer == nullptr) {
+            return env->NewStringUTF("{}");
+        }
+        const std::string json = vePlayer->getSwitchTrace();
+        return env->NewStringUTF(json.c_str());
+    }
+
     jstring nativeGetStartupTrace(JNIEnv *env, jobject obj, jlong handle) {
         VEPlayerDriver *vePlayer = reinterpret_cast<VEPlayerDriver *>(handle);
         if (vePlayer == nullptr) {

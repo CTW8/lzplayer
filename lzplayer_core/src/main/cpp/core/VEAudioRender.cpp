@@ -245,6 +245,9 @@ namespace VE {
                 msg->findFloat("speed", &speed);
                 msg->findDouble("anchorPtsUs", &anchorPtsUs);
                 if (speed == m_Speed) {
+                    // 同速率不重建, 但仍要回执 —— 否则上层的变速追踪会一直
+                    // 挂着等一个永不到来的事件, 那次记录就永远不入库
+                    postMessage(VE_NOTIFY_EVENT_SPEED_APPLIED, 0, 0, 0, nullptr);
                     break;
                 }
                 ALOGI("VEAudioRender::%s speed %.2f -> %.2f", __FUNCTION__, m_Speed, speed);
@@ -260,6 +263,10 @@ namespace VE {
                 if (m_IsStarted) {
                     postRender(0);
                 }
+                // 回执点选在这里而不是函数入口: 到此 sonic 已重建、设备里的
+                // 旧速率 PCM 已清空、锚点已重置, 新速率**确实已经就位**。
+                // 放在入口只会量到消息投递, 那正是本次要修掉的东西。
+                postMessage(VE_NOTIFY_EVENT_SPEED_APPLIED, 0, 0, 0, nullptr);
                 break;
             }
             case kWhatRelease:{

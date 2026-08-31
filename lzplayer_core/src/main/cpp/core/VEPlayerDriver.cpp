@@ -376,6 +376,11 @@ namespace VE {
         return mPlayer->getSeekTraceJson();
     }
 
+    std::string VEPlayerDriver::getSwitchTrace() {
+        std::lock_guard<std::mutex> lk(mMutex);
+        return mPlayer->getSwitchTraceJson();
+    }
+
     std::string VEPlayerDriver::getStartupTrace() {
         // 同样不校验状态：启播失败的那次数据最该看，不能因为状态是 ERROR 就拒
         std::lock_guard<std::mutex> lk(mMutex);

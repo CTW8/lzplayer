@@ -164,6 +164,14 @@ public class VEPlayer {
         return "{\"count\":0,\"items\":[]}";
     }
 
+    /** 变速与切轨的三阶段耗时原始 JSON */
+    public String getSwitchTraceJson() {
+        if (mNativeHandle != null) {
+            return mNativeHandle.getSwitchTrace();
+        }
+        return "{}";
+    }
+
     public PlayerStats getStats() {
         if (mNativeHandle == null) {
             return PlayerStats.empty();

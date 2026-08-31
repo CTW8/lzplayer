@@ -88,6 +88,10 @@ namespace VE {
 #define VE_NOTIFY_EVENT_BUFFERING_START              115
 #define VE_NOTIFY_EVENT_BUFFERING_UPDATE             116
 #define VE_NOTIFY_EVENT_BUFFERING_END                117
+/// 音频渲染已按新速率就位(sonic 重建 + 设备旧速率 PCM 清空之后)。
+/// **这才是变速的"生效"时刻** —— VEAudioRender::setSpeed 只投消息就返回,
+/// 在调用点收口量到的是命令下发(实测 0.2ms), 与生效无关。
+#define VE_NOTIFY_EVENT_SPEED_APPLIED                118
 
 }
 

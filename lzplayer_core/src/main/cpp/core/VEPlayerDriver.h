@@ -62,6 +62,9 @@ namespace VE {
         std::string getStartupTrace();
         std::string getSeekTrace();
 
+        /// 变速与切轨的三阶段追踪(合成一个 getter, 两者总是一起看)
+        std::string getSwitchTrace();
+
         /// 测试开关：下次 prepare 生效
         VEResult setForceSoftwareDecoder(bool force);
         VEResult setForceSlesAudio(bool force);

@@ -582,7 +582,44 @@ namespace VE {
         return json;
     }
 
+    /// 切轨追踪起点。**采样时刻 = 请求落到 native 的那一刻(JNI 线程)**，
+    /// 与变速同口径：投递与排队都算用户等待。
+    /// requestedMs 此刻还写不了 —— 续播锚点要到 switchAudioTrack 里才算得出，
+    /// 由 setRequested 补写(见那里的注释)。
+    void VEPlayer::beginTrackTrace(int trackIndex) {
+        {
+            std::lock_guard<std::mutex> lk(mMutex);
+            if (mTrackTrace == nullptr) {
+                mTrackTrace = std::make_shared<VESeekTrace>("track", "trackIndex");
+            }
+        }
+        mTrackTrace->abort();   // 上一次未结算就被顶掉：记为中止
+        // 上一次的第③段可能还挂着(它的内嵌 seek 被超时/stop 打断过)。
+        // 不清的话, 这一次的记录会被那次遗留的等待抢先结算。
+        mTrackSwitchAwaitingSeek = false;
+        mTrackTrace->begin(-1, mVideoHardware);
+        mTrackTrace->setParam(trackIndex);
+    }
+
+    /// 切轨第③段收口。ptsUs < 0 表示没有首帧可比对(纯音频/无 surface)，
+    /// 照常结算耗时但不产生精度值。
+    void VEPlayer::finishTrackTrace(int64_t ptsUs, bool aborted) {
+        if (!mTrackSwitchAwaitingSeek) {
+            return;
+        }
+        mTrackSwitchAwaitingSeek = false;
+        if (mTrackTrace == nullptr) {
+            return;
+        }
+        if (aborted) {
+            mTrackTrace->abort();
+        } else {
+            mTrackTrace->endPriming(ptsUs);
+        }
+    }
+
     VEResult VEPlayer::selectTrack(int trackIndex) {
+        beginTrackTrace(trackIndex);
         auto msg = std::make_shared<AMessage>(kWhatSelectTrack, shared_from_this());
         msg->setInt32("trackIndex", trackIndex);
         msg->setInt32("deselect", 0);
@@ -591,6 +628,7 @@ namespace VE {
     }
 
     VEResult VEPlayer::deselectTrack(int trackIndex) {
+        beginTrackTrace(trackIndex);
         auto msg = std::make_shared<AMessage>(kWhatSelectTrack, shared_from_this());
         msg->setInt32("trackIndex", trackIndex);
         msg->setInt32("deselect", 1);
@@ -625,7 +663,11 @@ namespace VE {
     }
 
     VEResult VEPlayer::doSelectTrack(int trackIndex, bool deselect) {
+        // 第①段收口 = 本函数被真正执行的那一刻(切轨是长流程, isFlowBusy 时
+        // 会先进 mPendingActions 排队)。变大 → 切轨被 seek/prepare 堵住。
+        if (mTrackTrace) { mTrackTrace->endPausing(); }
         if (mMediaInfo == nullptr || mSource == nullptr) {
+            if (mTrackTrace) { mTrackTrace->abort(); }
             return VE_INVALID_OPERATION;
         }
 
@@ -640,6 +682,10 @@ namespace VE {
             if (mState == STATE_STARTED) {
                 mSubtitle->start();
             }
+            // 字幕轨不发起全链 seek，没有"追平到首帧"这一段：stage2 结算，
+            // 第三段留 null。记成 0 会让字幕轨在报告里显得比音轨快一个数量级，
+            // 而那只是因为它压根没测。
+            if (mTrackTrace) { mTrackTrace->endAtStage2(); }
             notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_TRACK_CHANGED, trackIndex,
                        "external subtitle selected", nullptr);
             return VE_OK;
@@ -648,6 +694,7 @@ namespace VE {
         const int slot = mMediaInfo->slotOfTrackIndex(trackIndex);
         if (slot < 0) {
             ALOGE("VEPlayer::%s unknown track %d", __FUNCTION__, trackIndex);
+            if (mTrackTrace) { mTrackTrace->abort(); }
             return VE_PLAYER_ERROR_UNSUPPORTED_TRACK;
         }
         const ETrackType type = mMediaInfo->tracks[slot].type;
@@ -655,6 +702,7 @@ namespace VE {
         if (deselect) {
             if (type != ETrackType::SUBTITLE) {
                 // 关掉音/视频轨没有合理语义(会直接静音/黑屏)
+                if (mTrackTrace) { mTrackTrace->abort(); }
                 return VE_PLAYER_ERROR_UNSUPPORTED_TRACK;
             }
             mSource->selectTrack(-1);
@@ -662,6 +710,7 @@ namespace VE {
                 mSubtitle->stop();
             }
             mMediaInfo->activeSubtitle = -1;
+            if (mTrackTrace) { mTrackTrace->endAtStage2(); }
             notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_TRACK_CHANGED, -1,
                        "subtitle deselected", nullptr);
             return VE_OK;
@@ -680,6 +729,7 @@ namespace VE {
                 if (mState == STATE_STARTED) {
                     mSubtitle->start();
                 }
+                if (mTrackTrace) { mTrackTrace->endAtStage2(); }
                 notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_TRACK_CHANGED, trackIndex,
                            "subtitle track changed", nullptr);
                 return VE_OK;
@@ -689,6 +739,7 @@ namespace VE {
             case ETrackType::VIDEO:
                 // 视频轨切换牵动整条渲染链与硬解绑定，本期不支持
                 ALOGE("VEPlayer::%s video track switch not supported", __FUNCTION__);
+                if (mTrackTrace) { mTrackTrace->abort(); }
                 return VE_PLAYER_ERROR_UNSUPPORTED_TRACK;
         }
         return VE_OK;
@@ -699,7 +750,9 @@ namespace VE {
         const VETrackInfo &newTrack = mMediaInfo->tracks[slot];
         const VETrackInfo *oldTrack = mMediaInfo->audioTrack();
         if (oldTrack && oldTrack->index == trackIndex) {
-            return VE_OK;   // 已经是它了
+            // 已经是它了：空操作，按中止入库而不是记一次 0ms 的成功
+            if (mTrackTrace) { mTrackTrace->abort(); }
+            return VE_OK;
         }
 
         const double resumeMs = mMediaClock ? mMediaClock->getCurrentMediaTime() / 1000.0 : 0.0;
@@ -761,6 +814,20 @@ namespace VE {
                     EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER);
         }
 
+        // 第②段收口 = **新轨已装配就位、全链 seek 尚未发起**的那一刻。
+        // 它量的是换流 + 解码器/渲染器重建(sameFormat 时几乎为 0，
+        // 换格式时要重建两条 looper 与设备)。变大 → 优化重建路径。
+        //
+        // requestedMs 在这里补写: 精度的口径是**切轨后首帧 pts − 续播锚点**，
+        // 锚点就是 resumeMs(切轨前时钟的位置)，到这一步才算得出来。
+        if (mTrackTrace) {
+            mTrackTrace->setRequested(resumeMs);
+            mTrackTrace->endSeeking();
+            // 第③段交给内嵌的这次全链 seek: 它的终点是真实的 FIRST_FRAME。
+            // 用显式标志而不是"mTrackTrace 还 inFlight"来判 —— 字幕轨那几条
+            // 路径不发起 seek，早已在 stage2 结算完毕。
+            mTrackSwitchAwaitingSeek = true;
+        }
         // 全链精准 seek 回当前位置：新轨从这里开始出声，视频重解当前 GOP
         startSeek(resumeMs);
         notifyInfo(0, VE_PLAYER_NOTIFY_EVENT_ON_TRACK_CHANGED, trackIndex,
@@ -926,6 +993,18 @@ namespace VE {
         return trace->toJson();
     }
 
+    std::string VEPlayer::getSwitchTraceJson() {
+        std::shared_ptr<VESeekTrace> speed, track;
+        {
+            std::lock_guard<std::mutex> lk(mMutex);
+            speed = mSpeedTrace;
+            track = mTrackTrace;
+        }
+        const std::string empty = "{\"count\":0,\"items\":[]}";
+        return "{\"speed\":" + (speed ? speed->toJson() : empty) +
+               ",\"track\":" + (track ? track->toJson() : empty) + "}";
+    }
+
     std::string VEPlayer::getStatsJson() {
         // 可跨线程调用：先在锁下取 shared_ptr 副本，之后各对象自己保证线程安全
         std::shared_ptr<VEMediaClock> clock;
@@ -1079,6 +1158,7 @@ namespace VE {
         mSeekStage = SEEK_STAGE_NONE;
         mAbortSeek = false;
         mBuffering = false;
+        finishTrackTrace(-1, true);
         dropQueuedSeeks();          // stop 后排队的 seek 已无意义
         ++mFlowSeq;                 // 作废在途的 seek 阶段超时
         setAllRoles(ROLE_ACTIVE);   // seek 中途被 stop：角色收拢回稳态
@@ -1180,6 +1260,8 @@ namespace VE {
         // reset/release 在排队等待：本轮 seek 到此为止，不再进入下一阶段。
         // 播放状态不必恢复——紧接着的 reset/release 会拆掉整条管线。
         ALOGI("VEPlayer::%s seek aborted for pending reset/release", __FUNCTION__);
+        // 切轨的第③段挂在这次 seek 上, seek 没了它也就没有终点了
+        finishTrackTrace(-1, true);
         ++mFlowSeq;
         mSeekStage = SEEK_STAGE_NONE;
         setAllRoles(ROLE_ACTIVE);
@@ -1195,6 +1277,7 @@ namespace VE {
         mSeekStage = SEEK_STAGE_NONE;
         mAbortSeek = false;
         mBuffering = false;
+        finishTrackTrace(-1, true);
         mState = STATE_RELEASING;
         mTeardownDone = std::move(onDone);
         ++mFlowSeq;
@@ -1459,6 +1542,22 @@ namespace VE {
                   speed, kMinPlaybackSpeed, kMaxPlaybackSpeed);
             return VE_INVALID_PARAMS;
         }
+        // **采样时刻 = 用户请求落到 native 的那一刻(JNI 线程)**，早于投消息。
+        // 放在这里而不是 onSetSpeed：投递与排队本身就是用户等待的一部分，
+        // 从 looper 上开始计时会把这段等待白送掉。
+        {
+            std::lock_guard<std::mutex> lk(mMutex);
+            if (mSpeedTrace == nullptr) {
+                mSpeedTrace = std::make_shared<VESeekTrace>("speed", "speed");
+            }
+        }
+        // 上一次还没结算就被新请求顶掉(连续拖动速率条)：旧的记为中止入库，
+        // 被打断的样本同样有用 —— 看得出卡在哪一段
+        mSpeedTrace->abort();
+        mSpeedAwaitingApply = false;   // 旧的那次不再等回执
+        mSpeedTrace->begin(speed * 1000.0, mVideoHardware);
+        mSpeedTrace->setParam(speed);
+
         auto msg = std::make_shared<AMessage>(kWhatSetSpeed, shared_from_this());
         msg->setFloat("speed", speed);
         msg->post();
@@ -1485,7 +1584,14 @@ namespace VE {
     }
 
     VEResult VEPlayer::doSetSpeed(float speed) {
+        // 第①段收口 = **本函数被真正执行的那一刻**。它量的是"请求到开始执行"
+        // 的排队等待：isFlowBusy 时请求会进 mPendingActions 等 seek/prepare
+        // 走完。这个数字变大 → 变速被别的流程堵住，动作是让它抢占而不是排队。
+        if (mSpeedTrace) { mSpeedTrace->endPausing(); }
         if (speed == mPlaybackSpeed) {
+            // 同速率是空操作，没有"生效"可言 —— 记成一次耗时 0 的成功会污染
+            // 分位数，按中止入库
+            if (mSpeedTrace) { mSpeedTrace->abort(); }
             return VE_OK;
         }
         ALOGI("VEPlayer::%s %.2f -> %.2f", __FUNCTION__, mPlaybackSpeed, speed);
@@ -1505,6 +1611,28 @@ namespace VE {
         // 字幕定时器是按旧速率算的真实时长，也要重排
         if (mSubtitle) {
             mSubtitle->setSpeed(speed);
+        }
+        // 第②段**不在这里收口**。
+        //
+        // 时钟侧是同步改的(VEMediaClock::setPlaybackSpeed 持锁立即生效)，但
+        // 音频侧 VEAudioRender::setSpeed **只投消息就返回** —— 在此收口量到的
+        // 是"命令下发"而不是"生效"，实测恒为 0.2ms，永远不会变、也驱动不了
+        // 任何动作，过不了准入门槛。这与 avOffMs 是同一类错误：函数没错，
+        // 错在采样时刻。
+        //
+        // 真正的生效时刻由音频渲染在 sonic 重建 + 设备旧速率 PCM 清空之后回
+        // VE_NOTIFY_EVENT_SPEED_APPLIED，第②段在那里收口。
+        //
+        // 交叉校验来源：生效之后 VESTAT 的 fps 应变为 素材帧率 × speed
+        // (实测 25fps 素材 1.5 倍速 → 37.8，与 37.5 相符)，那是与本计时
+        // 完全独立的一条链路。
+        if (mSpeedTrace) {
+            if (mAudioOutput) {
+                mSpeedAwaitingApply = true;
+            } else {
+                // 无音轨：没有音频回执可等，时钟已同步改完即视为生效
+                mSpeedTrace->endAtStage2();
+            }
         }
         return VE_OK;
     }
@@ -1668,6 +1796,16 @@ namespace VE {
                 ALOGI("VEPlayer::%s source select track done, ret=%d", __FUNCTION__, ret);
                 break;
             }
+            case VE_NOTIFY_EVENT_SPEED_APPLIED: {
+                // 第②段收口。**只认音频渲染发来的那一条** —— 其它组件将来若
+                // 也发同名事件, 不校验来源会把最早到的那条当成生效点
+                if (mSpeedAwaitingApply &&
+                    type == EComponentType::E_COMPONENT_TYPE_AUDIO_RENDER) {
+                    mSpeedAwaitingApply = false;
+                    if (mSpeedTrace) { mSpeedTrace->endAtStage2(); }
+                }
+                break;
+            }
             case VE_NOTIFY_EVENT_BUFFERING_START: {
                 int32_t percent = 0;
                 msg->findInt32("arg1", &percent);
@@ -1745,10 +1883,15 @@ namespace VE {
                     type == EComponentType::E_COMPONENT_TYPE_VIDEO_RENDER) {
                     if (mAbortSeek) {
                         if (mSeekTrace) { mSeekTrace->abort(); }
+                        finishTrackTrace(pts, true);
                         abortSeekForAction();
                     } else {
                         // 精度 = 首帧实际 pts − 请求位置，只有这里拿得到
                         if (mSeekTrace) { mSeekTrace->endPriming(pts); }
+                        // 切轨内嵌的那次 seek 到此为止 —— 第③段与它同一终点。
+                        // 交叉校验: track 的 primingMs 应约等于同一时刻 seek
+                        // 记录的 totalMs，两者独立计时、终点相同。
+                        finishTrackTrace(pts, false);
                         seekFinish();
                     }
                 } else {
@@ -1944,6 +2087,10 @@ namespace VE {
         mSeekStage = SEEK_STAGE_NONE;
         mAbortSeek = false;
         mBuffering = false;
+        // seek 超时收敛: 切轨的第③段等的就是这次 seek 的首帧, 记为中止入库。
+        // 漏掉它, 那条记录会一直挂着, 之后**一次无关的 seek** 的首帧会把它
+        // 错记成切轨耗时 —— 挂着的标志比缺一条记录更坏。
+        finishTrackTrace(-1, true);
         setAllRoles(ROLE_ACTIVE);
         stopProgressTick();
         if (mMediaClock) {
@@ -2035,6 +2182,15 @@ namespace VE {
         mState = STATE_SEEKING;
         mVideoEOS = false;
         mAudioEOS = false;
+        // 队列峰值只涨不落，seek 前的高水位不清会一直挂到 seek 之后，
+        // post_seek 段的峰值就永远等于"整段跑下来的最大值"。
+        //
+        // **只清峰值，不调 mPerfStats->reset()**：后者会把解码耗时那批直方图
+        // 一并清空，而它们跨 seek 仍然有效。teardown 路径里那次 reset() 的
+        // 注释写的是"seek 会让队列骤降骤升"，但它在拆解流程里，seek 走不到 ——
+        // 登记里"已在 seek 路径 reset"就是照那条注释写的，实测峰值全程单调
+        // (两次 seek 前后 51→52→63 只涨不落)。
+        if (mPerfStats) { mPerfStats->resetQueuePeaks(); }
 
         seekStagePause();
     }
@@ -2131,6 +2287,9 @@ namespace VE {
             // "seek 很快"在报告里长得一模一样 —— 又是一次"没测到"被当成
             // "测到了好结果"。
             if (mSeekTrace) { mSeekTrace->endPriming(-1); }
+            // 纯音频/无 surface 的切轨同样要结算, 否则音轨切换在无视频素材上
+            // 永远不入库、count 恒为 0 —— 与"切轨很快"在报告里无从区分
+            finishTrackTrace(-1, false);
             seekFinish();
         }
     }
@@ -2174,12 +2333,4 @@ namespace VE {
         // 排队等待的操作(合并后的 seek/reset/release)现在补做
         processPendingActions();
     }
-}        // 队列峰值只涨不落，seek 前的高水位不清会一直挂到 seek 之后，
-        // post_seek 段的峰值就永远等于"整段跑下来的最大值"。
-        //
-        // **只清峰值，不调 mPerfStats->reset()**：后者会把解码耗时那批直方图
-        // 一并清空，而它们跨 seek 仍然有效。teardown 路径里那次 reset() 的
-        // 注释写的是"seek 会让队列骤降骤升"，但它在拆解流程里，seek 走不到 ——
-        // 登记里"已在 seek 路径 reset"就是照那条注释写的，实测峰值全程单调
-        // (两次 seek 前后 51→52→63 只涨不落)。
-        if (mPerfStats) { mPerfStats->resetQueuePeaks(); }
+}

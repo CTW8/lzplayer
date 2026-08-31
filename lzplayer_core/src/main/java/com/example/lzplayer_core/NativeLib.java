@@ -100,6 +100,14 @@ public class NativeLib {
         return "{\"count\":0,\"items\":[]}";
     }
 
+    /** 变速与切轨的三阶段追踪 JSON：{"speed":{...},"track":{...}} */
+    public synchronized String getSwitchTrace(){
+        if(mHandle != 0){
+            return nativeGetSwitchTrace(mHandle);
+        }
+        return "{}";
+    }
+
     /** 启播链路里程碑 JSON。一次启播只变一次，不必每 tick 取 */
     public synchronized String getStartupTrace(){
         if(mHandle != 0){
@@ -359,6 +367,8 @@ public class NativeLib {
     private native String nativeGetStats(long handle);
     private native String nativeGetStartupTrace(long handle);
     private native String nativeGetSeekTrace(long handle);
+
+    private native String nativeGetSwitchTrace(long handle);
     /**
      * 故障注入（仅 -PveFaultInject=true 构建有效，返回 -1 表示本构建未编入）。
      * 静态方法：注入是全局调试设施，不属于某个播放器实例。
